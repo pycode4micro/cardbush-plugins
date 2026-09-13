@@ -1,0 +1,6 @@
+{
+  "name": "seedream-mcp",
+  "version": "0.3.0",
+  "description": "Unofficial MCP wrapper for Seedream, Seedance and standard/generative MediaKit video enhancement.",
+  "author": {"name": "Local developer"}
+}

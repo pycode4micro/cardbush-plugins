@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tencent-cos-upload": {
+      "command": "python",
+      "args": ["-m", "cos_upload_mcp"]
+    }
+  }
+}

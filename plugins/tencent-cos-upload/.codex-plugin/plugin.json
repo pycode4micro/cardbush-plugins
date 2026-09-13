@@ -1,0 +1,27 @@
+{
+  "name": "tencent-cos-upload",
+  "version": "0.2.0+codex.20260912061238",
+  "description": "Upload, download, delete and safely rename individual Tencent COS objects.",
+  "author": {
+    "name": "Local developer"
+  },
+  "interface": {
+    "displayName": "Tencent COS Upload",
+    "shortDescription": "Upload, download, delete and rename COS objects.",
+    "longDescription": "Four independent MCP tools: video upload, object download, confirmed exact-object deletion and guarded copy-verify-delete rename. No cutting, transcoding, generation, recursive deletion or bucket administration. Credentials stay in environment variables; signed URLs are the default.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png",
+    "logoDark": "./assets/logo.png",
+    "capabilities": [],
+    "defaultPrompt": [
+      "Upload the video I specify to Tencent COS and return a temporary signed URL.",
+      "Download the exact COS object I specify to a new local file.",
+      "Preview the exact COS object deletion or rename before confirmation."
+    ]
+  },
+  "mcpServers": "./.mcp.json",
+  "repository": "https://github.com/pycode4micro/cardbush-plugins",
+  "homepage": "https://github.com/pycode4micro/cardbush-plugins/tree/main/plugins/tencent-cos-upload"
+}

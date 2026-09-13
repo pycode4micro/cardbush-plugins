@@ -1,0 +1,41 @@
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+oauth_selection.json
+
+# Python and build outputs
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+.coverage
+htmlcov/
+
+# Runtime data and local media
+data/
+logs/
+outputs/
+*.log
+*.sqlite
+*.sqlite3
+*.db
+*.mp4
+*.mov
+*.mp3
+*.wav
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

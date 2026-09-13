@@ -1,0 +1,32 @@
+{
+  "name": "cardbush-plugins",
+  "interface": {
+    "displayName": "Cardbush Plugins"
+  },
+  "plugins": [
+    {
+      "name": "seedream-mcp",
+      "source": {
+        "source": "local",
+        "path": "./plugins/seedream-mcp"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "tencent-cos-upload",
+      "source": {
+        "source": "local",
+        "path": "./plugins/tencent-cos-upload"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

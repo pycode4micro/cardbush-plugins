@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "seedream": {
+      "command": "python",
+      "args": ["-m", "seedream_mcp"]
+    }
+  }
+}

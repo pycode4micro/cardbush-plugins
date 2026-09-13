@@ -1,0 +1,4 @@
+interface:
+  display_name: "参考视频生成"
+  short_description: "用可替换的预处理插件、FFmpeg 和 COS 编排强参考视频生成"
+  default_prompt: "Use $reference-video-production to prepare references, plan model-compatible clips, upload them, and generate a complete video."

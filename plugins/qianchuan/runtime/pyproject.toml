@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qianchuan-tool-service"
+version = "0.2.27"
+description = "Standalone local Qianchuan tool service for ROI analysis and guarded ad operations."
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1.0",
+  "uvicorn[standard]>=0.34,<1.0",
+  "httpx>=0.28,<1.0",
+  "sqlalchemy>=2.0,<3.0",
+  "pydantic-settings>=2.6,<3.0",
+  "python-dotenv>=1.0,<2.0",
+  "mcp[cli]>=1.27,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<10.0",
+  "ruff>=0.11,<1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[project.scripts]
+qianchuan-mcp = "app.mcp_server:main"
+qianchuan-mcp-http = "app.mcp_http:main"
+qianchuan-autonomous-budget = "app.autonomous:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

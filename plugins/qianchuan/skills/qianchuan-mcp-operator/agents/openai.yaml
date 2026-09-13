@@ -1,0 +1,4 @@
+interface:
+  display_name: "千川 MCP 投放 Agent"
+  short_description: "安全编排PC千川全域、乘方升级、诊断与ROI收敛"
+  default_prompt: "使用 $qianchuan-mcp-operator 为账户 1811432276115675 完成安全、可审计的PC千川全域投放或已暂停计划的乘方升级；全域计划直接创建，不使用标准Campaign前置、随心推订单替代或原始写工具。"

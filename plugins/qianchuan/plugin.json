@@ -1,0 +1,34 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "qianchuan",
+  "version": "1.0.0+codex.20260913085432",
+  "description": "千川素材、报表及受控投放工具；业务校验和限时暂停由服务端执行。",
+  "author": {
+    "name": "EDY"
+  },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "千川投放与素材",
+        "shortDescription": "通过 MCP 管理千川素材、报表与限时投放。",
+        "longDescription": "插件自带千川MCP与后台保障，独立配置和数据，不依赖桌面开发服务。OAuth中转独立部署。Skill为可选建议。",
+        "developerName": "EDY",
+        "category": "Productivity",
+        "brandColor": "#1765F5",
+        "composerIcon": "./assets/icon.svg",
+        "logo": "./assets/logo.svg",
+        "logoDark": "./assets/logo.svg",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "defaultPrompt": [
+          "检查千川连接和授权状态。",
+          "查看千川限时投放任务状态。"
+        ]
+      }
+    }
+  },
+  "repository": "https://github.com/pycode4micro/cardbush-plugins",
+  "homepage": "https://github.com/pycode4micro/cardbush-plugins/tree/main/plugins/qianchuan"
+}

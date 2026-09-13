@@ -1,6 +1,6 @@
 # Cardbush Plugins
 
-通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit、腾讯云 COS，以及千川插件。
+通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit、腾讯云 COS、千川，以及 video_editer 剪辑插件。
 
 目录和市场索引参照 [OpenAI 插件仓库](https://github.com/openai/plugins) 与 [OpenAI 插件打包文档](https://developers.openai.com/plugins/build/plugins)。这是独立维护的插件市场。
 
@@ -18,13 +18,14 @@ codex plugin marketplace add pycode4micro/cardbush-plugins --ref main
 codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.git --ref main
 ```
 
-重新打开 Codex 的插件页面，在市场来源中选择 **Cardbush Plugins**，即可浏览和安装这三个插件。若页面未刷新，重启客户端。
+重新打开 Codex 的插件页面，在市场来源中选择 **Cardbush Plugins**，即可浏览和安装这四个插件。若页面未刷新，重启客户端。
 
 | 插件 | 包内基础版本 | 功能 | 安装说明 |
 | --- | --- | --- | --- |
 | `seedream-mcp` | 0.3.0 | Seedream 图片、Seedance 视频、MediaKit 超分与参考视频 Skill | [生成服务配置](plugins/seedream-mcp/README.md) |
 | `tencent-cos-upload` | 0.2.0 | COS 上传、下载及经确认的单对象删除或重命名 | [COS 配置](plugins/tencent-cos-upload/README.md) |
 | `qianchuan` | 1.0.0 | 自带运行代码的千川素材、报表及受控投放工具 | [千川配置](plugins/qianchuan/README.md) |
+| `zj-video-editor`（video_editer） | 0.1.0 | 70 项无模型剪辑工具：长视频证据浏览、Agent 索引与候选、时间线、花字、转场及渲染 | [剪辑插件配置](plugins/zj-video-editor/README.md) |
 
 市场添加成功后，也可按需用 CLI 安装：
 
@@ -32,13 +33,14 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 codex plugin add seedream-mcp@cardbush-plugins
 codex plugin add tencent-cos-upload@cardbush-plugins
 codex plugin add qianchuan@cardbush-plugins
+codex plugin add zj-video-editor@cardbush-plugins
 ```
 
 安装或更新后，新建 Codex 任务以载入新的技能和工具。若已有 `@personal` 下的同名插件，请在插件管理页面选用一个来源，避免重复启用同一 MCP 服务。
 
 ## 新电脑运行准备
 
-GitHub 托管的是市场索引和插件文件。三个插件均在本机通过 stdio 提供 MCP 工具。添加市场本身不会配置业务凭据，也不会把本地服务转换为云端 HTTPS MCP；各插件的依赖安装方式如下。
+GitHub 托管的是市场索引和插件文件。四个插件均在本机通过 stdio 提供 MCP 工具。添加市场本身不会配置业务凭据，也不会把本地服务转换为云端 HTTPS MCP；各插件的依赖安装方式如下。
 
 ### Seedream 与腾讯云 COS
 
@@ -68,6 +70,20 @@ python -m pip install ./plugins/tencent-cos-upload
 插件使用独立的配置与数据目录，不依赖桌面的 `qianchuan_tool_service`。缺少业务配置时仍可启动 MCP，通过 `qianchuan_setup_status` 查看配置位置和缺失项。按插件内的 `config.example.env` 配置网关及安全参数，重新连接后加载业务工具；原服务的凭据和投放权限不会自动迁移。
 
 详细配置、后台限时任务行为及运行限制见[千川 README](plugins/qianchuan/README.md)。
+
+### video_editer 剪辑插件
+
+需要 Python 3.11 或更新版本，并使用 MCP 配置中同一个 `python` 安装运行依赖。在克隆后的仓库根目录运行：
+
+```shell
+python -m pip install ./plugins/zj-video-editor
+```
+
+插件自带独立 Python/FFmpeg 执行代码，不依赖其他剪辑平台，不读取其他项目的 `.env`，也不调用模型 API。理解视频、撰写花字、选择片段和转场由宿主 Agent 完成；插件提供本地视听证据、版本化索引、候选管理以及明确参数下的剪辑执行。
+
+FFmpeg 需支持 libx264/libass；已声明的 `imageio-ffmpeg` 提供二进制回退。中文花字需要本机安装微软雅黑或 Noto Sans CJK 等中文字体，字体不随仓库分发。可通过 `VIDEO_EDITER_DATA_DIR` 指定独立数据目录，默认在用户目录下的 `.video_editer`；原片、数据库、预览及成片不会写入市场仓库。
+
+已包含 78 项离线回归测试，覆盖合法/非法输入、实际音视频执行、源时间锚定、后台队列和长素材证据链；另有可选的 2 小时、200MB 以上合成素材基准。合成基准不代表真实商品视频的语义召回率。外部生成特效接入、跨项目创作库和结构模板尚未实现，详见[插件说明](plugins/zj-video-editor/README.md)及[长素材使用指引](plugins/zj-video-editor/skills/zj-video-editor/long-media.md)。
 
 ## 更新市场
 
@@ -103,6 +119,15 @@ plugins/
     scripts/launch.py
     scripts/launch.py.lock
     skills/
+  zj-video-editor/
+    .codex-plugin/plugin.json
+    .mcp.json
+    pyproject.toml
+    server.py
+    video_editer/
+    skills/zj-video-editor/
+    tests/
+    scripts/
 ```
 
 市场条目的 `source.path` 相对于仓库根目录，保持为 `./plugins/<插件名>`。每个插件保留原始包内版本、源码和现有资源；发布整理将兼容清单的默认提示统一为数组，并补充仓库链接。原始 ZIP 不需要作为市场入口上传。

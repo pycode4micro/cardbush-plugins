@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "video-face-stylizer": {
+      "type": "stdio",
+      "command": "powershell.exe",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${PLUGIN_ROOT}/scripts/start.ps1"
+      ],
+      "env": {
+        "PYTHONUTF8": "1",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "startup_timeout_sec": 300,
+      "tool_timeout_sec": 45
+    }
+  }
+}

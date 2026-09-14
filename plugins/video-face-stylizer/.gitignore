@@ -1,0 +1,13 @@
+.venv/
+.tools/
+.python/
+.runtime-ready.json
+validation/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+*.zip
+*.log

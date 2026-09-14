@@ -6,3 +6,7 @@
 *.yaml text eol=lf
 *.svg text eol=lf
 *.png binary
+*.tflite binary
+*.task binary
+# Keep the bundled mesh checksum stable across Windows and Unix checkouts.
+plugins/video-face-stylizer/src/video_face_stylizer/engine/models/*.obj -text

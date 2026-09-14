@@ -1,0 +1,41 @@
+{
+  "name": "video-face-stylizer",
+  "version": "0.2.2",
+  "description": "本地视频整头/脸部石膏处理，可调检测、局部放大、时序补漏，自动准备锁定依赖。",
+  "author": {
+    "name": "Local developer"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/pycode4micro/cardbush-plugins",
+  "homepage": "https://github.com/pycode4micro/cardbush-plugins/tree/main/plugins/video-face-stylizer",
+  "keywords": [
+    "video",
+    "face",
+    "plaster",
+    "cpu",
+    "gpu",
+    "local"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "视频生成去真人化处理",
+    "shortDescription": "整头石膏遮挡、小脸补漏与 CPU/GPU 处理",
+    "longDescription": "默认覆盖头发和脸部，支持局部放大检测、独立头部分割、短时光流和带时间点的手动遮挡区域。可选仅脸部模式，保留原视频与音频；异步任务提供覆盖统计和复查时间段。依赖随安装脚本自动配置。",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "把这个视频做整头石膏处理，检查漏检时间段。",
+      "用 GPU 只处理脸部，保留头发。",
+      "检查视频处理依赖并查看任务进度。"
+    ],
+    "brandColor": "#3984F5",
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/icon.svg",
+    "logoDark": "./assets/icon.svg"
+  }
+}

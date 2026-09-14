@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video-face-stylizer-local"
+version = "0.2.2"
+description = "Local CPU and GPU video face plaster rendering tools for Codex"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "mcp==1.28.0", "pydantic>=2.13,<3", "psutil>=7.2,<8",
+  "mediapipe==1.0.1", "opencv-contrib-python==5.0.0.93",
+  "numpy==2.5.3", "imageio-ffmpeg==0.6.0", "moderngl==5.12.0", "numba==0.67.0"
+]
+
+[project.optional-dependencies]
+test = ["pytest>=9,<10", "jsonschema>=4,<5"]
+
+[project.scripts]
+video-face-stylizer = "video_face_stylizer.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+video_face_stylizer = ["assets/*.svg", "engine/*.json", "engine/models/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

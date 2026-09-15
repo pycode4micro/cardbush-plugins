@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import base64
+import asyncio
+import hashlib
 import io
 import json
 import re
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlencode
 
 import httpx
 from mutagen.mp3 import MP3
@@ -15,6 +17,7 @@ from PIL import Image
 from .client import SeedreamError
 from .config import configuration_status, get_config
 from .video_models import ALIASES, DEFAULT_VIDEO_MODEL, PROFILES, VideoLocalOptions, VideoRequest
+from .task_io import TaskError, observation, safe_task, download
 
 SOURCES = ["https://www.volcengine.com/docs/82379/1520757", "https://www.volcengine.com/docs/82379/2607688", "https://www.volcengine.com/docs/82379/1521309"]
 TASK_PATH = "/contents/generations/tasks"
@@ -209,11 +212,13 @@ def video_capabilities() -> dict:
     return {"verified_on": "2026-09-11", "default_model": get_config("SEEDANCE_MODEL", DEFAULT_VIDEO_MODEL), "configured": config["variables"]["ARK_API_KEY"]["configured"], "configuration": config,
             "profiles": PROFILES, "aliases": ALIASES,
             "endpoint": "POST /api/v3/contents/generations/tasks", "get_endpoint": "GET /api/v3/contents/generations/tasks/{id}",
+            "list_endpoint": "GET /api/v3/contents/generations/tasks", "download_tool": "seedance_download_task(task_id, dest)",
+            "batch_query_tool": "seedance_get_tasks(task_ids)", "creation_preflight": "mandatory offline validation, no automatic paid retries",
             "all_models": ["text-to-video", "first-frame", "first+last-frame", "omni image/video/audio references", "native synchronized audio", "last-frame output", "web_search"],
             "2.5_only_fields": ["omni_reference_task_type", "output_format"], "unsupported_fields": sorted(UNSUPPORTED),
             "media_limits": {"image": "300..6000px per side; ratio 0.4..2.5; <30MB", "video": "mp4/mov; 24..60fps; 300..6000px; ratio 0.4..2.5; area 407696..8295044px; <=200MB; URL/asset only", "audio": "mp3/wav <=15MB; >=2s each; total duration <= model max_duration", "body": "<=64MB", "total_video_duration": "<= model max_duration; >=2s each, 2.5 edit >=4s each", "audio_only_reference": "2.5 only"},
             "defaults": "Omitted fields stay omitted; no rewriting, audio muting, model fallback, splitting, retiming, TTS, or local post-processing",
-            "result": "Native provider task/usage/URLs; query tasks within 7 days, download URLs expire in 24h (2.5 max 100 downloads). No automatic download.",
+            "result": "Native provider task/usage/URLs; query tasks within 7 days, download URLs expire in 24h (2.5 max 100 downloads). Use seedance_download_task for explicit downloads; no automatic download.",
             "request_schema": VideoRequest.model_json_schema(), "local_options_schema": VideoLocalOptions.model_json_schema(), "sources": SOURCES,
             "verification_note": "Official documentation + offline tests. Account access, quotas, asset permission and real generation quality require an authorized live call."}
 
@@ -233,7 +238,7 @@ class SeedanceClient:
 
     async def call(self, method: str, path: str, body: dict | None = None) -> dict:
         if not self.api_key.strip():
-            raise SeedreamError("ARK_API_KEY is not configured; no API request was sent")
+            raise TaskError("ARK_API_KEY is not configured; no API request was sent", stage='configuration')
         try:
             timeout = float(get_config("SEEDANCE_TIMEOUT_SECONDS", "60"))
             if not 1 <= timeout <= 300:
@@ -246,18 +251,18 @@ class SeedanceClient:
                                                 headers={"Authorization": f"Bearer {self.api_key}"})
         except httpx.TransportError:
             state = "Task creation may have been accepted and charged; check Ark task history before resubmitting." if method == "POST" else "Query failed; this did not create a new task."
-            raise SeedreamError("Network failure. " + state + " No automatic retry.") from None
+            raise TaskError("Network failure. " + state + " No automatic retry.", stage='transport', sent=method == 'POST') from None
         request_id = safe_tag(response.headers.get("x-request-id") or response.headers.get("x-tt-logid"))
         try:
             payload = response.json()
             if not isinstance(payload, dict):
                 raise ValueError
         except ValueError:
-            raise SeedreamError(f"Unexpected provider response (HTTP {response.status_code}, request_id={request_id}); no retry. A create task may already exist; check Ark task history.") from None
+            raise TaskError(f"Unexpected provider response (HTTP {response.status_code}); no retry. A create task may already exist; check Ark task history.", stage='response', sent=method == 'POST', request_id=request_id) from None
         if response.status_code >= 300 or (method == "POST" and payload.get("error")):
             err = payload.get("error")
             code = safe_tag(err.get("code") if isinstance(err, dict) else None)
-            raise SeedreamError(f"Ark HTTP {response.status_code}; code={code}; request_id={request_id}; no retry. Check task history before repeating creation.")
+            raise TaskError(f"Ark HTTP {response.status_code}; code={code}; no retry. Check task history before repeating creation.", stage='provider', sent=method == 'POST', request_id=request_id)
         # Task failures are data (HTTP 200), not transport failures. Avoid echoing arbitrary provider error text.
         if payload.get("error"):
             error = payload["error"]
@@ -265,11 +270,17 @@ class SeedanceClient:
         return {"task": payload, "request_id": request_id}
 
     async def create(self, request: VideoRequest, local: VideoLocalOptions) -> dict:
-        body, warnings, media_map = prepare_video(request, local, get_config("SEEDANCE_MODEL", DEFAULT_VIDEO_MODEL))
+        try:
+            body, warnings, media_map = prepare_video(request, local, get_config("SEEDANCE_MODEL", DEFAULT_VIDEO_MODEL))
+        except ValueError as exc:
+            raise TaskError(str(exc), stage='preflight') from None
+        receipt = {'valid': True, 'paid_request_sent': False,
+            'request_sha256': hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode()).hexdigest(),
+            'body': video_preview(body), 'warnings': warnings, 'media_map': media_map}
         result = await self.call("POST", TASK_PATH, body)
         if not isinstance(result["task"].get("id"), str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", result["task"]["id"]):
-            raise SeedreamError("Provider response has no valid task ID. Creation may have succeeded; inspect Ark task history. No retry.")
-        return {**result, "warnings": warnings, "media_map": media_map, "next_step": "Call seedance_get_task with task.id. Submission is not completion; do not submit again to poll."}
+            raise TaskError("Provider response has no valid task ID. Creation may have succeeded; inspect Ark task history. No retry.", stage='response', sent=True)
+        return {**result, 'preflight': receipt, 'paid_request_sent': True, **observation(result['task']), "warnings": warnings, "media_map": media_map, "next_step": "Query seedance_get_task/seedance_get_tasks; list history with seedance_list_tasks. On success use seedance_download_task. Never recreate to poll."}
 
     async def get(self, task_id: str) -> dict:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", task_id):
@@ -277,4 +288,59 @@ class SeedanceClient:
         result = await self.call("GET", TASK_PATH + "/" + task_id)
         if result["task"].get("id") != task_id or result["task"].get("status") not in {"queued", "running", "succeeded", "failed", "cancelled", "expired"}:
             raise SeedreamError("Unexpected task ID/status in query response; do not infer success")
-        return {**result, "result_note": "Native video_url/last_frame_url expire in 24h; 2.5 has a 100-download limit. No audio/video transformations or automatic downloads performed."}
+        return {**result, **observation(result['task']), 'paid_request_sent': False,
+            "result_note": "Native video_url/last_frame_url expire in 24h; use seedance_download_task(task_id, dest) to save exact bytes. No automatic downloads or transformations."}
+
+    async def list_tasks(self, page_num=1, page_size=20, status=None, task_ids=None, model=None):
+        if not 1 <= page_num <= 500 or not 1 <= page_size <= 500:
+            raise ValueError('page_num and page_size must be 1..500')
+        if status is not None and status not in {'queued', 'running', 'cancelled', 'succeeded', 'failed'}:
+            raise ValueError('Unsupported list status')
+        pairs = [('page_num', page_num), ('page_size', page_size)]
+        if status:
+            pairs.append(('filter.status', status))
+        if model:
+            if not re.fullmatch(r'[A-Za-z0-9_.-]{1,160}', model):
+                raise ValueError('Invalid model/endpoint filter')
+            pairs.append(('filter.model', model))
+        if task_ids is not None:
+            self.check_ids(task_ids)
+            pairs.extend(('filter.task_ids', i) for i in task_ids)
+        result = await self.call('GET', TASK_PATH + '?' + urlencode(pairs))
+        payload = result['task']
+        if not isinstance(payload.get('items'), list) or any(not isinstance(t, dict) or not re.fullmatch(r'[A-Za-z0-9_-]{1,160}', str(t.get('id', ''))) for t in payload['items']):
+            raise TaskError('Unexpected task-list response', stage='response')
+        items = [{**safe_task(t), 'observation': observation(t)} for t in payload['items']]
+        return {'items': items, 'total': payload.get('total'), 'page_num': page_num, 'page_size': page_size,
+            'request_id': result['request_id'], 'paid_request_sent': False, 'scope': 'Provider task history, subject to provider retention.'}
+
+    @staticmethod
+    def check_ids(task_ids):
+        if not isinstance(task_ids, list) or not 1 <= len(task_ids) <= 100 or any(not isinstance(i, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,160}', i) for i in task_ids):
+            raise ValueError('task_ids requires 1..100 valid IDs')
+
+    async def get_tasks(self, task_ids):
+        self.check_ids(task_ids)
+        semaphore = asyncio.Semaphore(4)
+        async def one(task_id):
+            async with semaphore:
+                try:
+                    return {'task_id': task_id, 'ok': True, **await self.get(task_id)}
+                except SeedreamError as exc:
+                    return {'task_id': task_id, 'ok': False, 'error': str(exc), 'paid_request_sent': False}
+        items = await asyncio.gather(*(one(i) for i in dict.fromkeys(task_ids)))
+        return {'items': items, 'paid_request_sent': False, 'failed_queries': sum(not i['ok'] for i in items)}
+
+    async def download_task(self, task_id, dest, output='video', max_bytes=2*1024**3, retries=2):
+        if output not in {'video', 'last_frame'}:
+            raise ValueError('output must be video or last_frame')
+        target = Path(dest).expanduser()
+        if not target.is_absolute() or target.exists():
+            raise ValueError('dest must be a new absolute file path')
+        task = (await self.get(task_id))['task']
+        if task['status'] != 'succeeded':
+            raise SeedreamError('Task is not succeeded; no download or replacement generation performed')
+        url = (task.get('content') or {}).get(output + '_url')
+        if not isinstance(url, str) or not web_url(url):
+            raise SeedreamError('Task has no valid requested output URL')
+        return {'task_id': task_id, 'output': output, **await download(url, dest, transport=self.transport, max_bytes=max_bytes, retries=retries)}

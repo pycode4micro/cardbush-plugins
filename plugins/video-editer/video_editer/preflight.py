@@ -17,6 +17,15 @@ def inspect(project, timeline):
         asset = assets.get(clip['asset_id'], {})
         if not Path(asset.get('path', '')).is_file():
             issue('missing_media', 'error', [clip['id']], 'A selected source file is missing')
+    clips = timeline['tracks']['main']
+    for index, clip in enumerate(clips):
+        previous = [c for c in clips[:index] if c['asset_id'] == clip['asset_id']]
+        if previous and float(clip['start']) < float(previous[-1]['start']):
+            issue('source_time_reversal', 'warning', [previous[-1]['id'], clip['id']], 'Same-source selections move backwards; verify this replay is intentional.')
+        for other in previous:
+            overlap = min(float(other['end']), float(clip['end']))-max(float(other['start']), float(clip['start']))
+            if overlap > 1e-9 and assets.get(clip['asset_id'], {}).get('kind') == 'video':
+                issue('source_range_overlap', 'warning', [other['id'], clip['id']], f'Same source replays {overlap:.3f}s; verify the repeat is intentional.')
     boxes = []
     for kind, event in timing.entries(timeline):
         event_id = event['id']

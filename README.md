@@ -22,10 +22,10 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 
 | 插件 | 包内基础版本 | 功能 | 安装说明 |
 | --- | --- | --- | --- |
-| `seedream-mcp` | 0.3.0 | Seedream 图片、Seedance 视频、MediaKit 超分与参考视频 Skill | [生成服务配置](plugins/seedream-mcp/README.md) |
+| `seedream-mcp` | 0.4.0 | Seedream 图片、Seedance 视频、MediaKit 超分与参考视频 Skill | [生成服务配置](plugins/seedream-mcp/README.md) |
 | `tencent-cos-upload` | 0.2.0 | COS 上传、下载及经确认的单对象删除或重命名 | [COS 配置](plugins/tencent-cos-upload/README.md) |
 | `qianchuan` | 1.0.0 | 自带运行代码的千川素材、报表及受控投放工具 | [千川配置](plugins/qianchuan/README.md) |
-| `video-editer`（video_editer） | 0.1.0 | 70 项无模型剪辑工具：长视频证据浏览、Agent 索引与候选、时间线、花字、转场及渲染 | [剪辑插件配置](plugins/video-editer/README.md) |
+| `video-editer`（video_editer） | 0.2.0 | 74 项无模型剪辑工具：长视频证据浏览、Agent 索引与候选、时间线、花字、转场及渲染 | [剪辑插件配置](plugins/video-editer/README.md) |
 | `video-face-stylizer` | 0.2.2 | 本地整头/脸部白模处理、小脸补漏与 CPU/GPU 渲染，Windows 后台启动不弹终端 | [去真人化处理配置](plugins/video-face-stylizer/README.md) |
 
 市场添加成功后，也可按需用 CLI 安装：
@@ -85,7 +85,7 @@ python -m pip install ./plugins/video-editer
 
 FFmpeg 需支持 libx264/libass；已声明的 `imageio-ffmpeg` 提供二进制回退。中文花字需要本机安装微软雅黑或 Noto Sans CJK 等中文字体，字体不随仓库分发。可通过 `VIDEO_EDITER_DATA_DIR` 指定独立数据目录，默认在用户目录下的 `.video_editer`；原片、数据库、预览及成片不会写入市场仓库。
 
-已包含 78 项离线回归测试，覆盖合法/非法输入、实际音视频执行、源时间锚定、后台队列和长素材证据链；另有可选的 2 小时、200MB 以上合成素材基准。合成基准不代表真实商品视频的语义召回率。外部生成特效接入、跨项目创作库和结构模板尚未实现，详见[插件说明](plugins/video-editer/README.md)及[长素材使用指引](plugins/video-editer/skills/video-editer/long-media.md)。
+已包含 85 项离线回归测试，覆盖合法/非法输入、实际音视频执行、源时间锚定、后台队列和长素材证据链；另有可选的 2 小时、200MB 以上合成素材基准。合成基准不代表真实商品视频的语义召回率。外部生成特效接入、跨项目创作库和结构模板尚未实现，详见[插件说明](plugins/video-editer/README.md)及[长素材使用指引](plugins/video-editer/skills/video-editer/long-media.md)。
 
 ### 视频生成去真人化处理
 

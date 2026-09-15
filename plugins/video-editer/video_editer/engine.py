@@ -117,8 +117,7 @@ def render_project(project_id: str, plan: dict[str, Any], *, render_job: str | N
                    [ffmpeg_bin(), "-nostdin", "-y", "-ss", str(start), "-t", str(end-start), "-i", asset["path"]])
         if not has_audio:
             command += ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"]
-        vf = [f"setpts=(PTS-STARTPTS)/{speed}",
-              canvas.fit_filter(output_canvas), "fps=25", "tpad=stop_mode=clone:stop_duration=0.04"]
+        vf = [f"setpts=(PTS-STARTPTS)/{speed}", canvas.fit_filter(output_canvas), exact_video_filter(duration)]
         if clip.get('camera'):
             vf.append(camera_filter(clip, cw, ch))
         previous_transition = clips[index-1].get("transition") if index else "none"
@@ -126,10 +125,11 @@ def render_project(project_id: str, plan: dict[str, Any], *, render_job: str | N
             # This crop is part of the explicitly selected preset, not a role heuristic.
             zw, zh = math.ceil(cw*1.034/2)*2, math.ceil(ch*1.034/2)*2
             vf += [f"scale={zw}:{zh}", f"crop={cw}:{ch}:(iw-ow)/2:(ih-oh)/2"]
+        from .audio import clip_filter
         command += ["-map", "0:v:0", "-map", "0:a:0" if has_audio else "1:a:0",
-                    "-vf", ",".join(vf), "-af", f"asetpts=PTS-STARTPTS,atempo={speed},apad",
+                    "-vf", ",".join(vf), "-af", clip_filter(clip),
                     "-t", f"{duration:.6f}", "-ar", "48000", "-ac", "2",
-                    "-c:v", "libx264", "-c:a", "aac", "-pix_fmt", "yuv420p", str(part)]
+                    "-r", "25", "-c:v", "libx264", "-c:a", "alac", "-pix_fmt", "yuv420p", str(part)]
         processes.run(command, capture_output=True, check=True, timeout=600)
         parts.append(part)
     current = render_dir / "assembled.mp4"
@@ -154,7 +154,7 @@ def render_project(project_id: str, plan: dict[str, Any], *, render_job: str | N
         duration = float(ffprobe(current)["duration"])
         command = [ffmpeg_bin(), "-nostdin", "-y", "-i", str(current), "-ss", str(offset), "-i", bed["path"],
                    "-map", "0:v:0", "-map", "1:a:0", "-af", "apad", "-t", str(duration),
-                   "-c:v", "copy", "-c:a", "aac", str(output)]
+                   "-c:v", "copy", "-c:a", "alac", str(output)]
         processes.run(command, capture_output=True, check=True, timeout=240)
         current = output
     output = render_dir / "final.mp4"
@@ -199,7 +199,7 @@ def _apply_visual_effects(source: Path, output: Path, plan: dict[str, Any], work
     ass = ass.replace("Microsoft YaHei", font)
     (workdir / "effects.ass").write_text(ass, encoding="utf-8-sig")
     command = [ffmpeg_bin(), "-nostdin", "-y", "-i", str(current), "-vf", "ass=effects.ass",
-               "-c:v", "libx264", "-c:a", "copy", "-movflags", "+faststart", str(output)]
+               "-r", "25", "-c:v", "libx264", "-c:a", "copy", "-movflags", "+faststart", str(output)]
     processes.run(command, cwd=workdir, capture_output=True, check=True, timeout=240)
     return True
 
@@ -278,9 +278,24 @@ def transition_overlap_seconds(transition: str) -> float:
 
 
 def render_duration(clip: dict[str, Any]) -> float:
-    """Cover the entire selected speech range, padding less than one frame only."""
+    """Explicit rounding on the shared 25fps clock; never change source bounds."""
     duration = (float(clip['end'])-float(clip['start']))/float(clip.get('playback_speed', 1))
-    return math.ceil(duration*25-1e-9)/25
+    policy = clip.get('frame_alignment', 'cover')
+    if policy not in {'cover', 'nearest', 'floor'}:
+        raise ValueError('frame_alignment must be cover, nearest or floor')
+    frames = math.ceil(duration*25-1e-9) if policy == 'cover' else math.floor(duration*25+(.5 if policy == 'nearest' else 1e-9))
+    if frames < 1:
+        raise ValueError('Clip selection must produce at least one output frame')
+    return frames/25
+
+
+def exact_video_filter(duration):
+    # Also set output -r 25 on encoding commands: relying only on fps filters
+    # can leave the final MP4 packet without duration (FFmpeg 7.1), losing a
+    # decoded frame on every subsequent pass.
+    # Two guard frames cover fps EOF lookahead after setpts; trim still caps the
+    # visible output to the requested frame budget. Never pad an arbitrary tail.
+    return f'fps=25:start_time=0,tpad=stop_mode=clone:stop=2,trim=end_frame={round(duration*25)},setpts=N/(25*TB)'
 
 
 def check_camera(camera):
@@ -354,9 +369,10 @@ def _assemble_procedural(left,right,output,name,left_duration,right_duration):
            f'[0:a]apad,atrim=duration={left_duration:.6f},asetpts=PTS-STARTPTS[la];'
            f'[1:a]apad,atrim=duration={right_duration:.6f},asetpts=PTS-STARTPTS[ra];'
            f'[la][ra]acrossfade=d={overlap:.6f}:c1=tri:c2=tri[audio]')
+    graph = graph.replace('[video];', '[joined];') + f';[joined]{exact_video_filter(left_duration+right_duration-overlap)}[video]'
     cmd=[ffmpeg_bin(),'-nostdin','-y','-i',str(left),'-i',str(right),'-i',str(mask),'-i',str(edge),
          '-filter_complex_threads','1','-filter_complex',graph,'-map','[video]','-map','[audio]',
-         '-t',str(left_duration+right_duration-overlap),'-r','25','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',str(output)]
+         '-t',str(left_duration+right_duration-overlap),'-r','25','-c:v','libx264','-pix_fmt','yuv420p','-c:a','alac',str(output)]
     processes.run(cmd,capture_output=True,check=True,timeout=600)
 
 
@@ -418,7 +434,7 @@ def _apply_paint_wipes(source: Path, output: Path, plan: dict[str, Any]) -> bool
         filters.append(f"[{current}][{overlay}]overlay=0:0:enable='gte(t,{offset:.6f})*lt(t,{stop:.6f})':eof_action=pass:repeatlast=0[{next_video}]")
         current = next_video
     source_duration = float(ffprobe(source).get("duration") or 0)
-    cmd.extend(["-filter_complex_threads", "1", "-filter_complex", ";".join(filters), "-map", f"[{current}]", "-map", "0:a?", "-t", str(source_duration), "-c:v", "libx264", "-c:a", "copy", "-movflags", "+faststart", str(output)])
+    cmd.extend(["-filter_complex_threads", "1", "-filter_complex", ";".join(filters), "-map", f"[{current}]", "-map", "0:a?", "-t", str(source_duration), "-r", "25", "-c:v", "libx264", "-c:a", "copy", "-movflags", "+faststart", str(output)])
     try:
         processes.run(cmd, capture_output=True, check=True, timeout=240)
         return True
@@ -468,7 +484,7 @@ def _apply_template_stickers(source: Path, output: Path, events: list[dict[str, 
         )
         filters.append(f"[{current}][{overlay}]overlay={x}:{y}:enable='gte(t,{start:.3f})*lt(t,{end:.3f})':eof_action=pass:repeatlast=0[{next_video}]")
         current = next_video
-    cmd.extend(["-filter_complex_threads", "1", "-filter_complex", ";".join(filters), "-map", f"[{current}]", "-map", "0:a?", "-c:v", "libx264", "-c:a", "copy", "-movflags", "+faststart", str(output)])
+    cmd.extend(["-filter_complex_threads", "1", "-filter_complex", ";".join(filters), "-map", f"[{current}]", "-map", "0:a?", "-r", "25", "-c:v", "libx264", "-c:a", "copy", "-movflags", "+faststart", str(output)])
     try:
         processes.run(cmd, capture_output=True, check=True, timeout=180)
         return True
@@ -518,7 +534,7 @@ def _apply_point_list_plates(source: Path, output: Path, events: list[dict[str, 
             input_index += 1
     cmd.extend([
         "-filter_complex_threads", "1", "-filter_complex", ";".join(filters), "-map", f"[{current}]", "-map", "0:a?",
-        "-c:v", "libx264", "-c:a", "copy", "-movflags", "+faststart", str(output),
+        "-r", "25", "-c:v", "libx264", "-c:a", "copy", "-movflags", "+faststart", str(output),
     ])
     try:
         processes.run(cmd, capture_output=True, check=True, timeout=180)
@@ -638,6 +654,16 @@ def _assemble_edit(parts: list[Path], plan: dict[str, Any], output: Path) -> Non
         shutil.copy2(parts[0], output)
         return
     clips = plan.get("clips", [])
+    if not any(transition_overlap_seconds(c.get('transition', 'none')) for c in clips[:-1]):
+        # Encode each clip once. Concatenate exact video packets and lossless audio,
+        # instead of re-encoding all earlier cuts for every additional clip.
+        manifest = output.with_suffix('.ffconcat')
+        manifest.write_text('ffconcat version 1.0\n' + ''.join(
+            f"file '{p.name}'\nduration {render_duration(c):.9f}\n" for p, c in zip(parts, clips)), encoding='utf-8')
+        processes.run([ffmpeg_bin(), '-nostdin', '-y', '-f', 'concat', '-safe', '0', '-i', str(manifest),
+            '-map', '0:v:0', '-map', '0:a:0', '-c', 'copy', '-movflags', '+faststart', str(output)],
+            capture_output=True, check=True, timeout=1800)
+        return
     current = parts[0]
     current_duration = render_duration(clips[0])
     for index, following in enumerate(parts[1:], start=1):
@@ -671,10 +697,11 @@ def _assemble_edit(parts: list[Path], plan: dict[str, Any], output: Path) -> Non
                 "[lefta][righta]concat=n=2:v=0:a=1[audio]"
             )
         current_duration += render_duration(clips[index])-transition_overlap_seconds(requested)
+        filter_graph = filter_graph.replace('[video];', '[joined];') + f';[joined]{exact_video_filter(current_duration)}[video]'
         cmd = [
             ffmpeg_bin(), "-nostdin", "-y", "-i", str(current), "-i", str(following),
             "-filter_complex_threads", "1", "-filter_complex", filter_graph, "-map", "[video]", "-map", "[audio]",
-            "-t", f"{current_duration:.6f}", "-c:v", "libx264", "-c:a", "aac", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(stage),
+            "-t", f"{current_duration:.6f}", "-r", "25", "-c:v", "libx264", "-c:a", "alac", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(stage),
         ]
         processes.run(cmd, capture_output=True, check=True, timeout=600)
         current = stage

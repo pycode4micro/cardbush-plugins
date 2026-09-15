@@ -21,7 +21,7 @@ def test_real_stdio_handshake_and_preview():
                 assert initialized.serverInfo.icons[0].src.startswith("data:image/png;base64,")
                 tools = await session.list_tools()
                 assert all(tool.icons == initialized.serverInfo.icons for tool in tools.tools)
-                assert {tool.name for tool in tools.tools} == {"seedream_capabilities", "seedream_preview_request", "seedream_generate", "seedance_capabilities", "seedance_preview_request", "seedance_create_task", "seedance_get_task", "video_enhance_capabilities", "video_enhance_preview_request", "video_enhance_upload", "video_enhance_create_task", "video_enhance_get_task"}
+                assert {tool.name for tool in tools.tools} == {"seedream_capabilities", "seedream_preview_request", "seedream_generate", "seedance_capabilities", "seedance_preview_request", "seedance_create_task", "seedance_get_task", "seedance_list_tasks", "seedance_get_tasks", "seedance_download_task", "video_enhance_capabilities", "video_enhance_preview_request", "video_enhance_upload", "video_enhance_create_task", "video_enhance_get_task"}
                 for variant in ["standard", "generative"]:
                     enhanced = await session.call_tool("video_enhance_preview_request", arguments={"request": {
                         "variant":variant,"video_url":"https://example.com/a.mp4","resolution":"1080p"}})
@@ -40,6 +40,13 @@ def test_real_stdio_handshake_and_preview():
                     assert video_payload["body"]["generate_audio"] is True
                 video_missing = await session.call_tool("seedance_create_task", arguments={"request": {"content": [{"type": "text", "text": "test"}]}})
                 assert video_missing.isError
+                bad_content = await session.call_tool('seedance_create_task', arguments={'request': {'content': [{'text': 'private prompt'}]}})
+                assert bad_content.isError
+                bad_payload = bad_content.structuredContent or json.loads(bad_content.content[0].text)
+                assert bad_payload['paid_request_sent'] is False
+                assert bad_payload['billing']['charged'] is False
+                assert bad_payload['stage'] == 'preflight'
+                assert 'private prompt' not in json.dumps(bad_payload)
                 result = await session.call_tool("seedream_preview_request", arguments={
                     "request": {"prompt": "白底羊绒衫商品摄影", "watermark": False},
                     "local": {"aspect_ratio": "3:4", "resolution": "2K"}})

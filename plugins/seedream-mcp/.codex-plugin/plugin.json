@@ -1,12 +1,12 @@
 {
   "name": "seedream-mcp",
-  "version": "0.3.0+codex.20260912063727",
+  "version": "0.4.0+codex.20260915140038",
   "description": "Independent MCP adapter for Seedream, Seedance and MediaKit video enhancement.",
   "author": {
     "name": "Local developer"
   },
   "interface": {
-    "displayName": "Seedream + Seedance + 超分 MCP",
+    "displayName": "Seedream + Seedance + \u8d85\u5206 MCP",
     "shortDescription": "Images, videos and standard/generative video super-resolution.",
     "longDescription": "Unofficial MCP wrapper for official Volcengine APIs. Seedream images, Seedance 2.0 standard/fast/mini and 2.5 videos, plus MediaKit standard/generative enhancement. Bundled reference-video Skill coordinates replaceable preprocessing plugins, model-aware FFmpeg cuts and COS uploads. Separate MediaKit credentials. No automatic paid retries or model fallback.",
     "developerName": "Local developer",

@@ -19,6 +19,9 @@ inside the plugin; the caller supplies clip boundaries, text and effects.
 2. Make one explicit change per `clip_*`, `transition_apply`, `callout_*`,
    `overlay_*`, `subtitle_*`, or `audio_*` call.
 3. Call `timeline_validate` before rendering.
+   For quick cuts, audio problems, frame timing or generated footage, read
+   [Audio and delivery checks](audio-and-delivery.md). Review audio and source
+   reuse warnings even when `valid` is true.
 4. Use `render_preview` before `render_final` whenever output quality needs review.
 5. Use returned `undo_snapshot` values to recover from an unwanted mutation.
 
@@ -76,9 +79,10 @@ not make a whole video understood simply by generating thumbnails or proxies.
   Detach with `event_unbind` before editing their timestamps. Removing a bound
   range is rejected, not silently clipped. A split rebinds right-side events;
   spanning events require an explicit detach or split decision.
-- Read the time map's actual overlap and `tail_padding`: the executor uses a
-  shared 25fps clock, preserving selected source ranges with less than one frame
-  of end padding. Do not sum raw source durations to place later events.
+- Read the time map's integer frame indices, timecodes, actual overlap and
+  `tail_padding`. The shared 25fps clock defaults to `cover`; explicit
+  `nearest`/`floor` can trim fractional tails. Do not sum raw source durations
+  to place later events.
 - `timeline_validate` reports fatal errors and conservative overlap/headroom
   warnings with event IDs. Resolve errors before rendering; inspect warnings
   in preview rather than assuming every geometric overlap is wrong. No local

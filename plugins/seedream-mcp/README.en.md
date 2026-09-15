@@ -1,5 +1,9 @@
 # Seedream + Seedance + Video Enhancement MCP
 
+## 0.4.0: task management and reliable downloads
+
+Use `seedance_list_tasks` for provider history, `seedance_get_tasks` for bounded batch queries, and `seedance_download_task(task_id, dest)` to save the exact signed URL without transcribing its query. Creation always runs free local preflight. Local rejection reports no paid request; ambiguous submission/billing/refunds remain unknown. Missing provider progress/ETA stays null. See [contracts and offline validation](docs/task-delivery.md). Reinstall the Python package and reconnect MCP after updating.
+
 <img src="assets/logo.png" width="96" height="96" alt="Seedream MCP logo">
 
 [中文](README.md) · English user guide

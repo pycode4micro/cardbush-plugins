@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "seedream-mcp-local"
-version = "0.3.0"
+version = "0.4.0"
 description = "Portable MCP adapter for official Seedream, Seedance and MediaKit video enhancement APIs"
 requires-python = ">=3.11"
 dependencies = ["mcp>=1.28,<2", "httpx>=0.28,<1", "pydantic>=2.13,<3", "Pillow>=10,<13", "mutagen>=1.47,<2"]

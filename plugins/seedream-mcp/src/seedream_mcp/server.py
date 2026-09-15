@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 
 from mcp.server.fastmcp import FastMCP
-from mcp.types import ToolAnnotations
+from mcp.types import ToolAnnotations, CallToolResult, TextContent
+from pydantic import ValidationError
+from typing import Literal
 
 from .branding import plugin_icons
 from .client import SeedreamClient, capabilities, prepare, redacted
@@ -12,6 +14,19 @@ from .enhance import EnhanceClient, EnhanceRequest, enhance_capabilities, enhanc
 from .models import DEFAULT_MODEL, ImageRequest, LocalOptions
 from .video_client import SeedanceClient, prepare_video, video_capabilities, video_preview
 from .video_models import DEFAULT_VIDEO_MODEL, VideoLocalOptions, VideoRequest
+from .task_io import TaskError
+
+
+def video_request(value):
+    try:
+        return value if isinstance(value, VideoRequest) else VideoRequest.model_validate(value)
+    except ValidationError as exc:
+        fields = [{'field': '.'.join(map(str, e['loc'])), 'type': e['type']} for e in exc.errors()]
+        raise TaskError(f'Invalid video request fields: {fields}. Every content item requires an explicit type, e.g. {{"type":"text","text":"..."}}.', stage='preflight') from None
+
+
+def task_error_result(exc):
+    return CallToolResult(isError=True, content=[TextContent(type='text', text=str(exc))], structuredContent=exc.details)
 
 
 def create_server(port: int = 8765) -> FastMCP:
@@ -45,20 +60,44 @@ def create_server(port: int = 8765) -> FastMCP:
         return video_capabilities()
 
     @server.tool(icons=icons, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
-    def seedance_preview_request(request: VideoRequest, local: VideoLocalOptions | None = None) -> dict:
+    def seedance_preview_request(request: VideoRequest | dict, local: VideoLocalOptions | None = None) -> dict:
         """FREE offline validation; preview native JSON with media/URLs redacted and ordered 图片1/视频1/音频1 mapping. Does not upload or generate. Remote metadata and account permissions require provider validation."""
-        body, warnings, media_map = prepare_video(request, local or VideoLocalOptions(), get_config("SEEDANCE_MODEL", DEFAULT_VIDEO_MODEL))
-        return {"body": video_preview(body), "warnings": warnings, "media_map": media_map, "paid_request_sent": False}
+        try:
+            body, warnings, media_map = prepare_video(video_request(request), local or VideoLocalOptions(), get_config("SEEDANCE_MODEL", DEFAULT_VIDEO_MODEL))
+            return {"valid": True, "body": video_preview(body), "warnings": warnings, "media_map": media_map, "paid_request_sent": False,
+                    "billing": {"charged": False, "refunded": None, "status": "no_paid_request_sent"}}
+        except TaskError as exc:
+            return task_error_result(exc)
+        except ValueError as exc:
+            return task_error_result(TaskError(str(exc), stage='preflight'))
 
     @server.tool(icons=icons, annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True))
-    async def seedance_create_task(request: VideoRequest, local: VideoLocalOptions | None = None) -> dict:
+    async def seedance_create_task(request: VideoRequest | dict, local: VideoLocalOptions | None = None) -> dict:
         """PAID native asynchronous video generation/edit/extension. Requires user authorization. Returns task.id, NOT a completed video. No splitting, muting, rewriting, fallback, automatic retry or post-processing. Query this ID with seedance_get_task."""
-        return await SeedanceClient().create(request, local or VideoLocalOptions())
+        try:
+            return await SeedanceClient().create(video_request(request), local or VideoLocalOptions())
+        except TaskError as exc:
+            return task_error_result(exc)
 
     @server.tool(icons=icons, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
     async def seedance_get_task(task_id: str) -> dict:
         """Query an existing native task: queued/running/succeeded/failed/cancelled/expired, output video/last-frame URLs, usage and metadata. Does not create a task or download results. History: 7 days; output URL: 24h (2.5 max 100 downloads)."""
         return await SeedanceClient().get(task_id)
+
+    @server.tool(icons=icons, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+    async def seedance_list_tasks(page_num: int = 1, page_size: int = 20, status: Literal['queued', 'running', 'cancelled', 'succeeded', 'failed'] | None = None, task_ids: list[str] | None = None, model: str | None = None) -> dict:
+        """List provider task history with pagination and optional filters. GET only, no paid generation. Includes native status/timestamps; progress and ETA remain null if unavailable."""
+        return await SeedanceClient().list_tasks(page_num, page_size, status, task_ids, model)
+
+    @server.tool(icons=icons, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+    async def seedance_get_tasks(task_ids: list[str]) -> dict:
+        """Query 1..100 task IDs with bounded concurrency (4), preserve partial successes and report errors per ID. No creation, no automatic polling loop or paid retries."""
+        return await SeedanceClient().get_tasks(task_ids)
+
+    @server.tool(icons=icons, annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True))
+    async def seedance_download_task(task_id: str, dest: str, output: Literal['video', 'last_frame'] = 'video', max_bytes: int = 2147483648, retries: int = 2) -> dict:
+        """Query an existing succeeded task and save its exact signed URL to a new absolute dest file; never transcribe/re-encode the query or send API credentials to CDN. Return SHA256/size, bounded GET retries only. No overwrite, processing or generation."""
+        return await SeedanceClient().download_task(task_id, dest, output, max_bytes, retries)
 
     @server.tool(icons=icons, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
     def video_enhance_capabilities() -> dict:

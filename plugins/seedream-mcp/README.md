@@ -1,5 +1,11 @@
 # Seedream + Seedance + 视频超分 MCP
 
+## 0.4.0：任务管理与可靠下载
+
+新增 `seedance_list_tasks`、`seedance_get_tasks` 和 `seedance_download_task(task_id, dest)`，支持服务端分页、批量状态与完整签名 URL 直接落盘。创建任务自动执行免费预检；本地拒绝明确未发出付费请求，已发出请求但没有账单证据时不猜扣费/退款。进度与 ETA 缺失时返回空值。
+
+[参数、失败语义与离线验证](docs/task-delivery.md)。同步更新的参考视频 Skill 覆盖下载、有效运动帧率、逐刀音频、重复取段和末尾视频覆盖检查。更新需重新安装 Python 包并重连 MCP。
+
 <img src="assets/logo.png" width="96" height="96" alt="Seedream MCP logo">
 
 中文使用说明 · [English](README.en.md)

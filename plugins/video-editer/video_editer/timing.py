@@ -13,11 +13,20 @@ def time_map(timeline):
             raise ValueError('Invalid clip timing for time map')
         duration = render_duration(clip)
         overlap = transition_overlap_seconds(clip.get('transition', 'none')) if index < len(clips)-1 else 0
+        cursor = round(cursor*25)/25
+        def timecode(seconds):
+            frames = round(seconds*25)
+            seconds, frame = divmod(frames, 25)
+            return f'{seconds//3600:02d}:{seconds//60%60:02d}:{seconds%60:02d}:{frame:02d}'
         rows.append({'clip_id': clip['id'], 'asset_id': clip['asset_id'], 'source_start': start,
                      'source_end': end, 'speed': speed, 'start': cursor, 'end': cursor+duration,
-                     'outgoing_overlap': overlap, 'tail_padding': duration-(end-start)/speed})
+                     'outgoing_overlap': overlap, 'tail_padding': max(0, duration-(end-start)/speed),
+                     'trimmed_tail_seconds': max(0, (end-start)/speed-duration), 'frame_alignment': clip.get('frame_alignment', 'cover'),
+                     'start_frame': round(cursor*25), 'end_frame_exclusive': round((cursor+duration)*25),
+                     'frame_count': round(duration*25), 'start_timecode': timecode(cursor), 'end_timecode': timecode(cursor+duration)})
         cursor += duration-overlap
-    return {'duration': cursor, 'clips': rows, 'precision': '25fps shared clock; each source selection is preserved and padded by less than one frame, without reading extra source content.'}
+    return {'duration': round(cursor*25)/25, 'frame_count': round(cursor*25), 'fps': 25, 'clips': rows,
+            'precision': 'Integer 25fps clock, end frames exclusive. cover pads <1 frame (default); nearest/floor may trim a fractional tail. Source bounds never expand.'}
 
 
 def entries(timeline):

@@ -33,7 +33,18 @@
 
 ## Seedance
 
-顺序：`seedance_capabilities` → 本地媒体核对 → `seedance_preview_request` → 经授权 `seedance_create_task` → `seedance_get_task`。
+顺序：`seedance_capabilities` → 本地媒体核对 → `seedance_preview_request` → 经授权 `seedance_create_task` → `seedance_get_task` / `seedance_get_tasks` → `seedance_download_task`。
+
+| 新接口/返回字段 | 用法 |
+| --- | --- |
+| `seedance_list_tasks` | `page_num/page_size` 分页，按 status、task_ids、model 筛选服务端历史；不生成 |
+| `seedance_get_tasks` | 1..100 个 ID，最多 4 个并发 GET，单项查询失败不抹掉其他结果 |
+| `seedance_download_task` | `task_id, dest`，可选 video/last_frame；新绝对文件名、不覆盖，签名 URL 原样传输，下载默认最多重试 2 次 |
+| `preflight` | create 的强制免费本地预检记录和请求摘要；不是服务端接收承诺 |
+| `billing` | 本地拒绝 charged=false；已发送请求/查询任务时未获账单证据则 charged/refunded=null |
+| `provider_progress/provider_eta_seconds` | 原生提供才有值，不提供时为 null；elapsed_seconds 不是 ETA |
+
+任务列表字段依据[火山官方 SDK](https://github.com/volcengine/volcengine-go-sdk/blob/master/service/arkruntime/content_generation.go)。下载不携带 Ark Authorization 到 CDN，不转换音视频，不把签名 URL 写入公开结果记录。超过保留期的任务/失效 URL 不保证恢复。
 
 读取 `profiles`、`media_limits`、`request_schema`、`local_options_schema`。从本次 profile 获取 `max_duration`、`resolutions`、`images/videos/audios/total`，结合媒体规则解析单段最短长度与总时长。不能把 `max_duration` 当所有媒体的统一规则。无法解析的限制须核实官方资料，不能跳过。
 

@@ -264,6 +264,6 @@ def render_layer(source, output, graphics=None, callouts=None):
         encode_frames(layer,frames(),size)
     cmd=[ffmpeg_bin(),'-nostdin','-y','-i',str(source),'-i',str(layer),'-filter_complex_threads','1',
          '-filter_complex','[0:v][1:v]overlay=0:0:eof_action=pass:repeatlast=0[v]',
-         '-map','[v]','-map','0:a?','-t',str(total),'-c:v','libx264','-c:a','copy','-movflags','+faststart',str(output)]
+         '-map','[v]','-map','0:a?','-t',str(total),'-r','25','-c:v','libx264','-c:a','copy','-movflags','+faststart',str(output)]
     processes.run(cmd,capture_output=True,check=True,timeout=600)
     return output

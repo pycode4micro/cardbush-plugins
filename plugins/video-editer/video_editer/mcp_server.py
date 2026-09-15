@@ -8,6 +8,8 @@ execution engine.  No planning, LLM, or generative-model call is made here.
 from __future__ import annotations
 
 import copy
+import hashlib
+import tempfile
 import json
 import os
 import shutil
@@ -20,7 +22,7 @@ from mcp.server.fastmcp import FastMCP
 from .contracts import check_overlay, finite, position_expression, timeline_changes
 
 from . import engine, timing, preflight, jobs, canvas, visuals, animation, processes
-from . import media_ops, media_jobs, media_store, segments
+from . import media_ops, media_jobs, media_store, segments, audio as audio_engine, quality
 from .locking import project_write, file_lock
 
 
@@ -143,6 +145,10 @@ def _validate(project: dict[str, Any]) -> list[str]:
         return [str(exc)]
     errors: list[str] = []
     clips = timeline["tracks"]["main"]
+    try:
+        audio_engine.config(timeline.get('audio_config'))
+    except ValueError as exc:
+        errors.append(str(exc))
     if not clips:
         errors.append("main track has no clips")
     for index, clip in enumerate(clips, 1):
@@ -156,6 +162,8 @@ def _validate(project: dict[str, Any]) -> list[str]:
             if not finite(start, end, speed) or not 0 <= start < end <= limit:
                 errors.append(f"clip {index} is outside source bounds")
             engine.check_camera(clip.get('camera'))
+            audio_engine.clip_settings(clip)
+            _clip_labels(clip)
             if speed not in SPEEDS:
                 errors.append(f"clip {index} speed must be 1.0 or 1.25")
             if str(clip.get("transition", "punch_cut")) not in TRANSITIONS:
@@ -266,7 +274,7 @@ def _apply_captions(source: Path, output: Path, captions: list[dict[str, Any]]) 
     info=engine.ffprobe(source)
     ass_path.write_text(engine.remap_ass(header.replace("Microsoft YaHei", font) + "\n".join(lines) + "\n",info['width'],info['height']), encoding="utf-8")
     import subprocess
-    command = [engine.ffmpeg_bin(), "-nostdin", "-y", "-i", str(source), "-vf", f"ass='{_escape_filter_path(ass_path)}'", "-map", "0:v", "-map", "0:a?", "-c:v", "libx264", "-c:a", "copy", "-movflags", "+faststart", str(output)]
+    command = [engine.ffmpeg_bin(), "-nostdin", "-y", "-i", str(source), "-vf", f"ass='{_escape_filter_path(ass_path)}'", "-map", "0:v", "-map", "0:a?", "-r", "25", "-c:v", "libx264", "-c:a", "copy", "-movflags", "+faststart", str(output)]
     processes.run(command, capture_output=True, check=True, timeout=240)
     return output
 
@@ -304,7 +312,7 @@ def _apply_graphics(source: Path, output: Path, graphics: list[dict[str, Any]]) 
         y_expr = position_expression(graphic, "y", canvas_h)
         filters.append(f"[{current}][{label}]overlay=x='{x_expr}':y='{y_expr}':enable='gte(t,{start:.6f})*lt(t,{end:.6f})':eof_action=pass:repeatlast=0:eval=frame[{next_label}]")
         current = next_label
-    command.extend(["-filter_complex_threads", "1", "-filter_complex", ";".join(filters), "-map", f"[{current}]", "-map", "0:a?", "-c:v", "libx264", "-c:a", "copy", "-movflags", "+faststart", str(output)])
+    command.extend(["-filter_complex_threads", "1", "-filter_complex", ";".join(filters), "-map", f"[{current}]", "-map", "0:a?", "-r", "25", "-c:v", "libx264", "-c:a", "copy", "-movflags", "+faststart", str(output)])
     processes.run(command, capture_output=True, check=True, timeout=300)
     return output
 
@@ -351,6 +359,13 @@ def _mix_audio_tracks(source: Path, output: Path, tracks: list[dict[str, Any]], 
     return output
 
 
+def _clip_labels(clip):
+    for name in ('role', 'shot_type'):
+        value = clip.get(name, 'detail' if name == 'role' else 'other')
+        if not isinstance(value, str) or not value.strip() or len(value) > 80:
+            raise ValueError(f'{name} requires a nonblank label of at most 80 characters; custom labels are preserved')
+
+
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def project_create(title: str, prompt: str = "") -> dict[str, Any]:
     """Create an empty, versioned editing project. No media or model calls occur."""
@@ -362,12 +377,29 @@ def project_create(title: str, prompt: str = "") -> dict[str, Any]:
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 @project_write
-def media_import(project_id: str, source_path: str) -> dict[str, Any]:
+def media_import(project_id: str, source_path: str, base_dir: str | None = None, deduplicate: bool = True) -> dict[str, Any]:
     """Copy one local video/image/audio file into a project and inspect video metadata."""
-    source = Path(source_path).expanduser().resolve()
+    source = Path(source_path).expanduser()
+    if not source.is_absolute():
+        if base_dir is None or not Path(base_dir).is_absolute():
+            raise ValueError('Relative media paths require an explicit absolute base_dir')
+        source = Path(base_dir) / source
+    source = source.resolve()
     if not source.is_file():
         raise ValueError(f"Source file does not exist: {source}")
     project = _read(project_id)
+    def digest(path):
+        with Path(path).open('rb') as stream:
+            return hashlib.file_digest(stream, 'sha256').hexdigest()
+    fingerprint = digest(source)
+    warnings = []
+    for existing in project.get('materials', []):
+        existing_path = Path(existing['path'])
+        if deduplicate and existing_path.is_file() and existing_path.stat().st_size == source.stat().st_size and digest(existing_path) == fingerprint:
+            return {'project_id': project_id, 'revision': _timeline(project)['revision'], 'asset': existing,
+                    'deduplicated': True, 'warnings': ['Identical content already imported; reused asset ID.']}
+        if existing.get('name', '').casefold() == source.name.casefold():
+            warnings.append('A different asset uses the same filename; both are kept with distinct IDs.')
     undo = _snapshot(project, "before media_import")
     asset_id = f"mat_{uuid.uuid4().hex[:10]}"
     target = _folder(project_id) / "materials" / f"{asset_id}_{source.name}"
@@ -377,7 +409,7 @@ def media_import(project_id: str, source_path: str) -> dict[str, Any]:
     item = {"id": asset_id, "name": source.name, "kind": kind, "path": str(target), "content_type": None, "probe": engine.ffprobe(target) if kind == "video" else {}}
     project.setdefault("materials", []).append(item)
     result = _commit(project_id, project, "media_import", {"asset_id": asset_id, "source": str(source)}, undo)
-    return {**result, "asset": item}
+    return {**result, "asset": item, "deduplicated": False, "sha256": fingerprint, "warnings": warnings}
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -595,15 +627,33 @@ def timeline_diff(project_id: str, snapshot_id: str) -> dict[str, Any]:
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
-def timeline_validate(project_id: str) -> dict[str, Any]:
-    """Validate media bounds, speeds, transitions, callout layouts and point-list content."""
+def timeline_validate(project_id: str, check_audio: bool = True, rms_delta_db: float = 8.0, discontinuity_threshold: float = 0.1) -> dict[str, Any]:
+    """Validate structure, source reuse, frame clock and (by default) render/measure the planned audio only. No video rendering or timeline mutation. Audio checks cost local CPU; set check_audio=false for structural checks only."""
     project = _read(project_id)
     errors = _validate(project)
     try:
-        details = preflight.inspect(project, timing.resolve(_timeline(project)))
+        timeline = timing.resolve(_timeline(project))
+        details = preflight.inspect(project, timeline)
     except (KeyError, TypeError, ValueError):
-        details = {"issues": [], "warnings": []}
-    return {**details, "project_id": project_id, "valid": not errors, "errors": errors, "revision": _timeline(project).get("revision", 0)}
+        details = {'issues': [], 'warnings': []}
+    audio_report = {'checked': False, 'reason': 'structural errors' if errors else 'disabled by caller'}
+    if check_audio and not errors:
+        try:
+            with tempfile.TemporaryDirectory(prefix='video-editer-audio-check-') as temporary:
+                path = Path(temporary) / 'prediction.wav'
+                settings = audio_engine.render(project, timeline, path)
+                measured = audio_engine.measure(path)
+                issues = audio_engine.join_checks(path, details['time_map'], rms_delta_db, discontinuity_threshold)
+                issues += [{'code': 'audio_output_headroom', 'severity': 'warning', 'event_ids': [], 'message': w} for w in measured['warnings']]
+                details['issues'].extend(issues)
+                details['warnings'].extend(issues)
+                audio_report = {'checked': True, 'predicted_output': measured, 'settings': settings,
+                                'scope': 'Measured rendered float audio, including all tracks and master settings; final AAC true peak can differ.'}
+        except Exception as exc:
+            errors.append(f'Audio validation failed: {exc}')
+            audio_report = {'checked': False, 'reason': 'audio analysis failed'}
+    return {**details, 'project_id': project_id, 'valid': not errors, 'errors': errors, 'audio': audio_report,
+            'revision': _timeline(project).get('revision', 0), 'scope': 'valid means executable; review warnings separately.'}
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
@@ -624,7 +674,7 @@ def track_create(project_id: str, track_id: str, kind: Literal["overlay", "capti
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 @project_write
-def clip_add(project_id: str, asset_id: str, start: float, end: float, role: str = "detail", playback_speed: Literal[1.0, 1.25] = 1.0, transition: str = "punch_cut", shot_type: str = "other") -> dict[str, Any]:
+def clip_add(project_id: str, asset_id: str, start: float, end: float, role: str = "detail", playback_speed: Literal[1.0, 1.25] = 1.0, transition: str = "punch_cut", shot_type: str = "other", audio_gain_db: float = 0.0, audio_fade_in_ms: float = 25.0, audio_fade_out_ms: float = 25.0, audio_mute: bool = False, frame_alignment: Literal["cover", "nearest", "floor"] = "cover") -> dict[str, Any]:
     """Append video/image to main track. Video start/end select source seconds; image start/end select a virtual still timeline (0..3600s), so playback duration=(end-start)/speed. No automatic image motion; optionally use clip_camera_set."""
     project = _read(project_id)
     asset = _asset(project, asset_id)
@@ -638,7 +688,10 @@ def clip_add(project_id: str, asset_id: str, start: float, end: float, role: str
     if playback_speed not in SPEEDS:
         raise ValueError("Unsupported speed")
     undo = _snapshot(project, "before clip_add")
-    clip = {"id": f"clip_{uuid.uuid4().hex[:10]}", "asset_id": asset_id, "start": round(start, 3), "end": round(end, 3), "role": role, "playback_speed": playback_speed, "transition": transition, "shot_type": shot_type}
+    clip = {"id": f"clip_{uuid.uuid4().hex[:10]}", "asset_id": asset_id, "start": start, "end": end, "role": role, "playback_speed": playback_speed, "transition": transition, "shot_type": shot_type, "audio_gain_db": audio_gain_db, "audio_fade_in_ms": audio_fade_in_ms, "audio_fade_out_ms": audio_fade_out_ms, "audio_mute": audio_mute, "frame_alignment": frame_alignment}
+    audio_engine.clip_settings(clip)
+    _clip_labels(clip)
+    engine.render_duration(clip)
     _timeline(project)["tracks"]["main"].append(clip)
     result = _commit(project_id, project, "clip_add", {"clip_id": clip["id"]}, undo)
     return {**result, "clip": clip}
@@ -646,7 +699,7 @@ def clip_add(project_id: str, asset_id: str, start: float, end: float, role: str
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 @project_write
-def clip_update(project_id: str, clip_id: str, start: float | None = None, end: float | None = None, playback_speed: Literal[1.0, 1.25] | None = None, transition: str | None = None, role: str | None = None) -> dict[str, Any]:
+def clip_update(project_id: str, clip_id: str, start: float | None = None, end: float | None = None, playback_speed: Literal[1.0, 1.25] | None = None, transition: str | None = None, role: str | None = None, shot_type: str | None = None, audio_gain_db: float | None = None, audio_fade_in_ms: float | None = None, audio_fade_out_ms: float | None = None, audio_mute: bool | None = None, frame_alignment: Literal["cover", "nearest", "floor"] | None = None) -> dict[str, Any]:
     """Update explicit clip properties without altering any other timeline entry."""
     project = _read(project_id)
     clips = _timeline(project)["tracks"]["main"]
@@ -654,7 +707,7 @@ def clip_update(project_id: str, clip_id: str, start: float | None = None, end: 
     if not clip:
         raise ValueError(f"Unknown clip_id: {clip_id}")
     undo = _snapshot(project, "before clip_update")
-    for key, value in {"start": start, "end": end, "playback_speed": playback_speed, "transition": transition, "role": role}.items():
+    for key, value in {"start": start, "end": end, "playback_speed": playback_speed, "transition": transition, "role": role, "shot_type": shot_type, "audio_gain_db": audio_gain_db, "audio_fade_in_ms": audio_fade_in_ms, "audio_fade_out_ms": audio_fade_out_ms, "audio_mute": audio_mute, "frame_alignment": frame_alignment}.items():
         if value is not None:
             clip[key] = value
     errors = _validate(project)
@@ -666,7 +719,7 @@ def clip_update(project_id: str, clip_id: str, start: float | None = None, end: 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 @project_write
-def clip_insert_at(project_id: str, index: int, asset_id: str, start: float, end: float, role: str = "detail", playback_speed: Literal[1.0, 1.25] = 1.0, transition: str = "none", shot_type: str = "other") -> dict[str, Any]:
+def clip_insert_at(project_id: str, index: int, asset_id: str, start: float, end: float, role: str = "detail", playback_speed: Literal[1.0, 1.25] = 1.0, transition: str = "none", shot_type: str = "other", audio_gain_db: float = 0.0, audio_fade_in_ms: float = 25.0, audio_fade_out_ms: float = 25.0, audio_mute: bool = False, frame_alignment: Literal["cover", "nearest", "floor"] = "cover") -> dict[str, Any]:
     """Insert at a zero-based main-track index (0..count). Other timed tracks stay at their absolute times; no ripple edit is inferred."""
     project = _read(project_id)
     clips = _timeline(project)["tracks"]["main"]
@@ -676,7 +729,7 @@ def clip_insert_at(project_id: str, index: int, asset_id: str, start: float, end
         raise ValueError("Main track requires a video/image asset")
     undo = _snapshot(project, "before clip_insert_at")
     clip = {"id": f"clip_{uuid.uuid4().hex[:10]}", "asset_id": asset_id, "start": start, "end": end,
-            "role": role, "playback_speed": playback_speed, "transition": transition, "shot_type": shot_type}
+            "role": role, "playback_speed": playback_speed, "transition": transition, "shot_type": shot_type, "audio_gain_db": audio_gain_db, "audio_fade_in_ms": audio_fade_in_ms, "audio_fade_out_ms": audio_fade_out_ms, "audio_mute": audio_mute, "frame_alignment": frame_alignment}
     clips.insert(index, clip)
     errors = _validate(project)
     if errors:
@@ -704,7 +757,8 @@ def clip_split(project_id: str, clip_id: str, at_seconds: float) -> dict[str, An
     undo = _snapshot(project, "before clip_split")
     right = copy.deepcopy(left)
     right.update(id=f"clip_{uuid.uuid4().hex[:10]}", start=split_source)
-    left.update(end=split_source, transition="none")
+    left.update(end=split_source, transition="none", audio_fade_out_ms=0)
+    right["audio_fade_in_ms"] = 0
     clips.insert(index + 1, right)
     timing.rebind_split(_timeline(project), clip_id, right["id"], split_source)
     return {**_commit(project_id, project, "clip_split", {"clip_id": clip_id, "right_clip_id": right["id"], "at_seconds": at_seconds}, undo), "left": left, "right": right}
@@ -782,7 +836,7 @@ def callout_add(project_id: str, text: str, start: float, end: float, position: 
     if not text.strip() or not finite(start, end) or not 0 <= start < end:
         raise ValueError("Callout text and positive timing are required")
     undo = _snapshot(project, "before callout_add")
-    event = {"id": f"callout_{uuid.uuid4().hex[:10]}", "text": text.strip(), "start": round(start, 3), "end": round(end, 3), "position": position, "anchor": "product", "template": template, "entrance": entrance, "color_theme": color_theme}
+    event = {"id": f"callout_{uuid.uuid4().hex[:10]}", "text": text.strip(), "start": start, "end": end, "position": position, "anchor": "product", "template": template, "entrance": entrance, "color_theme": color_theme}
     _timeline(project)["callouts"].append(event)
     result = _commit(project_id, project, "callout_add", {"callout_id": event["id"]}, undo)
     return {**result, "callout": event}
@@ -864,7 +918,7 @@ def overlay_add(project_id: str, asset_id: str, start: float, end: float, x: flo
     if timeline.get("track_meta", {}).get(track_id, {}).get("kind") != "overlay":
         raise ValueError("track_id must refer to an overlay track")
     undo = _snapshot(project, "before overlay_add")
-    item = {"id": f"overlay_{uuid.uuid4().hex[:10]}", "asset_id": asset_id, "start": round(start, 3), "end": round(end, 3), "x": x, "y": y, "width": width, "height": height, "opacity": opacity, "keyframes": []}
+    item = {"id": f"overlay_{uuid.uuid4().hex[:10]}", "asset_id": asset_id, "start": start, "end": end, "x": x, "y": y, "width": width, "height": height, "opacity": opacity, "keyframes": []}
     c=canvas.settings(timeline.get('canvas'))
     check_overlay(item,(c['width'],c['height']))
     timeline["tracks"][track_id].append(item)
@@ -922,7 +976,7 @@ def subtitle_add(project_id: str, text: str, start: float, end: float, track_id:
     if not text.strip() or not finite(start, end) or not 0 <= start < end:
         raise ValueError("Subtitle requires text and positive duration")
     undo = _snapshot(project, "before subtitle_add")
-    item = {"id": f"subtitle_{uuid.uuid4().hex[:10]}", "text": text.strip(), "start": round(start, 3), "end": round(end, 3)}
+    item = {"id": f"subtitle_{uuid.uuid4().hex[:10]}", "text": text.strip(), "start": start, "end": end}
     timeline["tracks"][track_id].append(item)
     result = _commit(project_id, project, "subtitle_add", {"subtitle_id": item["id"], "track_id": track_id}, undo)
     return {**result, "subtitle": item}
@@ -1068,27 +1122,32 @@ def _execute_attempt(attempt):
                         for item in _entries_by_kind(timeline, "overlay")]
             current, _ = attempt.stage("graphics", lambda: (_apply_graphics(current, attempt.root / "mcp-graphics.mp4", graphics), {}))
             current, _ = attempt.stage("captions", lambda: (_apply_captions(current, attempt.root / "mcp-captions.mp4", _entries_by_kind(timeline, "caption")), {}))
-            audio = [{**item, "path": _asset(project, item["asset_id"])["path"]}
-                     for item in _entries_by_kind(timeline, "audio")]
-            current, _ = attempt.stage("audio", lambda: (_mix_audio_tracks(current, attempt.root / "mcp-audio.mp4", audio,
-                                                         float(timeline.get("audio_config", {}).get("source_volume", 1))), {}))
-            output = attempt.root / ("preview.mp4" if preview else "delivery.mp4")
+            def soundtrack():
+                path = attempt.root / 'soundtrack.wav'
+                return path, audio_engine.render(project, timeline, path)
+            sound, audio_settings = attempt.stage('audio', soundtrack)
+            output = attempt.root / ('preview.mp4' if preview else 'delivery.mp4')
+            command = [engine.ffmpeg_bin(), '-nostdin', '-y', '-i', str(current), '-i', str(sound),
+                       '-map', '0:v:0', '-map', '1:a:0']
             if preview:
-                import subprocess
-                pw,ph=canvas.preview_size(timeline.get('canvas'))
-                command = [engine.ffmpeg_bin(), "-nostdin", "-y", "-i", str(current), "-vf",
-                           f"scale={pw}:{ph},setsar=1",
-                           "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-c:a", "aac", "-movflags", "+faststart", str(output)]
-                processes.run(command, capture_output=True, check=True, timeout=240)
+                pw, ph = canvas.preview_size(timeline.get('canvas'))
+                command += ['-vf', f'scale={pw}:{ph},setsar=1', '-r', '25', '-c:v', 'libx264']
             else:
-                shutil.copy2(current, output)
+                command += ['-c:v', 'copy']
+            command += ['-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', str(output)]
+            processes.run(command, capture_output=True, check=True, timeout=1800)
+            stream = quality.video_stream(output, timing.time_map(timeline)['frame_count'])
+            if not stream['valid']:
+                raise ValueError('Output video coverage failed: ' + '; '.join(stream['warnings']))
+            audio_report = {**audio_settings, **audio_engine.measure(output), 'delivery_codec': 'aac', 'delivery_bitrate': '192k'}
+            diagnostics['warnings'].extend({'code': 'audio_output_headroom', 'severity': 'warning', 'message': w} for w in audio_report['warnings'])
             inspection = output_inspect(str(output))
             if not inspection["valid"]:
                 raise ValueError("Renderer produced invalid video metadata")
             jobs.verify_media(attempt.manifest)
             processes.check()
             result.update(path=str(output), preview=preview, job_id=attempt.job_id, revision=timeline["revision"],
-                          quality=inspection["probe"], has_audio=inspection["has_audio"],
+                          quality=inspection["probe"], has_audio=inspection["has_audio"], audio=audio_report, video_stream=stream,
                           timeline_path=str(attempt.root / "timeline.json"), state_path=str(attempt.root / "state.json"),
                           warnings=diagnostics["warnings"], retry_of=attempt.state["retry_of"],
                           reused_stages=[name for name, stage in attempt.state["stages"].items() if stage.get("reused")])
@@ -1102,6 +1161,72 @@ def _execute_attempt(attempt):
 def render_preview(project_id: str) -> dict[str, Any]:
     """Render an isolated proxy, longest edge <=960px preserving canvas aspect. Never overwrite earlier previews/finals; return job ID, exact revision and saved timeline."""
     return _render(project_id, preview=True)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+@project_write
+def audio_configure(project_id: str, gain_db: float = 0.0, target_lufs: float | None = None, limiter: bool = False, true_peak_limit_dbfs: float = -2.0) -> dict[str, Any]:
+    """Set explicit master processing. Default 0dB, normalization OFF, limiter OFF. target_lufs applies measured static gain, not compression. Limiter has no auto makeup gain. AAC true peak is measured again after export."""
+    project = _read(project_id)
+    timeline = _timeline(project)
+    settings = audio_engine.config({**timeline.get('audio_config', {}), 'gain_db': gain_db,
+        'target_lufs': target_lufs, 'limiter': limiter, 'true_peak_limit_dbfs': true_peak_limit_dbfs})
+    undo = _snapshot(project, 'before audio_configure')
+    timeline['audio_config'] = settings
+    return {**_commit(project_id, project, 'audio_configure', settings, undo), 'audio': settings}
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def render_audio_only(project_id: str) -> dict[str, Any]:
+    """Render the current timeline audio to a new float WAV with meters; no video decoding/rendering beyond source audio and metadata."""
+    with file_lock(_folder(project_id) / 'writer.lock'):
+        project = copy.deepcopy(_read(project_id))
+    errors = _validate(project)
+    if errors:
+        raise ValueError('; '.join(errors))
+    timeline = timing.resolve(_timeline(project))
+    output = _folder(project_id) / 'mcp_renders' / ('audio-' + uuid.uuid4().hex) / 'soundtrack.wav'
+    settings = audio_engine.render(project, timeline, output)
+    return {'path': str(output), 'project_id': project_id, 'revision': timeline['revision'],
+            'audio': {**settings, **audio_engine.measure(output)}}
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def audio_replace(video_path: str, audio_path: str, dest: str) -> dict[str, Any]:
+    """Replace/remux an audio track into a new mp4/mov/mkv, copying video packets unchanged. Pad short audio with silence or trim long audio to decoded video coverage. Never overwrite an existing file."""
+    video, sound, output = (Path(p).expanduser() for p in (video_path, audio_path, dest))
+    if not all(p.is_absolute() for p in (video, sound, output)) or not video.is_file() or not sound.is_file():
+        raise ValueError('Use existing absolute video/audio paths and an absolute destination')
+    if output.exists() or output.suffix.lower() not in {'.mp4', '.mov', '.mkv'}:
+        raise ValueError('Destination must be a new mp4/mov/mkv file')
+    stream = quality.video_stream(video)
+    duration = stream['video_duration_seconds']
+    if not duration or not audio_engine.measure(sound)['has_audio']:
+        raise ValueError('Cannot determine video duration or audio stream')
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_name(output.stem + '.' + uuid.uuid4().hex + output.suffix)
+    try:
+        processes.run([engine.ffmpeg_bin(), '-nostdin', '-n', '-i', str(video), '-i', str(sound),
+            '-map', '0:v:0', '-map', '1:a:0', '-map_metadata', '0', '-c:v', 'copy',
+            '-af', f'apad,atrim=duration={duration}', '-c:a', 'aac', '-b:a', '192k', str(temporary)],
+            capture_output=True, check=True, timeout=1800)
+        result_stream = quality.video_stream(temporary, stream['decoded_frame_count'])
+        if not result_stream['valid']:
+            raise ValueError('Remux output failed video coverage checks')
+        measured = audio_engine.measure(temporary)
+        os.link(temporary, output)  # Atomic create-if-absent; protects a racing destination.
+        return {'path': str(output), 'video_codec_mode': 'copy', 'audio': measured, 'video_stream': result_stream}
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+def media_cadence_inspect(media_path: str, sample_seconds: float = 30.0) -> dict[str, Any]:
+    """Measure nominal frame coverage and consecutive near-duplicate cadence. Static scenes can resemble repeated animation frames; no automatic interpolation."""
+    path = Path(media_path).expanduser().resolve()
+    if not path.is_file():
+        raise ValueError('Media does not exist')
+    return {'path': str(path), 'video_stream': quality.video_stream(path), 'cadence': quality.cadence(path, sample_seconds)}
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
@@ -1139,7 +1264,14 @@ def quality_inspect(video_path: str, black_seconds_threshold: float = 0.35, free
         warnings.append("no audio stream")
     else:
         warnings.extend(audio_inspect(str(path))["warnings"])
-    return {"path": str(path), "probe": probe, "black_segments": [{"start": float(start), "end": float(end), "duration": float(duration)} for start, end, duration in black_hits], "freeze_events": freeze_hits, "warnings": warnings, "pass": not warnings,
+    try:
+        stream = quality.video_stream(path)
+        cadence = quality.cadence(path)
+    except (RuntimeError, subprocess.SubprocessError, ValueError) as exc:
+        stream = {'valid': False, 'warnings': ['Video decode/coverage analysis failed']}
+        cadence = {'warnings': [], 'checked': False}
+    warnings.extend(stream['warnings'] + cadence['warnings'])
+    return {"video_stream": stream, "cadence": cadence, "path": str(path), "probe": probe, "black_segments": [{"start": float(start), "end": float(end), "duration": float(duration)} for start, end, duration in black_hits], "freeze_events": freeze_hits, "warnings": warnings, "pass": not warnings,
             "scope": "Technical checks only; not speech completeness, factuality, timing-to-speech or visual aesthetics."}
 
 
@@ -1221,29 +1353,11 @@ def render_retry(project_id: str, job_id: str) -> dict[str, Any]:
 
 @mcp.tool(annotations={"readOnlyHint": True})
 def audio_inspect(media_path: str) -> dict[str, Any]:
-    """Measure sample peak and RMS with FFmpeg. Near-full-scale is a clipping-risk warning, not proof of audible distortion."""
-    import re
-    import subprocess
+    """Measure decoded integrated LUFS, oversampled true peak, sample peak and RMS. No file modifications."""
     path = Path(media_path).expanduser().resolve()
     if not path.is_file():
-        raise ValueError("Audio/video file does not exist")
-    info = engine.ffprobe(path)
-    if not info.get("has_audio"):
-        return {"has_audio": False, "warnings": ["no audio stream"]}
-    command = [engine.ffmpeg_bin(), "-nostdin", "-hide_banner", "-i", str(path), "-vn",
-               "-af", "astats=metadata=0:reset=0", "-f", "null", "-"]
-    value = subprocess.run(command, capture_output=True, text=True, timeout=180, check=True)
-    def measure(label):
-        matches = re.findall(label + r": (-?inf|[-+0-9.]+)", value.stderr)
-        if not matches:
-            return None
-        number = float(matches[-1])
-        return number if finite(number) else None
-    peak, rms = measure("Peak level dB"), measure("RMS level dB")
-    near_full = peak is not None and peak >= -.1
-    return {"has_audio": True, "sample_peak_db": peak, "rms_db": rms,
-            "near_full_scale": near_full, "warnings": ["possible clipping / insufficient headroom"] if near_full else [],
-            "scope": "Sample peak/RMS only; no true-peak, speech or semantic judgement."}
+        raise ValueError('Audio/video file does not exist')
+    return audio_engine.measure(path)
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})

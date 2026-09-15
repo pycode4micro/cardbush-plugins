@@ -4,6 +4,33 @@ A standalone, model-free MCP plugin with its own Python/FFmpeg execution core
 and bundled graphics, for Codex and other MCP-compatible agents. The caller
 decides what to edit; the plugin exposes deterministic atomic execution tools.
 
+## 0.2.0: audio and frame-accurate delivery
+
+- Main clips now expose gain, mute and independent 25 ms default fades (set to
+  0 to disable). `clip_update` also edits `shot_type`; custom role/shot labels
+  are validated and preserved. Master gain defaults to 0 dB, normalization and
+  limiting default off. `audio_configure` enables explicit processing.
+- Audio is assembled separately in float PCM and encoded once at delivery.
+  Hard cuts concatenate encoded video packets instead of repeatedly encoding
+  the growing film. Each rendering pass explicitly encodes at 25 fps, and final
+  delivery checks decoded frame count and video coverage against the timeline.
+- `timeline_validate` measures planned audio by default: LUFS, true peak,
+  adjacent RMS differences and boundary sample jumps. It also warns about
+  repeated source ranges. `check_audio=false` skips the audio render/analysis;
+  `valid:true` means executable, not that warnings or creative review passed.
+- Every cut exposes integer frames/timecodes. `frame_alignment=cover` pads a
+  fractional frame; `nearest`/`floor` explicitly permit trimming a fractional
+  tail. `render_audio_only` and `audio_replace` repair audio with copied video.
+- `media_cadence_inspect` distinguishes decoded coverage from sampled motion
+  updates. `media_import` supports relative paths with explicit `base_dir`,
+  content deduplication and same-name warnings.
+
+See [parameters and workflow](skills/video-editer/audio-and-delivery.md) and
+[reproducible validation](VALIDATION.md). The repository plugin is now named
+`video-editer` (older installations may be named `zj-video-editor`); the MCP
+server remains `video_editer`. Update this marketplace entry and reinstall the
+Python package in the interpreter used by MCP, then reconnect/open a new task.
+
 ## Install anywhere
 
 Requirements: Python 3.11+, `mcp`, `imageio-ffmpeg`, Pillow and NumPy. FFmpeg needs libx264

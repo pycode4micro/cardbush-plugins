@@ -223,7 +223,7 @@ class MediaTests(unittest.TestCase):
         self.assertTrue(s.render_final(self.pid)['has_audio'])
 
     def test_legacy_fingerprint_upgrade(self):
-        legacy=s.media_import(self.pid,str(self.source))['asset']['id']
+        legacy=s.media_import(self.pid,str(self.source),deduplicate=False)['asset']['id']
         with self.assertRaises(ValueError): s.media_segment_preview(self.pid,legacy,0,1)
         result=self.run_job(s.media_prepare(self.pid,legacy,'fingerprint'))
         self.assertIn('identity',result['asset'])

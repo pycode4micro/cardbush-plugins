@@ -18,6 +18,7 @@ def main():
         'assets/video_editer-logo-v4.png',
         'assets/logo-market.png', 'assets/icon.png',
         'skills/video-editer/long-media.md',
+        'skills/video-editer/audio-and-delivery.md', 'VALIDATION.md',
     )]
     for folder, pattern in [('video_editer', '*.py'), ('video_editer/assets', '*.png'),
                             ('tests', 'test_*.py'), ('scripts', '*.py')]:

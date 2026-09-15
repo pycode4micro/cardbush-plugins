@@ -64,10 +64,14 @@ automatically migrated, modified or removed.
 - `video_editer/engine.py`: project storage and FFmpeg execution.
 - `video_editer/assets/`: eight bundled callout/paint-phase PNGs.
 - `server.py`: portable launcher, not a connection to another platform.
-- `skills/zj-video-editor/SKILL.md`: guidance for the calling agent.
+- `skills/video-editer/SKILL.md`: guidance for the calling agent.
 
-The internal Codex ID remains `zj-video-editor` for installed-client
-compatibility; the display name and Python package are `video_editer`.
+The plugin ID and Skill are `video-editer`. The MCP server name, display
+name and Python package are `video_editer`.
+
+For installations using the previous plugin ID, refresh the marketplace and
+install `video-editer`; disable the previous installation to avoid duplicate tools.
+Existing projects remain in the same `VIDEO_EDITER_DATA_DIR`.
 
 ## Atomic tool contract
 
@@ -296,7 +300,7 @@ snapshot under a short lock and checks source-file hashes before delivery.
 ## Long-source evidence (P0/P1)
 
 The new workflow adds 20 tools; it is opt-in and does not change existing edits.
-See [Agent evidence workflow](skills/zj-video-editor/long-media.md) for complete
+See [Agent evidence workflow](skills/video-editer/long-media.md) for complete
 annotation/candidate contracts and observation requirements.
 
 - Background video import: `media_register` supports `managed_copy` (default)

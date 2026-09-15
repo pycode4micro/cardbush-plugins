@@ -1,6 +1,6 @@
 {
-  "name": "zj-video-editor",
-  "version": "0.1.0+codex.20260913102953",
+  "name": "video-editer",
+  "version": "0.1.0+codex.20260915013235",
   "description": "Model-free, deterministic video timeline and rendering tools for agents.",
   "author": {
     "name": "Local developer"
@@ -20,11 +20,11 @@
       "Use video_editer to inspect media, edit an explicit timeline, validate, preview, and render."
     ],
     "brandColor": "#161616",
-    "composerIcon": "./assets/video_editer-logo-v4.png",
-    "logo": "./assets/video_editer-logo-v4.png",
-    "logoDark": "./assets/video_editer-logo-v4.png"
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo-market.png",
+    "logoDark": "./assets/logo-market.png"
   },
   "mcpServers": "./.mcp.json",
   "repository": "https://github.com/pycode4micro/cardbush-plugins",
-  "homepage": "https://github.com/pycode4micro/cardbush-plugins/tree/main/plugins/zj-video-editor"
+  "homepage": "https://github.com/pycode4micro/cardbush-plugins/tree/main/plugins/video-editer"
 }

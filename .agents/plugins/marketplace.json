@@ -41,10 +41,10 @@
       "category": "Productivity"
     },
     {
-      "name": "zj-video-editor",
+      "name": "video-editer",
       "source": {
         "source": "local",
-        "path": "./plugins/zj-video-editor"
+        "path": "./plugins/video-editer"
       },
       "policy": {
         "installation": "AVAILABLE",

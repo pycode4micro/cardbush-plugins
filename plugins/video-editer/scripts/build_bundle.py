@@ -14,9 +14,10 @@ def main():
     manifest = json.loads((root / '.codex-plugin' / 'plugin.json').read_text(encoding='utf-8'))
     files = [root / name for name in (
         '.codex-plugin/plugin.json', '.mcp.json', 'README.md', 'pyproject.toml',
-        'requirements.txt', 'server.py', 'edit_contract.py', 'skills/zj-video-editor/SKILL.md',
+        'requirements.txt', 'server.py', 'edit_contract.py', 'skills/video-editer/SKILL.md',
         'assets/video_editer-logo-v4.png',
-        'skills/zj-video-editor/long-media.md',
+        'assets/logo-market.png', 'assets/icon.png',
+        'skills/video-editer/long-media.md',
     )]
     for folder, pattern in [('video_editer', '*.py'), ('video_editer/assets', '*.png'),
                             ('tests', 'test_*.py'), ('scripts', '*.py')]:

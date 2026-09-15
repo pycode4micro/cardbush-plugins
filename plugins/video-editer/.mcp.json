@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "zj-video-editor": {
+    "video_editer": {
       "command": "python",
       "args": [
         "${PLUGIN_ROOT}/server.py"

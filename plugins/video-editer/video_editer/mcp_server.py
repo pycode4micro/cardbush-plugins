@@ -25,7 +25,7 @@ from .locking import project_write, file_lock
 
 
 mcp = FastMCP(
-    "zj-video-editor",
+    "video_editer",
     instructions=(
         "Deterministic video-editing execution tools. Never infer editorial intent: "
         "inspect media, make explicit timeline edits, validate, preview, then render. "

@@ -1,5 +1,5 @@
 ---
-name: zj-video-editor
+name: video-editer
 description: Use video_editer MCP tools to inspect long videos through local audiovisual evidence, store agent-authored indexes and clip candidates, and execute explicit video timelines. The tools do not call a model or infer editorial intent.
 ---
 

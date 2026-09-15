@@ -15,7 +15,7 @@ def main():
         ".codex-plugin/plugin.json", ".mcp.json", "pyproject.toml", ".gitignore",
         "README.md", "README.en.md", "examples/generic-mcp.json",
         "scripts/package_plugin.py",
-        "assets/logo.png", "assets/icon.png", "src/cos_upload_mcp/assets/icon.png",
+        "assets/logo.png", "assets/logo-market.png", "assets/icon.png", "src/cos_upload_mcp/assets/icon.png",
     )]
     files += sorted((root / "src" / "cos_upload_mcp").glob("*.py"))
     files += sorted((root / "tests").glob("test_*.py"))

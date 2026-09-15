@@ -1,6 +1,6 @@
 {
   "name": "tencent-cos-upload",
-  "version": "0.2.0+codex.20260912061238",
+  "version": "0.2.0+codex.20260915013235",
   "description": "Upload, download, delete and safely rename individual Tencent COS objects.",
   "author": {
     "name": "Local developer"
@@ -12,8 +12,8 @@
     "developerName": "Local developer",
     "category": "Productivity",
     "composerIcon": "./assets/icon.png",
-    "logo": "./assets/logo.png",
-    "logoDark": "./assets/logo.png",
+    "logo": "./assets/logo-market.png",
+    "logoDark": "./assets/logo-market.png",
     "capabilities": [],
     "defaultPrompt": [
       "Upload the video I specify to Tencent COS and return a temporary signed URL.",

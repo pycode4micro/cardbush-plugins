@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "qianchuan": {
-      "command": "uv",
-      "args": ["run", "--frozen", "--script", "${PLUGIN_ROOT}/scripts/launch.py"]
+      "command": "powershell.exe",
+      "args": ["-NoLogo", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-File", "${PLUGIN_ROOT}/scripts/launch-hidden.ps1"]
     }
   }
 }

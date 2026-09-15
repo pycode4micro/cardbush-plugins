@@ -12,7 +12,8 @@ from mcp.client.stdio import stdio_client
 async def main():
     root = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix="qianchuan-mcp-setup-") as tmp:
-        params = StdioServerParameters(command="uv", args=["run", "--frozen", "--script", str(root / "scripts/launch.py")],
+        entry = json.loads((root / "mcp.json").read_text(encoding="utf-8"))["mcpServers"]["qianchuan"]
+        params = StdioServerParameters(command=entry["command"], args=[a.replace("${PLUGIN_ROOT}", str(root)) for a in entry["args"]],
             env={**os.environ, "QIANCHUAN_PLUGIN_DATA_DIR": tmp, "QIANCHUAN_SERVICE_ROOT": "Z:/not-a-project"})
         async with stdio_client(params) as (read, write):
             async with ClientSession(read, write) as client:
@@ -26,4 +27,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(asyncio.wait_for(main(), timeout=40))

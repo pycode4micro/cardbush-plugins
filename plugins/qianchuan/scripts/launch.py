@@ -119,7 +119,11 @@ def main():
         options = {"cwd": str(data), "stdin": subprocess.DEVNULL,
                    "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
         if os.name == "nt":
-            options["creationflags"] = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+            options["creationflags"] = subprocess.CREATE_NO_WINDOW
+            startup = subprocess.STARTUPINFO()
+            startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startup.wShowWindow = subprocess.SW_HIDE
+            options["startupinfo"] = startup
         else:
             options["start_new_session"] = True
         subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--worker"], **options)

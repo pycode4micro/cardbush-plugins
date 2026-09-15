@@ -1,15 +1,15 @@
 {
   "name": "qianchuan",
-  "version": "1.0.0+codex.20260913085432",
-  "description": "千川素材库、报表分析与受控投放 MCP 插件",
+  "version": "1.0.0+codex.20260915091120",
+  "description": "\u5343\u5ddd\u7d20\u6750\u5e93\u3001\u62a5\u8868\u5206\u6790\u4e0e\u53d7\u63a7\u6295\u653e MCP \u63d2\u4ef6",
   "author": {
     "name": "EDY"
   },
   "skills": "./skills/",
   "interface": {
-    "displayName": "千川投放与素材",
-    "shortDescription": "管理千川素材、查询报表与执行受控投放。",
-    "longDescription": "插件自带千川MCP与后台保障，独立配置和数据，不依赖桌面开发服务。OAuth中转独立部署。Skill为可选建议。",
+    "displayName": "\u5343\u5ddd\u6295\u653e\u4e0e\u7d20\u6750",
+    "shortDescription": "\u7ba1\u7406\u5343\u5ddd\u7d20\u6750\u3001\u67e5\u8be2\u62a5\u8868\u4e0e\u6267\u884c\u53d7\u63a7\u6295\u653e\u3002",
+    "longDescription": "\u63d2\u4ef6\u81ea\u5e26\u5343\u5dddMCP\u4e0e\u540e\u53f0\u4fdd\u969c\uff0c\u72ec\u7acb\u914d\u7f6e\u548c\u6570\u636e\uff0c\u4e0d\u4f9d\u8d56\u684c\u9762\u5f00\u53d1\u670d\u52a1\u3002OAuth\u4e2d\u8f6c\u72ec\u7acb\u90e8\u7f72\u3002Skill\u63d0\u4f9b\u4e1a\u52a1\u53e3\u5f84\u4e0e\u7b56\u7565\u53c2\u8003\uff0c\u6743\u9650\u548c\u6267\u884c\u6821\u9a8c\u7531\u5de5\u5177\u4fdd\u969c\u3002",
     "developerName": "EDY",
     "category": "Productivity",
     "brandColor": "#1765F5",
@@ -18,8 +18,8 @@
     "logoDark": "./assets/logo.svg",
     "capabilities": [],
     "defaultPrompt": [
-      "检查千川连接和授权状态。",
-      "查看千川限时投放任务状态。"
+      "\u68c0\u67e5\u5343\u5ddd\u8fde\u63a5\u548c\u6388\u6743\u72b6\u6001\u3002",
+      "\u67e5\u770b\u5343\u5ddd\u9650\u65f6\u6295\u653e\u4efb\u52a1\u72b6\u6001\u3002"
     ]
   },
   "mcpServers": "./.mcp.json",

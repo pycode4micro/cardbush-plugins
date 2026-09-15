@@ -684,7 +684,14 @@ def qianchuan_get_account_report(
     page: int = 1,
     page_size: int = 100,
 ) -> dict[str, Any]:
-    """Get Qianchuan account-level report data."""
+    """Get account-level reports for classic Qianchuan campaigns only.
+
+    Full-domain (uni-promotion) campaigns use qianchuan_get_uni_promotion_report;
+    this endpoint does not cover their spend. An empty result is not zero spend.
+    Distinguish no data for the requested dates, no active ads, and a reporting
+    scope mismatch (campaign type, marketing_goal, filters or dimensions) using
+    the relevant plan list/detail and report configuration before concluding.
+    """
     query = _report_query(
         advertiser_id=advertiser_id,
         start_date=start_date,
@@ -717,7 +724,14 @@ def qianchuan_get_ad_report(
     page: int = 1,
     page_size: int = 100,
 ) -> dict[str, Any]:
-    """Get Qianchuan ad-level report data."""
+    """Get ad-level reports for classic Qianchuan campaigns only.
+
+    Full-domain (uni-promotion) campaigns use qianchuan_get_uni_promotion_report;
+    this endpoint does not cover their spend. An empty result is not zero spend.
+    Distinguish no data for the requested dates, no active ads, and a reporting
+    scope mismatch (campaign type, marketing_goal, filters or dimensions) using
+    the relevant plan list/detail and report configuration before concluding.
+    """
     query = _report_query(
         advertiser_id=advertiser_id,
         start_date=start_date,
@@ -842,6 +856,12 @@ def qianchuan_get_uni_promotion_report(
     For current APIs, first call qianchuan_get_uni_promotion_report_config, then pass
     data_topic, dimensions, metrics, filters, start_time, end_time, and order_by. The
     older start_date/end_date arguments remain for compatibility with legacy clients.
+
+    Use this for full-domain (uni-promotion) campaigns; classic account/ad reports
+    do not cover them. An empty result is not zero spend: distinguish no data for
+    the requested dates, no active ads, and mismatched topics, filters or dimensions
+    using full-domain plan list/detail and the returned report configuration.
+    Do not substitute classic reports when this query returns no data.
     """
     if data_topic:
         resolved_start_time = start_time or (
@@ -900,6 +920,53 @@ def qianchuan_get_uni_promotion_report(
         page_size=page_size,
     )
     return _read_call(ctx, lambda service: service.get_uni_promotion_report(query))
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
+def qianchuan_get_live_uni_report_config(ctx: McpContext, advertiser_id: int) -> dict[str, Any]:
+    """Read official live UNI dimensions/metrics. No ad writes; OAuth may refresh.
+
+    Use returned fields and filter operators for qianchuan_get_live_uni_report.
+    These are live account/material topics, not standard or product reports.
+    """
+    from app.live_read import TOPICS, identity
+    identity(advertiser_id, 1)
+    return _read_call(ctx, lambda service: service.get_uni_promotion_report_config(
+        {"advertiser_id": advertiser_id, "data_topics": TOPICS, "data_period": "ALL_DATA"}))
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
+def qianchuan_get_live_uni_report(ctx: McpContext, query: dict[str, Any]) -> dict[str, Any]:
+    """Read one live full-domain report page, never fall back to standard reports.
+
+    Required query: advertiser_id, data_topic, dimensions, metrics, filters,
+    start_time/end_time (YYYY-MM-DD HH:MM:SS, account reporting time), order_by.
+    Optional page/page_size. First obtain official live report config; do not
+    invent metrics or filter operators. Topics are OVERALL_ROI_LIVE_AWEME,
+    OVERALL_ROI_LIVE_MATERIAL_LIVE, OVERALL_ROI_LIVE_MATERIAL_VIDEO.
+    Empty results are not evidence of zero spend. Preserve official pagination,
+    units, attribution definitions and request_id. OAuth may refresh.
+    """
+    from app.live_read import LiveReport
+    try:
+        params = LiveReport.model_validate(query).model_dump()
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    params["data_period"] = "ALL_DATA"
+    return _read_call(ctx, lambda service: service.get_uni_promotion_report_data(params))
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
+def qianchuan_get_live_uni_diagnostics(ctx: McpContext, advertiser_id: int, ad_id: int,
+                                      page: int = 1, page_size: int = 100) -> dict[str, Any]:
+    """Read exact live plan status and one page of official audit suggestions.
+
+    Verify ad_id and LIVE_PROM_GOODS from detail before reading suggestions.
+    Never changes budget/ROI/status. Not a complete delivery diagnosis; missing
+    suggestions do not prove eligibility or healthy delivery. OAuth may refresh.
+    """
+    from app.live_read import diagnose
+    return _read_call(ctx, lambda service: diagnose(service, advertiser_id, ad_id, page, page_size))
 
 
 @mcp.tool()
@@ -1171,6 +1238,93 @@ def qianchuan_get_ads(ctx: McpContext, params: dict[str, Any]) -> dict[str, Any]
 def qianchuan_get_ad_detail(ctx: McpContext, params: dict[str, Any]) -> dict[str, Any]:
     """Get Qianchuan ad detail and creative rules."""
     return _read_call(ctx, lambda service: service.get_ad_detail(params))
+
+
+@mcp.tool()
+def qianchuan_get_live_delivery_capabilities() -> dict[str, Any]:
+    """Offline capability report for live advertising; no account or network access."""
+    return {"marketing_goal": "LIVE_PROM_GOODS", "offline_diagnosis": True,
+            "standard_live_report": "qianchuan_get_live_ad_report",
+            "uni_live_report_config": "qianchuan_get_live_uni_report_config",
+            "uni_live_report": "qianchuan_get_live_uni_report",
+            "uni_live_audit_diagnostics": "qianchuan_get_live_uni_diagnostics",
+            "uni_live_creation": "sdk_subset_implemented_default_disabled",
+            "live_integration_tested": False,
+            "message": "直播创建已按SDK实现受限子集，独立开关默认关闭，未经实测；标准报表不可冒充全域报表。"}
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+def qianchuan_get_live_uni_create_contract() -> dict[str, Any]:
+    """Get SDK-derived live UNI input schema offline. Default-disabled; not live tested."""
+    from app.live_contract import contract
+    return contract()
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+def qianchuan_validate_live_uni_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """OFFLINE schema validation only; no token, inventory, balance or account calls.
+
+    This is not a ready-for-execution preview and does not grant authority to create.
+    """
+    from app.live_contract import validate_live
+    try:
+        validated = validate_live(payload)
+    except PydanticValidationError as exc:
+        return {"status": "invalid_input", "errors": [{"field": ".".join(map(str, e["loc"])), "message": e["msg"]} for e in exc.errors()], "writes_submitted": False}
+    return {"status": "schema_valid", "payload": validated, "official_preflight": False, "live_tested": False, "writes_submitted": False}
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False))
+def qianchuan_create_live_uni_ad(ctx: McpContext, payload: dict[str, Any], confirm: bool = False, reason: str | None = None) -> dict[str, Any]:
+    """Create live PC UNI via SDK-derived subset, only after explicit live-create gate enabled.
+
+    Runs live identity/authorization/balance checks and existing write policy/cooldown.
+    Never auto-enables configuration; no retries. Not production-verified. Does not create
+    standard Campaign or SXT order. Returned ad_id must be reconciled before further writes.
+    """
+    if not _settings(ctx).qianchuan_live_create_enabled:
+        return {"status": "blocked", "reason": "live_create_disabled", "writes_submitted": False}
+    from app.live_contract import validate_live
+    try:
+        validated = validate_live(payload)
+    except PydanticValidationError as exc:
+        raise ToolError("Invalid live payload; use offline live payload validator for field errors") from exc
+    return qianchuan_create_uni_aweme_ad(ctx, validated, confirm, reason)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+def qianchuan_analyze_live_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Analyze supplied live-plan facts OFFLINE without reading accounts or writing ads.
+
+    Required fields: advertiser_id, ad_id, marketing_goal=LIVE_PROM_GOODS,
+    window_start/window_end (timezone-aware ISO datetime), stat_cost_yuan,
+    pay_amount_yuan, paid_orders, attribution_mature (bool). Optional plan_status,
+    audit_rejected. Money must be normalized yuan. Missing facts are not treated as zero.
+    Returns findings, observed ROI and empty actions; never guarantees future ROI.
+    """
+    from app.live_delivery import analyze
+    try:
+        return analyze(snapshot)
+    except (ValueError, TypeError) as exc:
+        raise ToolError(str(exc)) from exc
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
+def qianchuan_get_live_ad_report(ctx: McpContext, advertiser_id: int, ad_ids: list[int],
+                                start_date: str, end_date: str, page: int = 1, page_size: int = 100) -> dict[str, Any]:
+    """Read STANDARD Qianchuan LIVE_PROM_GOODS plan reports, excluding Aweme/SXT orders.
+
+    Not a full-domain report endpoint. Explicit account, plan IDs and dates required.
+    One page per call; returns original page_info and request_id. No advertising writes;
+    OAuth token refresh may change local/gateway authorization state.
+    """
+    from app.live_delivery import report_params
+    try:
+        params = report_params(advertiser_id, start_date, end_date, ad_ids, page, page_size)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    return _read_call(ctx, lambda service: service.call_tool(
+        "qianchuan_report_ad_get_v1", ToolCallRequest(params=params)))
 
 
 @mcp.tool()
@@ -2892,6 +3046,10 @@ def qianchuan_preview_launch_plan(
         product_channels: dict[str, dict[str, Any]] = {}
         product_card_image_ids: dict[str, set[str]] = {}
         uni_aweme_account: dict[str, Any] | None = None
+        if (ad_payload or {}).get("marketing_goal") == "LIVE_PROM_GOODS" and normalize_launch_type(launch_type) == UNI_AWEME_LAUNCH_TYPE:
+            aweme_id = extract_required_aweme_id(ad_payload)
+            eligibility = service.get_uni_authorized_aweme_accounts({"advertiser_id": advertiser_id, "filtering": {"marketing_goal": "LIVE_PROM_GOODS", "scene": "CREATE"}, "page": 1, "page_size": 100})
+            uni_aweme_account = extract_uni_aweme_account(eligibility, aweme_id)
         if product_ids:
             normalized_launch_type = normalize_launch_type(launch_type)
             if normalized_launch_type == UNI_AWEME_LAUNCH_TYPE:
@@ -3129,6 +3287,8 @@ def qianchuan_call_raw_tool(
     reason: str | None = None,
 ) -> dict[str, Any]:
     """Call a supported raw Qianchuan API tool by key."""
+    if tool_key == "qianchuan_uni_aweme_ad_create_v1" and (payload or params or {}).get("marketing_goal") == "LIVE_PROM_GOODS":
+        raise ToolError("Live UNI creation must use qianchuan_create_live_uni_ad; raw creation cannot bypass the live gate.")
     try:
         request = ToolCallRequest(
             params=params or {},
@@ -3365,6 +3525,8 @@ def _write_tool_action(
         try:
             if not request_payload:
                 raise ValidationError("Write tool payload must include advertiser_id.")
+            if action_code == "tool.qianchuan_uni_aweme_ad_create_v1" and request_payload.get("marketing_goal") == "LIVE_PROM_GOODS" and not _settings(ctx).qianchuan_live_create_enabled:
+                raise WriteDisabledError("Live UNI creation is disabled; QIANCHUAN_LIVE_CREATE_ENABLED must be explicitly configured.")
             persistence.ensure_launch_authorization_allows(action_code, request_payload)
             persistence.ensure_account_policy_allows(
                 action_code,
@@ -3393,6 +3555,11 @@ def _write_tool_action(
                 product_channels: dict[str, dict[str, Any]] | None = None
                 product_card_image_ids: dict[str, set[str]] | None = None
                 uni_aweme_account: dict[str, Any] | None = None
+                if action_code == "tool.qianchuan_uni_aweme_ad_create_v1" and request_payload.get("marketing_goal") == "LIVE_PROM_GOODS":
+                    aweme_id = extract_required_aweme_id(request_payload)
+                    eligibility = service.get_uni_authorized_aweme_accounts({"advertiser_id": advertiser_id, "filtering": {"marketing_goal": "LIVE_PROM_GOODS", "scene": "CREATE"}, "page": 1, "page_size": 100})
+                    uni_aweme_account = extract_uni_aweme_account(eligibility, aweme_id)
+                    enforce_uni_aweme_create_eligibility(uni_aweme_account, aweme_id=aweme_id, marketing_goal="LIVE_PROM_GOODS")
                 if product_ids:
                     product_params = {
                         "advertiser_id": advertiser_id,

@@ -57,11 +57,11 @@
 
 | 目的 | 工具 |
 |---|---|
-| 账户数据 | `qianchuan_get_account_report` |
-| 广告数据 | `qianchuan_get_ad_report` |
+| 经典计划账户数据（不含全域） | `qianchuan_get_account_report` |
+| 经典计划广告数据（不含全域） | `qianchuan_get_ad_report` |
 | 素材数据 | `qianchuan_get_material_report` |
 | 搜索词 | `qianchuan_get_search_word_report` |
-| 全域数据 | `qianchuan_get_uni_promotion_report` |
+| 全域计划数据 | `qianchuan_get_uni_promotion_report`，先用 `qianchuan_get_uni_promotion_report_config` 确认主题、维度与指标 |
 | ROI 诊断 | `qianchuan_diagnose_roi` |
 | 素材疲劳 | `qianchuan_analyze_material_fatigue` |
 | 官方建议 | `qianchuan_suggest_roi_goal`, `qianchuan_suggest_budget` |
@@ -69,7 +69,7 @@
 | 本地快照 | `qianchuan_sync_ad_snapshots`, `qianchuan_list_ad_snapshots` |
 | 策略方案 | `qianchuan_build_roi_strategy`, `qianchuan_get_roi_decision` |
 
-减少截断：缩小日期范围，使用必要 fields，设置合理 page/page_size，按日或对象分页汇总。官方返回成功但 list 为空时报告 no_data，不把它当接口失败。
+减少截断：缩小日期范围，使用必要 fields，设置合理 page/page_size，按日或对象分页汇总。官方返回成功但 list 为空时仅表示当前查询未返回数据，不是接口失败，也不能据此认定零消耗。按[空结果排查](safety-and-troubleshooting.md#no_data-或成功但列表为空)区分日期、活跃计划与查询口径；不要用经典报表补充或替代全域报表后宣称已覆盖账户总消耗。
 
 ## 创建与投后
 

@@ -105,13 +105,13 @@ def enforce_launch_authorization(
             payload_product_ids(payload),
             set(authorization.allowed_product_ids or []),
             "product",
-            required=True,
+            required=payload.get("marketing_goal") != "LIVE_PROM_GOODS",
         )
         _enforce_id_scope(
             payload_aweme_ids(payload),
             set(authorization.allowed_aweme_ids or []),
             "aweme",
-            required=False,
+            required=payload.get("marketing_goal") == "LIVE_PROM_GOODS",
         )
         material_ids = payload_material_ids(payload)
         if material_ids:
@@ -121,7 +121,7 @@ def enforce_launch_authorization(
                 "material",
                 required=True,
             )
-        if preflight_complete and product_inventory is None:
+        if preflight_complete and product_inventory is None and payload.get("marketing_goal") != "LIVE_PROM_GOODS":
             raise ValidationError("Official product preflight result is missing.")
         if product_inventory is not None:
             _enforce_inventory(
@@ -435,6 +435,14 @@ def _authorization_marketing_scene(action_code: str, payload: dict[str, Any]) ->
 
 
 def _validate_uni_aweme_create_payload(payload: dict[str, Any]) -> None:
+    if payload.get("marketing_goal") == "LIVE_PROM_GOODS":
+        from app.live_contract import validate_live
+        from pydantic import ValidationError as SchemaError
+        try:
+            validate_live(payload)
+        except SchemaError as exc:
+            raise ValidationError(f"Invalid live UNI payload: {exc}") from exc
+        return
     forbidden = [
         field
         for field in ("marketing_scene", "campaign_scene", "launch_type")

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "qianchuan": {
+      "command": "uv",
+      "args": ["run", "--frozen", "--script", "${PLUGIN_ROOT}/scripts/launch.py"]
+    }
+  }
+}

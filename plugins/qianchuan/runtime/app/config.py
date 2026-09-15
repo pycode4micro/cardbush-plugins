@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     # Account Policy remains independently required for write operations.
     qianchuan_allow_all_authorized_advertisers: bool = False
     qianchuan_write_enabled: bool = False
+    qianchuan_live_create_enabled: bool = False
     qianchuan_default_target_roi: Decimal = Field(default=Decimal("8"), gt=Decimal("0"), le=Decimal("100"))
     qianchuan_default_min_spend: Decimal = Field(default=Decimal("100"), ge=Decimal("0"))
     qianchuan_default_min_clicks: int = Field(default=30, ge=0)

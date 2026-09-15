@@ -1,0 +1,16 @@
+{
+  "name": "minimax-music",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MiniMax music creation plugin for Codex and Agent Plugins 1.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "start": "node scripts/minimax-music.mjs serve"
+  },
+  "dependencies": { "@modelcontextprotocol/sdk": "1.30.0" },
+  "devDependencies": { "esbuild": "0.28.2" },
+  "license": "MIT"
+}

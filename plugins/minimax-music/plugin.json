@@ -1,0 +1,45 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "minimax-music",
+  "version": "1.0.0",
+  "description": "MiniMax songs, instrumental soundtracks, lyrics and covers for animation creators.",
+  "author": {
+    "name": "Personal Studio"
+  },
+  "license": "MIT",
+  "keywords": [
+    "minimax",
+    "music",
+    "animation",
+    "soundtrack",
+    "lyrics",
+    "bgm",
+    "cover"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "MiniMax Music · 动画音乐工作室",
+        "shortDescription": "创作主题曲、场景 BGM、歌词与参考翻唱",
+        "longDescription": "封装 MiniMax 歌曲与纯音乐生成、歌词创作和改写、参考音频翻唱及改词翻唱。支持后台任务、流式保存、动画配乐工作流与 Music 3 自部署连接。云端调用需要已有音乐 API 权限。个人集成插件，非官方发布。",
+        "developerName": "Personal Studio",
+        "category": "Productivity",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "defaultPrompt": [
+          "为我的动画创作一首中文主题曲。",
+          "为这段剧情制作不盖对白的纯音乐 BGM。",
+          "把这首原创歌曲改编成温柔的片尾曲。"
+        ],
+        "brandColor": "#382E68",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/logo.png",
+        "logoDark": "./assets/logo-dark.png"
+      }
+    }
+  },
+  "repository": "https://github.com/pycode4micro/cardbush-plugins",
+  "homepage": "https://github.com/pycode4micro/cardbush-plugins/tree/main/plugins/minimax-music"
+}

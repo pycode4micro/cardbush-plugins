@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MiniMax Music plugin: musical M">
+<rect x="16" y="16" width="480" height="480" rx="112" fill="#382E68"/>
+<path d="M150 326V178L256 270L362 178V326" fill="none" stroke="#FFF5E7" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+<ellipse cx="130" cy="340" rx="29" ry="23" fill="#FFF5E7"/><ellipse cx="342" cy="340" rx="29" ry="23" fill="#FFF5E7"/>
+<path d="M393 95L401 117L423 125L401 133L393 155L385 133L363 125L385 117Z" fill="#FFAA84"/>
+</svg>

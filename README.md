@@ -1,6 +1,6 @@
 # Cardbush Plugins
 
-通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit、腾讯云 COS、千川、video_editer 剪辑，以及视频生成去真人化处理插件。
+通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit、腾讯云 COS、千川、video_editer 剪辑、视频生成去真人化处理，以及 MiniMax 音乐创作插件。
 
 目录和市场索引参照 [OpenAI 插件仓库](https://github.com/openai/plugins) 与 [OpenAI 插件打包文档](https://developers.openai.com/plugins/build/plugins)。这是独立维护的插件市场。
 
@@ -18,7 +18,7 @@ codex plugin marketplace add pycode4micro/cardbush-plugins --ref main
 codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.git --ref main
 ```
 
-重新打开 Codex 的插件页面，在市场来源中选择 **Cardbush Plugins**，即可浏览和安装这五个插件。若页面未刷新，重启客户端。
+重新打开 Codex 的插件页面，在市场来源中选择 **Cardbush Plugins**，即可浏览和安装这六个插件。若页面未刷新，重启客户端。
 
 | 插件 | 包内基础版本 | 功能 | 安装说明 |
 | --- | --- | --- | --- |
@@ -27,6 +27,7 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 | `qianchuan` | 1.0.0 | 自带运行代码的千川素材、报表及受控投放工具 | [千川配置](plugins/qianchuan/README.md) |
 | `video-editer`（video_editer） | 0.2.0 | 74 项无模型剪辑工具：长视频证据浏览、Agent 索引与候选、时间线、花字、转场及渲染 | [剪辑插件配置](plugins/video-editer/README.md) |
 | `video-face-stylizer` | 0.2.2 | 本地整头/脸部白模处理、小脸补漏与 CPU/GPU 渲染，Windows 后台启动不弹终端 | [去真人化处理配置](plugins/video-face-stylizer/README.md) |
+| `minimax-music` | 1.0.0 | 主题曲、纯音乐 BGM、歌词创作与改写、参考翻唱；11 项工具、动画配乐技能和 Music 3 自部署连接 | [音乐插件配置](plugins/minimax-music/README.md) |
 
 市场添加成功后，也可按需用 CLI 安装：
 
@@ -36,13 +37,14 @@ codex plugin add tencent-cos-upload@cardbush-plugins
 codex plugin add qianchuan@cardbush-plugins
 codex plugin add video-editer@cardbush-plugins
 codex plugin add video-face-stylizer@cardbush-plugins
+codex plugin add minimax-music@cardbush-plugins
 ```
 
 安装或更新后，新建 Codex 任务以载入新的技能和工具。若已有 `@personal` 下的同名插件，请在插件管理页面选用一个来源，避免重复启用同一 MCP 服务。
 
 ## 新电脑运行准备
 
-GitHub 托管的是市场索引和插件文件。五个插件均在本机通过 stdio 提供 MCP 工具。添加市场本身不会配置业务凭据，也不会把本地服务转换为云端 HTTPS MCP；各插件的依赖安装方式如下。
+GitHub 托管的是市场索引和插件文件。六个插件均在本机通过 stdio 提供 MCP 工具。添加市场本身不会配置业务凭据，也不会把本地服务转换为云端 HTTPS MCP；各插件的依赖安装方式如下。
 
 ### Seedream 与腾讯云 COS
 
@@ -94,6 +96,14 @@ FFmpeg 需支持 libx264/libass；已声明的 `imageio-ffmpeg` 提供二进制�
 源码包含四个模型/网格资产及来源、许可和 SHA256，依赖包含 FFmpeg 编码器。CPU 模式无需独显；GPU 模式需要支持 OpenGL 3.3 的驱动。0.2.2 修复 Python、FFmpeg 和依赖检查弹出终端窗口的问题，并保留原始 MCP 字节流。安装后也可在插件目录运行 `setup.cmd` 预先准备环境。
 
 自动处理仍需抽查漏检时间段，白模效果不保证可靠身份匿名化。功能、参数及 65 项测试与实际处理验证记录见[插件说明](plugins/video-face-stylizer/README.md)和[验证记录](plugins/video-face-stylizer/VALIDATION.md)。
+
+### MiniMax 音乐创作
+
+需要 Node.js 22 或更新版本，Codex 启动环境需能找到 `node`。插件自带单文件 MCP 运行程序，运行时无需 `npm install`。包含 11 项工具和 2 个技能，覆盖带歌词歌曲、纯音乐 BGM、歌词创作/改写、参考歌曲分析与翻唱，以及动画主题曲和场景配乐工作流。
+
+云端凭据通过 `MINIMAX_API_KEY` 或私有密钥文件配置。也可以连接已有的 MiniMax Music 3 / SGLang-Omni 自部署服务；该模式支持歌曲和纯音乐，不提供专有歌词/翻唱 API。插件不自动部署模型服务器。
+
+截至 2026-09-15，MiniMax 官方公告说明音乐/歌词付费 API 自 2026-08-20 起不再对新用户开放，历史付费用户可继续使用；网页 Audio 账户不等于 API 权限。插件已完成 12 项离线行为测试和 MCP 安装验证，真实出歌需要可用凭据或自部署服务。详见[音乐插件说明](plugins/minimax-music/README.md)与[验证记录](plugins/minimax-music/VALIDATION.md)。
 
 ## 更新市场
 
@@ -150,6 +160,19 @@ plugins/
     scripts/
     src/video_face_stylizer/
     skills/video-face-stylizer/
+    tests/
+  minimax-music/
+    .codex-plugin/plugin.json
+    .mcp.json
+    plugin.json
+    mcp.json
+    package.json
+    package-lock.json
+    scripts/minimax-music.mjs
+    src/
+    skills/music-studio/
+    skills/animation-soundtrack/
+    assets/
     tests/
 ```
 

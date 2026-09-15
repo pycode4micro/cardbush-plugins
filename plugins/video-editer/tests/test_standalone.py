@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -41,7 +42,7 @@ class StandaloneTests(unittest.TestCase):
 
     def test_no_external_platform_or_model_imports(self):
         package = Path(engine.__file__).parent
-        forbidden = {'app', 'ai_editor_platform', 'fastapi', 'dotenv', 'httpx', 'requests', 'openai', 'anthropic'}
+        allowed = sys.stdlib_module_names | {'video_editer', 'mcp', 'PIL', 'numpy', 'imageio_ffmpeg'}
         for source in package.glob('*.py'):
             text = source.read_text(encoding='utf-8')
             tree = ast.parse(text)
@@ -51,9 +52,7 @@ class StandaloneTests(unittest.TestCase):
                     imports.update(n.name.split('.')[0] for n in node.names)
                 elif isinstance(node, ast.ImportFrom) and not node.level:
                     imports.add((node.module or '').split('.')[0])
-            self.assertFalse(imports & forbidden, (source.name, imports & forbidden))
-            self.assertNotIn('ZJ_VIDEO_EDITOR_ROOT', text)
-            self.assertNotIn('zj_video_gen', text)
+            self.assertFalse(imports - allowed, (source.name, imports - allowed))
             self.assertNotIn('sys.path.insert', text)
         self.assertFalse(hasattr(engine, 'ask_seed'))
         self.assertFalse(hasattr(engine, '_layout_product_callouts'))

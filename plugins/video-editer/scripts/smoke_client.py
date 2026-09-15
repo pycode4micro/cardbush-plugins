@@ -21,8 +21,7 @@ async def main():
                     '-c:v', 'libx264', '-c:a', 'aac', str(source)], check=True, capture_output=True, timeout=90)
     subprocess.run([engine.ffmpeg_bin(), '-y', '-f', 'lavfi', '-i', 'color=c=lime:s=100x100',
                     '-frames:v', '1', str(overlay)], check=True, capture_output=True, timeout=60)
-    env = dict(os.environ, VIDEO_EDITER_DATA_DIR=str(review / 'plugin data'),
-               ZJ_VIDEO_EDITOR_ROOT=str(review / 'nonexistent old platform'))
+    env = dict(os.environ, VIDEO_EDITER_DATA_DIR=str(review / 'plugin data'))
     env.pop('PYTHONPATH', None)
     env.pop('PYTHONHOME', None)
     # This child imports the installed wheel, not the extracted source tree.

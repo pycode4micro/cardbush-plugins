@@ -37,7 +37,7 @@ class ExecutionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Kept for manual review; never clean or delete user data.
-        cls.root = Path(tempfile.mkdtemp(prefix='zj-editor-regression-'))
+        cls.root = Path(tempfile.mkdtemp(prefix='video-editer-regression-'))
         cls.projects = cls.root / 'projects'
         cls.video = cls.root / 'source.mp4'
         cls.silent = cls.root / 'silent.mp4'

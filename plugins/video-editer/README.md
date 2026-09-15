@@ -26,9 +26,8 @@ decides what to edit; the plugin exposes deterministic atomic execution tools.
   content deduplication and same-name warnings.
 
 See [parameters and workflow](skills/video-editer/audio-and-delivery.md) and
-[reproducible validation](VALIDATION.md). The repository plugin is now named
-`video-editer` (older installations may be named `zj-video-editor`); the MCP
-server remains `video_editer`. Update this marketplace entry and reinstall the
+[reproducible validation](VALIDATION.md). The marketplace plugin is named
+`video-editer` and its MCP server is `video_editer`. Update this marketplace entry and reinstall the
 Python package in the interpreter used by MCP, then reconnect/open a new task.
 
 ## Install anywhere

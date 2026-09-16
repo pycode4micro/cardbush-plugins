@@ -1,0 +1,33 @@
+{
+  "mcpServers": {
+    "feishu": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "${PLUGIN_ROOT}",
+        "--frozen",
+        "--no-dev",
+        "feishu-bot"
+      ],
+      "env": {
+        "UV_PROJECT_ENVIRONMENT": "${PLUGIN_DATA}/venv",
+        "PYTHONUTF8": "1"
+      },
+      "env_vars": [
+        "FEISHU_ENV_FILE",
+        "FEISHU_ALLOW_READ",
+        "FEISHU_ALLOW_WRITE",
+        "FEISHU_APP_ID",
+        "FEISHU_APP_SECRET",
+        "FEISHU_TENANT_ACCESS_TOKEN",
+        "FEISHU_WEBHOOK_URL",
+        "FEISHU_WEBHOOK_SECRET",
+        "FEISHU_API_BASE_URL",
+        "FEISHU_TIMEOUT_SECONDS"
+      ],
+      "startup_timeout_sec": 120,
+      "tool_timeout_sec": 120
+    }
+  }
+}

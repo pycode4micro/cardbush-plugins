@@ -1,0 +1,39 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "feishu-bot",
+  "version": "1.0.0",
+  "description": "独立飞书机器人、电子表格和多维表格工具。默认只读，启动参数或环境变量控制修改能力。",
+  "author": {
+    "name": "Local developer"
+  },
+  "keywords": [
+    "feishu",
+    "lark",
+    "bot",
+    "sheets",
+    "bitable",
+    "mcp"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "飞书机器人",
+        "shortDescription": "独立的飞书消息与表格工具，默认只读。",
+        "longDescription": "读取机器人消息、电子表格与多维表格；可按启动配置开启消息发送、表格修改和账号分表追加。自带 MCP 服务，不依赖业务平台。",
+        "developerName": "Local developer",
+        "category": "Productivity",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "defaultPrompt": [
+          "检查飞书机器人配置和当前读写权限。",
+          "读取指定飞书电子表格的数据。",
+          "预览按账号匹配页签的追加计划。"
+        ]
+      }
+    }
+  },
+  "repository": "https://github.com/pycode4micro/cardbush-plugins",
+  "homepage": "https://github.com/pycode4micro/cardbush-plugins/tree/main/plugins/feishu-bot"
+}

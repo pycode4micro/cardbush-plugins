@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "feishu-bot-plugin"
+version = "1.0.0"
+description = "Independent Feishu bot, Sheets and Bitable MCP plugin with explicit read/write controls"
+requires-python = ">=3.11"
+dependencies = ["mcp==2.2.0", "httpx>=0.28.1,<0.29", "python-dotenv>=1.1,<2"]
+
+[project.scripts]
+feishu-bot = "feishu_bot.__main__:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "pytest-asyncio>=1,<2", "ruff>=0.12,<1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/feishu_bot"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120

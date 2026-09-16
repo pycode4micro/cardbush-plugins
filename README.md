@@ -1,6 +1,6 @@
 # Cardbush Plugins
 
-通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit、腾讯云 COS、千川、video_editer 剪辑、视频生成去真人化处理，以及 MiniMax 音乐创作插件。
+通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit、腾讯云 COS、千川、video_editer 剪辑、视频生成去真人化处理、MiniMax 音乐创作，以及飞书机器人插件。
 
 目录和市场索引参照 [OpenAI 插件仓库](https://github.com/openai/plugins) 与 [OpenAI 插件打包文档](https://developers.openai.com/plugins/build/plugins)。这是独立维护的插件市场。
 
@@ -18,7 +18,7 @@ codex plugin marketplace add pycode4micro/cardbush-plugins --ref main
 codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.git --ref main
 ```
 
-重新打开 Codex 的插件页面，在市场来源中选择 **Cardbush Plugins**，即可浏览和安装这六个插件。若页面未刷新，重启客户端。
+重新打开 Codex 的插件页面，在市场来源中选择 **Cardbush Plugins**，即可浏览和安装这七个插件。若页面未刷新，重启客户端。
 
 | 插件 | 包内基础版本 | 功能 | 安装说明 |
 | --- | --- | --- | --- |
@@ -28,6 +28,7 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 | `video-editer`（video_editer） | 0.2.0 | 74 项无模型剪辑工具：长视频证据浏览、Agent 索引与候选、时间线、花字、转场及渲染 | [剪辑插件配置](plugins/video-editer/README.md) |
 | `video-face-stylizer` | 0.2.2 | 本地整头/脸部白模处理、小脸补漏与 CPU/GPU 渲染，Windows 后台启动不弹终端 | [去真人化处理配置](plugins/video-face-stylizer/README.md) |
 | `minimax-music` | 1.0.0 | 主题曲、纯音乐 BGM、歌词创作与改写、参考翻唱；11 项工具、动画配乐技能和 Music 3 自部署连接 | [音乐插件配置](plugins/minimax-music/README.md) |
+| `feishu-bot` | 1.0.0 | 独立飞书机器人、电子表格、多维表格及账号分表；默认只读，环境变量和启动参数控制修改能力 | [飞书插件配置](plugins/feishu-bot/README.md) |
 
 市场添加成功后，也可按需用 CLI 安装：
 
@@ -38,13 +39,14 @@ codex plugin add qianchuan@cardbush-plugins
 codex plugin add video-editer@cardbush-plugins
 codex plugin add video-face-stylizer@cardbush-plugins
 codex plugin add minimax-music@cardbush-plugins
+codex plugin add feishu-bot@cardbush-plugins
 ```
 
 安装或更新后，新建 Codex 任务以载入新的技能和工具。若已有 `@personal` 下的同名插件，请在插件管理页面选用一个来源，避免重复启用同一 MCP 服务。
 
 ## 新电脑运行准备
 
-GitHub 托管的是市场索引和插件文件。六个插件均在本机通过 stdio 提供 MCP 工具。添加市场本身不会配置业务凭据，也不会把本地服务转换为云端 HTTPS MCP；各插件的依赖安装方式如下。
+GitHub 托管的是市场索引和插件文件。七个插件均在本机通过 stdio 提供 MCP 工具。添加市场本身不会配置业务凭据，也不会把本地服务转换为云端 HTTPS MCP；各插件的依赖安装方式如下。
 
 ### Seedream 与腾讯云 COS
 
@@ -104,6 +106,16 @@ FFmpeg 需支持 libx264/libass；已声明的 `imageio-ffmpeg` 提供二进制�
 云端凭据通过 `MINIMAX_API_KEY` 或私有密钥文件配置。也可以连接已有的 MiniMax Music 3 / SGLang-Omni 自部署服务；该模式支持歌曲和纯音乐，不提供专有歌词/翻唱 API。插件不自动部署模型服务器。
 
 截至 2026-09-15，MiniMax 官方公告说明音乐/歌词付费 API 自 2026-08-20 起不再对新用户开放，历史付费用户可继续使用；网页 Audio 账户不等于 API 权限。插件已完成 12 项离线行为测试和 MCP 安装验证，真实出歌需要可用凭据或自部署服务。详见[音乐插件说明](plugins/minimax-music/README.md)与[验证记录](plugins/minimax-music/VALIDATION.md)。
+
+### 飞书机器人
+
+需要 Python 3.11 或更新版本，以及能在 Codex 启动环境中找到的 `uv`。插件自带 Python MCP 服务、技能及 `uv.lock`；首次启动自动准备依赖，虚拟环境放在插件数据目录，不依赖业务平台或其他插件。
+
+默认 `FEISHU_ALLOW_READ=true`、`FEISHU_ALLOW_WRITE=false`，提供 14 个只读/状态工具。配置 `FEISHU_ALLOW_WRITE=true` 或启动参数 `--allow-write` 后，可使用消息发送、表格修改和账号分表追加等共 28 个工具；启动参数优先于环境变量，关闭的能力在工具注册及 HTTP 层同时拦截。
+
+把包内 `.env.example` 复制到用户目录 `~/.config/feishu-bot/.env`，按需配置自建应用 `FEISHU_APP_ID`、`FEISHU_APP_SECRET` 及飞书应用/文档权限。也可用 `--env-file` 指定外部配置。自定义群 webhook 只支持发送，不能用于读取表格。
+
+已通过 74 项自动化测试、实际 MCP 启动及跨目录迁移测试，并对真实目标表的 6 个页签抽查 120 行，与原客户端逐格一致。真实验证全程只读；写入通过模拟 HTTP 测试。详见[配置说明](plugins/feishu-bot/README.md)和[验证记录](plugins/feishu-bot/docs/verification.md)。
 
 ## 更新市场
 
@@ -174,6 +186,19 @@ plugins/
     skills/animation-soundtrack/
     assets/
     tests/
+  feishu-bot/
+    .codex-plugin/plugin.json
+    .mcp.json
+    plugin.json
+    mcp.json
+    pyproject.toml
+    uv.lock
+    .env.example
+    src/feishu_bot/
+    skills/feishu-bot/
+    docs/
+    tests/
+    scripts/
 ```
 
 市场条目的 `source.path` 相对于仓库根目录，保持为 `./plugins/<插件名>`。每个插件保留原始包内版本、源码和现有资源；发布整理将兼容清单的默认提示统一为数组，并补充仓库链接。原始 ZIP 不需要作为市场入口上传。

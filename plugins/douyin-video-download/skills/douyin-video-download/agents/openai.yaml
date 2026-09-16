@@ -1,0 +1,4 @@
+interface:
+  display_name: "抖音视频下载"
+  short_description: "从抖音分享文案或链接解析并下载单条视频，独立运行，无需项目配置"
+  default_prompt: "使用 $douyin-video-download 下载这条抖音分享链接中的视频，保存到我指定的目录。"

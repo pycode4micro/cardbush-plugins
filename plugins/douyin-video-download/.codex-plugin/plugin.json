@@ -1,0 +1,21 @@
+{
+  "name": "douyin-video-download",
+  "version": "0.1.0",
+  "description": "从抖音分享文案或链接下载单条公开视频，独立运行，无需 API Key 或其他项目。",
+  "author": {
+    "name": "Local developer"
+  },
+  "repository": "https://github.com/pycode4micro/cardbush-plugins",
+  "homepage": "https://github.com/pycode4micro/cardbush-plugins/tree/main/plugins/douyin-video-download",
+  "skills": "./skills/",
+  "keywords": ["douyin", "video", "download", "抖音"],
+  "interface": {
+    "displayName": "抖音视频下载",
+    "shortDescription": "粘贴抖音分享链接，下载单条公开视频到本地。",
+    "longDescription": "轻量 Skill 型插件，内含独立的 Python 标准库下载脚本。支持完整分享文案、短链接及视频页面链接；只读公开页面，保留视频原始字节，不依赖其他项目、MCP 服务或 API Key。需要 Python 3.10+ 和网络；不绕过登录、验证码或其他访问限制。",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": ["帮我下载这条抖音分享链接中的视频，保存到我指定的目录。"]
+  }
+}

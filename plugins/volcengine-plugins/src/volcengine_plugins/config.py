@@ -14,6 +14,8 @@ CONFIG_NAMES = frozenset({
     "ARK_API_KEY", "ARK_BASE_URL", "SEEDREAM_MODEL", "SEEDREAM_OUTPUT_DIR",
     "SEEDREAM_TIMEOUT_SECONDS", "SEEDANCE_MODEL", "SEEDANCE_TIMEOUT_SECONDS",
     "MEDIAKIT_API_KEY", "MEDIAKIT_BASE_URL", "MEDIAKIT_TIMEOUT_SECONDS",
+    "VOLCENGINE_ACCESS_KEY_ID", "VOLCENGINE_SECRET_ACCESS_KEY", "VOLCENGINE_SESSION_TOKEN",
+    "VOLCENGINE_MUSIC_TIMEOUT_SECONDS",
 })
 USER_ENV_SWITCH = "ARK_READ_USER_ENV"
 
@@ -42,7 +44,9 @@ def _read_windows_user(name: str) -> ConfigValue:
         if value_type not in {winreg.REG_SZ, winreg.REG_EXPAND_SZ} or not isinstance(value, str):
             return ConfigValue(None, "windows_user_invalid_type")
         # API keys are literal secrets, never expansion templates.
-        if value_type == winreg.REG_EXPAND_SZ and name not in {"ARK_API_KEY", "MEDIAKIT_API_KEY"}:
+        if value_type == winreg.REG_EXPAND_SZ and name not in {
+                "ARK_API_KEY", "MEDIAKIT_API_KEY", "VOLCENGINE_ACCESS_KEY_ID",
+                "VOLCENGINE_SECRET_ACCESS_KEY", "VOLCENGINE_SESSION_TOKEN"}:
             value = os.path.expandvars(value)
         return ConfigValue(value, "windows_user")
     except FileNotFoundError:

@@ -18,6 +18,10 @@
         "MEDIAKIT_API_KEY",
         "MEDIAKIT_BASE_URL",
         "MEDIAKIT_TIMEOUT_SECONDS",
+        "VOLCENGINE_ACCESS_KEY_ID",
+        "VOLCENGINE_SECRET_ACCESS_KEY",
+        "VOLCENGINE_SESSION_TOKEN",
+        "VOLCENGINE_MUSIC_TIMEOUT_SECONDS",
         "IMAGEIO_FFMPEG_EXE"
       ],
       "startup_timeout_sec": 30,

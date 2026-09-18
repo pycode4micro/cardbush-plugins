@@ -1,7 +1,7 @@
 {
   "name": "volcengine-plugins",
-  "version": "0.6.0",
-  "description": "Independent Volcengine MCP tools for images, videos, enhancement and fine subtitle erasure.",
+  "version": "0.7.0",
+  "description": "Independent Volcengine MCP tools for images, videos, music v5.0, enhancement and fine subtitle erasure.",
   "author": {
     "name": "Local developer"
   }

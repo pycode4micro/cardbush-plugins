@@ -9,6 +9,10 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 
+def tool_payload(result):
+    return result.structuredContent or json.loads(result.content[0].text)
+
+
 def test_real_stdio_handshake_and_preview():
     async def run():
         # No real credentials enter the test child process.
@@ -21,8 +25,26 @@ def test_real_stdio_handshake_and_preview():
                 assert initialized.serverInfo.icons
                 assert initialized.serverInfo.icons[0].src.startswith("data:image/png;base64,")
                 tools = await session.list_tools()
+                music_tools = {"music_capabilities", "music_preview_song", "music_preview_bgm", "music_create_song", "music_create_bgm", "music_get_task", "music_download_task"}
+                assert music_tools <= {tool.name for tool in tools.tools}
                 assert all(tool.icons == initialized.serverInfo.icons for tool in tools.tools)
-                assert {tool.name for tool in tools.tools} == {"seedream_capabilities", "seedream_preview_request", "seedream_generate", "seedance_capabilities", "seedance_preview_request", "seedance_create_task", "seedance_get_task", "seedance_list_tasks", "seedance_get_tasks", "seedance_download_task", "video_enhance_capabilities", "video_enhance_preview_request", "video_enhance_upload", "video_enhance_create_task", "video_enhance_get_task", "video_subtitle_erase_capabilities", "video_subtitle_erase_preview_request", "video_subtitle_erase_upload", "video_subtitle_erase_create_task", "video_subtitle_erase_get_task", "video_subtitle_erase_download_task", "video_media_preflight", "video_subtitle_erase_plan", "video_subtitle_erase_qc", "video_export_publish"}
+                assert {tool.name for tool in tools.tools} - music_tools == {"seedream_capabilities", "seedream_preview_request", "seedream_generate", "seedance_capabilities", "seedance_preview_request", "seedance_create_task", "seedance_get_task", "seedance_list_tasks", "seedance_get_tasks", "seedance_download_task", "video_enhance_capabilities", "video_enhance_preview_request", "video_enhance_upload", "video_enhance_create_task", "video_enhance_get_task", "video_subtitle_erase_capabilities", "video_subtitle_erase_preview_request", "video_subtitle_erase_upload", "video_subtitle_erase_create_task", "video_subtitle_erase_get_task", "video_subtitle_erase_download_task", "video_media_preflight", "video_subtitle_erase_plan", "video_subtitle_erase_qc", "video_export_publish"}
+                music = await session.call_tool("music_capabilities", {})
+                assert not music.isError and tool_payload(music)["model_version"] == "v5.0"
+                for name, request, field in [("music_preview_song", {"Lyrics": "[verse]\n晚风陪你走过长街"}, "ModelVersion"),
+                                             ("music_preview_bgm", {"Text": "安静的钢琴背景音乐", "Duration": 120}, "Version")]:
+                    result = await session.call_tool(name, {"request": request})
+                    assert not result.isError
+                    assert tool_payload(result)["body"][field] == "v5.0"
+                    assert tool_payload(result)["paid_request_sent"] is False
+                bad_music = await session.call_tool("music_create_song", {"request": {"Prompt": "private-prompt", "Genre": "Pop"}})
+                assert bad_music.isError and tool_payload(bad_music)["paid_request_sent"] is False
+                assert "private-prompt" not in json.dumps(tool_payload(bad_music))
+                missing_music = await session.call_tool("music_create_song", {"request": {"Prompt": "温暖的民谣歌曲"}})
+                assert missing_music.isError and tool_payload(missing_music)["stage"] == "preflight"
+                for item in tools.tools:
+                    if item.name in {"music_create_song", "music_create_bgm"}:
+                        assert item.annotations.readOnlyHint is False and item.annotations.idempotentHint is False
                 erased = await session.call_tool("video_subtitle_erase_preview_request", {"request": {"video_url": "https://example.com/a.mp4?secret=hidden"}})
                 assert not erased.isError
                 erase_payload = erased.structuredContent or json.loads(erased.content[0].text)

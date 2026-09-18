@@ -25,6 +25,7 @@ def main():
         "SKILL.md", "agents/openai.yaml", "references/plugin-contracts.md",
         "references/segmentation.md", "references/prompt-contract.md"])
     files.append(root / "skills/subtitle-erasure/SKILL.md")
+    files.append(root / "skills/music-generation/SKILL.md")
     # Exclusive creation: never overwrite an existing delivery.
     with ZipFile(output, "x", ZIP_DEFLATED) as archive:
         for path in sorted(set(files)):

@@ -23,7 +23,7 @@ async def run(user_only: bool):
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write, read_timeout_seconds=timedelta(seconds=20)) as session:
             await session.initialize()
-            for tool in ["seedream_capabilities", "seedance_capabilities"]:
+            for tool in ["seedream_capabilities", "seedance_capabilities", "music_capabilities"]:
                 result = await session.call_tool(tool, {})
                 if result.isError:
                     print(json.dumps({"tool": tool, "diagnostic_failed": True}))

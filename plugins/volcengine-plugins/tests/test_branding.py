@@ -47,5 +47,7 @@ def test_release_contains_manifest_and_runtime_icons(tmp_path):
         names = set(archive.namelist())
         required = {"assets/logo.png", "assets/icon.png", "src/volcengine_plugins/assets/icon.png"}
         assert required <= names
+        assert {"src/volcengine_plugins/music.py", "src/volcengine_plugins/music_models.py",
+                "skills/music-generation/SKILL.md", "docs/music-generation.md"} <= names
         assert archive.read("assets/icon.png") == archive.read("src/volcengine_plugins/assets/icon.png")
         assert not any("__pycache__" in name or ".env" in Path(name).name for name in names)

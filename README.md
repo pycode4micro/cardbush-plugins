@@ -1,6 +1,6 @@
 # Cardbush Plugins
 
-通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit、腾讯云 COS、千川、video_editer 剪辑、视频生成去真人化处理、MiniMax 音乐创作、飞书机器人，以及抖音视频下载插件。
+通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit / 火山 v5.0 音乐、腾讯云 COS、千川、video_editer 剪辑、视频生成去真人化处理、MiniMax 音乐创作、飞书机器人，以及抖音视频下载插件。
 
 目录和市场索引参照 [OpenAI 插件仓库](https://github.com/openai/plugins) 与 [OpenAI 插件打包文档](https://developers.openai.com/plugins/build/plugins)。这是独立维护的插件市场。
 
@@ -22,7 +22,7 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 
 | 插件 | 包内基础版本 | 功能 | 安装说明 |
 | --- | --- | --- | --- |
-| `volcengine-plugins` | 0.6.0 | Seedream 图片、Seedance 视频、MediaKit 超分、精细化去字幕与参考视频 Skill | [生成服务配置](plugins/volcengine-plugins/README.md) |
+| `volcengine-plugins` | 0.7.0 | Seedream 图片、Seedance 视频、v5.0 歌曲/BGM、MediaKit 超分与去字幕；32 个 MCP 工具 | [生成服务配置](plugins/volcengine-plugins/README.md) |
 | `tencent-cos-upload` | 0.2.0 | COS 上传、下载及经确认的单对象删除或重命名 | [COS 配置](plugins/tencent-cos-upload/README.md) |
 | `qianchuan` | 1.0.0 | 自带运行代码的千川素材、报表及受控投放工具 | [千川配置](plugins/qianchuan/README.md) |
 | `video-editer`（video_editer） | 0.2.0 | 74 项无模型剪辑工具：长视频证据浏览、Agent 索引与候选、时间线、花字、转场及渲染 | [剪辑插件配置](plugins/video-editer/README.md) |
@@ -67,6 +67,7 @@ python -m pip install ./plugins/tencent-cos-upload
 
 - Seedream / Seedance：`ARK_API_KEY`。
 - MediaKit 视频增强和字幕擦除：`MEDIAKIT_API_KEY`，独立于 Ark 密钥。
+- 火山 v5.0 歌曲和纯音乐：`VOLCENGINE_ACCESS_KEY_ID`、`VOLCENGINE_SECRET_ACCESS_KEY`，另开通 AI 音乐服务；可选 STS `VOLCENGINE_SESSION_TOKEN`。详见[音乐生成说明](plugins/volcengine-plugins/docs/music-generation.md)。
 - 腾讯云 COS：`TENCENT_COS_SECRET_ID`、`TENCENT_COS_SECRET_KEY`、`TENCENT_COS_BUCKET`、`TENCENT_COS_REGION`；临时凭据还需 `TENCENT_COS_TOKEN`。
 
 `volcengine-plugins` 原名 `seedream-mcp`。更新时安装新插件并停用旧连接，使用 `python -m volcengine_plugins`；现有 API Key 变量和工具名称继续有效。精细化去字幕默认使用 v5，最高输出 1080p，详见[去字幕说明](plugins/volcengine-plugins/docs/video-subtitle-erase.md)。

@@ -1,14 +1,14 @@
 {
   "name": "volcengine-plugins",
-  "version": "0.6.0",
-  "description": "Independent Volcengine MCP tools for images, videos, enhancement and fine subtitle erasure.",
+  "version": "0.7.0",
+  "description": "Independent Volcengine MCP tools for images, videos, music v5.0, enhancement and fine subtitle erasure.",
   "author": {
     "name": "Local developer"
   },
   "interface": {
     "displayName": "volcengine-plugins",
-    "shortDescription": "生图、视频、超分、精细化去字幕与本地画质复查。",
-    "longDescription": "Independent wrapper for official Volcengine APIs: Seedream images, Seedance videos, MediaKit standard/generative enhancement, and standalone fine subtitle erasure with v5 Quality defaults. Includes source upload, offline preview, task query and unchanged result download. Existing reference-video workflow retained. Separate MediaKit credentials; no automatic paid retries or model fallback. Local source preflight, observed rectangle planning, texture/audio QC evidence and separate publishing export included.",
+    "shortDescription": "生图、视频、v5 歌曲与配乐、超分、去字幕及画质复查。",
+    "longDescription": "Independent wrapper for official Volcengine APIs: Seedream images, Seedance videos, v5.0 vocal songs and BGM, MediaKit enhancement and fine subtitle erasure. Music includes native AK/SK signing, free previews, task query, exact audio downloads and optional lyrics/captions metadata. Separate credentials per service; no automatic paid retries, model or billing fallback. Reference-video, subtitle QC and music-generation skills included.",
     "developerName": "Local developer",
     "category": "Productivity",
     "composerIcon": "./assets/icon.png",
@@ -17,6 +17,7 @@
     "capabilities": [],
     "defaultPrompt": [
       "Check Volcengine image, video, enhancement and subtitle erasure capabilities and configuration.",
+      "Create a v5.0 song from my lyrics or a v5.0 instrumental soundtrack; preview first, then query and download the authorized task.",
       "Remove only hard subtitles with the fine v5 service; preview first and preserve audio and timing.",
       "Plan a reference video with $reference-video-production before authorized generation."
     ]

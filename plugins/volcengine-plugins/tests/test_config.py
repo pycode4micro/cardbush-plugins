@@ -127,6 +127,8 @@ def test_expand_paths_but_not_keys(monkeypatch):
     monkeypatch.setenv("SEEDREAM_TEST_DIR", "C:/example")
     assert REAL_USER_READER("SEEDREAM_OUTPUT_DIR").value == "C:/example/output"
     assert REAL_USER_READER("ARK_API_KEY").value == "%SEEDREAM_TEST_DIR%/output"
+    for name in ("VOLCENGINE_ACCESS_KEY_ID", "VOLCENGINE_SECRET_ACCESS_KEY", "VOLCENGINE_SESSION_TOKEN"):
+        assert REAL_USER_READER(name).value == "%SEEDREAM_TEST_DIR%/output"
 
 
 def test_both_clients_use_resolved_credentials_and_config(monkeypatch, tmp_path):

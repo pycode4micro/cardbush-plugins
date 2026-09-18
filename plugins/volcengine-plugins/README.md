@@ -1,5 +1,11 @@
 # volcengine-plugins
 
+## 0.7.0：v5.0 歌曲与纯音乐
+
+新增 7 个音乐工具，现共 32 个 MCP 工具。支持自带歌词/创作描述生成人声歌曲、分段纯音乐 BGM、免费预览、异步查询、原样下载及歌词/字幕 JSON 保存。歌曲和 BGM 均显式使用官方 `v5.0`，不自动降级或重提付费任务。默认按时长后付费，也可明确选择预付费资源包。
+
+音乐使用独立的 `VOLCENGINE_ACCESS_KEY_ID` / `VOLCENGINE_SECRET_ACCESS_KEY`，已有 Ark 或 MediaKit Key 不能替代。配置、调用示例和官方版本差异见[音乐生成说明](docs/music-generation.md)，内置 [music-generation Skill](skills/music-generation/SKILL.md)。更新后重新安装 Python 包并重连 MCP。
+
 ## 0.6.0：取源核对、局部擦除计划和画质 QC
 
 新增 `video_media_preflight`、`video_subtitle_erase_plan`、`video_subtitle_erase_qc`、`video_export_publish`，共 25 个 MCP 工具。内置 [subtitle-erasure Skill](skills/subtitle-erasure/SKILL.md)；校验清晰度、按实际字幕位置与时段限定处理、输出纹理/音轨对照证据、另存发布版。NumPy、Pillow 和带 FFmpeg 的 imageio-ffmpeg 随 Python 依赖安装，不需要 imageio。QC 指标只提示可疑位置，不能自动证明无残留或无痕。
@@ -28,7 +34,7 @@
 
 中文使用说明 · [English](README.en.md)
 
-用于 Seedream 图片生成、Seedance 视频生成，以及 MediaKit 视频超分和精细化字幕擦除。支持 Codex / Cardbush 插件格式，也可连接标准 MCP 客户端。
+用于 Seedream 图片、Seedance 视频、火山 v5.0 歌曲/纯音乐，以及 MediaKit 视频超分和精细化字幕擦除。支持 Codex / Cardbush 插件格式，也可连接标准 MCP 客户端。
 
 ## 内置参考视频 Skill
 
@@ -90,6 +96,8 @@ Codex 使用 `interface.composerIcon`、`logo` 和 `logoDark`；深浅色界面�
 | --- | --- | --- |
 | `ARK_API_KEY` | Seedream 生图和 Seedance 生视频共用 | [火山方舟控制台](https://console.volcengine.com/ark/)的 API Key 管理；使用 API Key，不是 AK/SK 密钥对 |
 | `MEDIAKIT_API_KEY` | 视频超分和字幕擦除使用，不自动复用 Ark 密钥 | [MediaKit 基础配置](https://console.volcengine.com/imp/ai-mediakit/settings)；使用有效的 MediaKit API Key，或具备相应权限的 IAM 通用 API Key |
+| `VOLCENGINE_ACCESS_KEY_ID` / `VOLCENGINE_SECRET_ACCESS_KEY` | v5.0 人声歌曲和 BGM 的 AK/SK 签名鉴权 | 火山 IAM 密钥；另在 [AI 音乐控制台](https://console.volcengine.com/ai-music/product) 开通所选计费服务 |
+| `VOLCENGINE_SESSION_TOKEN` | 可选，音乐临时 STS 凭据 | 使用临时 AK/SK 时填写配套 Token |
 
 账号还需开通相应服务/模型，并具备权限和可用额度。密钥存在不等于服务已开通。
 
@@ -164,6 +172,10 @@ export MEDIAKIT_API_KEY
 | 视频 | `seedance_capabilities` / `seedance_preview_request` | `seedance_create_task` | `seedance_get_task` |
 | 超分 | `video_enhance_capabilities` / `video_enhance_preview_request` | `video_enhance_create_task` | `video_enhance_get_task` |
 | 去字幕 | `video_subtitle_erase_capabilities` / `video_subtitle_erase_preview_request` | `video_subtitle_erase_create_task` | `video_subtitle_erase_get_task` |
+| 人声歌曲 | `music_capabilities` / `music_preview_song` | `music_create_song` | `music_get_task` |
+| 纯音乐 BGM | `music_capabilities` / `music_preview_bgm` | `music_create_bgm` | `music_get_task` |
+
+音乐完成后用 `music_download_task` 保存原音频，可选保存包含歌词和原生字幕数据的 JSON。人声歌曲 30～240 秒、BGM v5.0 为 30～120 秒；不要把歌曲字段 `ModelVersion` 与 BGM 字段 `Version` 混用。详细示例见[音乐生成说明](docs/music-generation.md)。
 
 本地超分素材另有 `video_enhance_upload`：上传文件并返回 `mediakit://` 地址，不创建增强任务；可能的存储/传输费用以服务商规则为准。
 
@@ -268,6 +280,7 @@ URL / asset ID 须换成账号可访问的真实素材。成功后取 `task.id`�
 | `SEEDANCE_TIMEOUT_SECONDS` | 单次 HTTP 请求60秒，可设置1–300秒 |
 | `MEDIAKIT_BASE_URL` | `https://mediakit.cn-beijing.volces.com` |
 | `MEDIAKIT_TIMEOUT_SECONDS` | 单次 HTTP 请求120秒，可设置1–300秒 |
+| `VOLCENGINE_MUSIC_TIMEOUT_SECONDS` | 音乐单次 HTTP 请求60秒，可设置1–300秒；异步提交后按任务 ID 查询 |
 | `ARK_READ_USER_ENV` | `1`；设为 `0` 关闭 Windows 用户变量兜底 |
 
 客户端工具超时建议至少360秒。API 基址仅由管理员通过环境变量设置，不接受提示词/工具参数覆盖。

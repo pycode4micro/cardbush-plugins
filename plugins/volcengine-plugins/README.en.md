@@ -1,5 +1,11 @@
 # volcengine-plugins
 
+## 0.7.0: v5.0 vocal songs and BGM
+
+Seven new music tools bring the total to 32. Create vocal songs from custom lyrics/prompts or structured instrumental BGM with the official v5.0 model, preview offline, query tasks, download unchanged audio and optionally save lyrics/captions JSON. Both modes pin v5.0; no automatic model/billing fallback or paid retry. Postpaid billing is the default; prepaid packages can be explicitly selected.
+
+Configure `VOLCENGINE_ACCESS_KEY_ID` and `VOLCENGINE_SECRET_ACCESS_KEY`, plus `VOLCENGINE_SESSION_TOKEN` only for STS credentials. Enable the selected service in the [music console](https://console.volcengine.com/ai-music/product). Ark/MediaKit keys are not substitutes. Use `music_capabilities`, `music_preview_song` / `music_preview_bgm`, `music_create_song` / `music_create_bgm`, `music_get_task` and `music_download_task`. Songs use body `ModelVersion=v5.0` (30–240 seconds); BGM uses body `Version=v5.0` (30–120 seconds), while the OpenAPI query version remains `2024-08-12`. See the [request guide](docs/music-generation.md) and bundled [music-generation Skill](skills/music-generation/SKILL.md). Reinstall the Python package and reconnect MCP after updating.
+
 ## 0.6.0: source verification, scoped plans and visual QC
 
 Adds `video_media_preflight`, `video_subtitle_erase_plan`, `video_subtitle_erase_qc` and `video_export_publish`, for 25 MCP tools. The bundled subtitle-erasure Skill covers verified sources, observed rectangles/times, texture/audio comparison evidence and a separate publishing copy. NumPy, Pillow and imageio-ffmpeg are declared dependencies; imageio is not required. Metrics flag review candidates and never certify visual quality.
@@ -90,6 +96,10 @@ Configure only the services you need:
 | --- | --- | --- |
 | `ARK_API_KEY` | Shared by Seedream images and Seedance videos | API Key management in the [Volcengine Ark console](https://console.volcengine.com/ark/). Use an API Key, not an AK/SK pair. |
 | `MEDIAKIT_API_KEY` | Video enhancement and subtitle erasure; no automatic Ark fallback | [MediaKit settings](https://console.volcengine.com/imp/ai-mediakit/settings). Use a valid MediaKit API Key or an IAM universal API Key with the required permissions. |
+| `VOLCENGINE_ACCESS_KEY_ID` / `VOLCENGINE_SECRET_ACCESS_KEY` | Music v5.0 AK/SK signing | Volcengine IAM credentials and activation in the [music console](https://console.volcengine.com/ai-music/product). |
+| `VOLCENGINE_SESSION_TOKEN` | Optional music STS session token | Required only when using temporary credentials. |
+
+`VOLCENGINE_MUSIC_TIMEOUT_SECONDS` defaults to 60 (allowed 1–300). Previews reference the published standard/BGM tariff; it is not a separately verified v5.0 quote. QuerySong exposes native lyrics/captions/style data; the separate v4.0-only GenLyrics API is not part of this integration. Downloads report the actual container because the provider may return MP4 despite a WAV request; no implicit conversion is performed.
 
 Your account also needs access to the selected service/model and sufficient quota or balance. A configured key does not prove that service access is enabled.
 

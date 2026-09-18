@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "volcengine": {
+      "command": "python",
+      "args": [
+        "-m",
+        "volcengine_plugins"
+      ],
+      "env_vars": [
+        "ARK_API_KEY",
+        "ARK_BASE_URL",
+        "ARK_READ_USER_ENV",
+        "SEEDREAM_MODEL",
+        "SEEDREAM_OUTPUT_DIR",
+        "SEEDREAM_TIMEOUT_SECONDS",
+        "SEEDANCE_MODEL",
+        "SEEDANCE_TIMEOUT_SECONDS",
+        "MEDIAKIT_API_KEY",
+        "MEDIAKIT_BASE_URL",
+        "MEDIAKIT_TIMEOUT_SECONDS"
+      ],
+      "startup_timeout_sec": 30,
+      "tool_timeout_sec": 360
+    }
+  }
+}

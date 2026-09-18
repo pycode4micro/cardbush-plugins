@@ -5,10 +5,10 @@
   },
   "plugins": [
     {
-      "name": "seedream-mcp",
+      "name": "volcengine-plugins",
       "source": {
         "source": "local",
-        "path": "./plugins/seedream-mcp"
+        "path": "./plugins/volcengine-plugins"
       },
       "policy": {
         "installation": "AVAILABLE",

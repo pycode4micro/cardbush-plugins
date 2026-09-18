@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "volcengine-plugins"
+version = "0.5.0"
+description = "Volcengine MCP tools for Seedream, Seedance, MediaKit enhancement and fine subtitle erasure"
+requires-python = ">=3.11"
+dependencies = ["mcp>=1.28,<2", "httpx>=0.28,<1", "pydantic>=2.13,<3", "Pillow>=10,<13", "mutagen>=1.47,<2"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10", "PyYAML>=6,<7"]
+
+[project.scripts]
+volcengine-plugins = "volcengine_plugins.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+volcengine_plugins = ["assets/icon.png"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

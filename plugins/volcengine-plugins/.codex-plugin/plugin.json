@@ -1,0 +1,28 @@
+{
+  "name": "volcengine-plugins",
+  "version": "0.5.0",
+  "description": "Independent Volcengine MCP tools for images, videos, enhancement and fine subtitle erasure.",
+  "author": {
+    "name": "Local developer"
+  },
+  "interface": {
+    "displayName": "volcengine-plugins",
+    "shortDescription": "Seedream 生图、Seedance 视频、MediaKit 超分与精细化去字幕。",
+    "longDescription": "Independent wrapper for official Volcengine APIs: Seedream images, Seedance videos, MediaKit standard/generative enhancement, and standalone fine subtitle erasure with v5 Quality defaults. Includes source upload, offline preview, task query and unchanged result download. Existing reference-video workflow retained. Separate MediaKit credentials; no automatic paid retries or model fallback.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png",
+    "logoDark": "./assets/logo.png",
+    "capabilities": [],
+    "defaultPrompt": [
+      "Check Volcengine image, video, enhancement and subtitle erasure capabilities and configuration.",
+      "Remove only hard subtitles with the fine v5 service; preview first and preserve audio and timing.",
+      "Plan a reference video with $reference-video-production before authorized generation."
+    ]
+  },
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
+  "repository": "https://github.com/pycode4micro/cardbush-plugins",
+  "homepage": "https://github.com/pycode4micro/cardbush-plugins/tree/main/plugins/volcengine-plugins"
+}

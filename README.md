@@ -22,7 +22,7 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 
 | 插件 | 包内基础版本 | 功能 | 安装说明 |
 | --- | --- | --- | --- |
-| `seedream-mcp` | 0.4.1 | Seedream 图片、Seedance 视频、MediaKit 超分与参考视频 Skill | [生成服务配置](plugins/seedream-mcp/README.md) |
+| `volcengine-plugins` | 0.5.0 | Seedream 图片、Seedance 视频、MediaKit 超分、精细化去字幕与参考视频 Skill | [生成服务配置](plugins/volcengine-plugins/README.md) |
 | `tencent-cos-upload` | 0.2.0 | COS 上传、下载及经确认的单对象删除或重命名 | [COS 配置](plugins/tencent-cos-upload/README.md) |
 | `qianchuan` | 1.0.0 | 自带运行代码的千川素材、报表及受控投放工具 | [千川配置](plugins/qianchuan/README.md) |
 | `video-editer`（video_editer） | 0.2.0 | 74 项无模型剪辑工具：长视频证据浏览、Agent 索引与候选、时间线、花字、转场及渲染 | [剪辑插件配置](plugins/video-editer/README.md) |
@@ -34,7 +34,7 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 市场添加成功后，也可按需用 CLI 安装：
 
 ```shell
-codex plugin add seedream-mcp@cardbush-plugins
+codex plugin add volcengine-plugins@cardbush-plugins
 codex plugin add tencent-cos-upload@cardbush-plugins
 codex plugin add qianchuan@cardbush-plugins
 codex plugin add video-editer@cardbush-plugins
@@ -50,14 +50,14 @@ codex plugin add douyin-video-download@cardbush-plugins
 
 GitHub 托管的是市场索引和插件文件。前七个插件在本机通过 stdio 提供 MCP 工具；抖音下载是按需运行脚本的 Skill 型插件，不启动 MCP 服务。添加市场本身不会配置业务凭据，也不会把本地服务转换为云端 HTTPS MCP；各插件的依赖安装方式如下。
 
-### Seedream 与腾讯云 COS
+### Volcengine Plugins 与腾讯云 COS
 
 需要 Python 3.11 或更新版本，且 Codex 启动环境能通过 `python` 找到它。克隆仓库，在仓库根目录安装需要的包：
 
 ```shell
 git clone https://github.com/pycode4micro/cardbush-plugins.git
 cd cardbush-plugins
-python -m pip install ./plugins/seedream-mcp
+python -m pip install ./plugins/volcengine-plugins
 python -m pip install ./plugins/tencent-cos-upload
 ```
 
@@ -66,8 +66,10 @@ python -m pip install ./plugins/tencent-cos-upload
 凭据通过环境变量配置，Windows 桌面客户端可使用各插件支持的用户环境变量读取功能：
 
 - Seedream / Seedance：`ARK_API_KEY`。
-- MediaKit 视频增强：`MEDIAKIT_API_KEY`，独立于 Ark 密钥。
+- MediaKit 视频增强和字幕擦除：`MEDIAKIT_API_KEY`，独立于 Ark 密钥。
 - 腾讯云 COS：`TENCENT_COS_SECRET_ID`、`TENCENT_COS_SECRET_KEY`、`TENCENT_COS_BUCKET`、`TENCENT_COS_REGION`；临时凭据还需 `TENCENT_COS_TOKEN`。
+
+`volcengine-plugins` 原名 `seedream-mcp`。更新时安装新插件并停用旧连接，使用 `python -m volcengine_plugins`；现有 API Key 变量和工具名称继续有效。精细化去字幕默认使用 v5，最高输出 1080p，详见[去字幕说明](plugins/volcengine-plugins/docs/video-subtitle-erase.md)。
 
 完整可选变量见各插件 README。密钥值由使用者自行配置，仓库不包含密钥。视频工作流按需另行准备 FFmpeg / ffprobe 和参考素材预处理工具。
 
@@ -140,7 +142,7 @@ codex plugin marketplace upgrade cardbush-plugins
 ```text
 .agents/plugins/marketplace.json
 plugins/
-  seedream-mcp/
+  volcengine-plugins/
     .codex-plugin/plugin.json
     .mcp.json
     pyproject.toml

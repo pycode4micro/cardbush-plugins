@@ -16,6 +16,7 @@ from .models import DEFAULT_MODEL, ImageRequest, LocalOptions
 from .video_client import SeedanceClient, prepare_video, video_capabilities, video_preview
 from .video_models import DEFAULT_VIDEO_MODEL, VideoLocalOptions, VideoRequest
 from .task_io import TaskError
+from .media_review import PixelRegion, ReviewSample, preflight, erasure_plan, review, publish_copy
 
 
 def video_request(value):
@@ -168,6 +169,26 @@ def create_server(port: int = 8765) -> FastMCP:
     async def video_subtitle_erase_download_task(task_id: str, dest: str, max_bytes: int = 2147483648, retries: int = 2) -> dict:
         """Query a completed erasure task and save its exact HTTPS result bytes to a NEW absolute dest. No overwrite/transcoding; API key never sent to CDN. Bounded download retries only, never creates/retries paid tasks."""
         return await SubtitleEraseClient().download_task(task_id, dest, max_bytes=max_bytes, retries=retries)
+
+    @server.tool(icons=icons, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+    def video_media_preflight(file_paths: list[str]) -> dict:
+        """LOCAL source verification: decode a frame, report dimensions/fps/duration/bytes/hash, rank supplied candidates and identify the exact Python/FFmpeg/dependency environment. No network or charges."""
+        return preflight(file_paths)
+
+    @server.tool(icons=icons, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+    def video_subtitle_erase_plan(source_path: str, regions: list[PixelRegion], padding_pixels: int = 4, mode: Literal['Subtitle', 'Text'] = 'Subtitle') -> dict:
+        """LOCAL convert observed pixel rectangles + times into native per-segment erasure fields, using verified source dimensions. Include outlines/shadows. Does NOT locate captions automatically or submit a task. Text must be explicitly selected for upper-half captions."""
+        return erasure_plan(source_path, regions, padding_pixels, mode)
+
+    @server.tool(icons=icons, annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
+    def video_subtitle_erase_qc(source_path: str, result_path: str, output_dir: str, samples: list[ReviewSample] | None = None) -> dict:
+        """LOCAL source/result comparison: NEW evidence directory, synchronized frame pairs/difference images, protected-region texture metrics, audio stream hashes and file metadata. Include observed erase_regions to exclude disappearing text from blur metrics. Default 16 samples; up to 60 explicit samples. Heuristics flag review candidates, never certify quality or detect all residual subtitles. No paid requests."""
+        return review(source_path, result_path, output_dir, samples)
+
+    @server.tool(icons=icons, annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
+    def video_export_publish(source_path: str, dest: str, crf: int = 18, preset: Literal['medium', 'slow', 'slower'] = 'slow') -> dict:
+        """LOCAL create a separate H.264 MP4 publishing copy, default CRF18/slow, original resolution/fps and copied audio. Verifies output/audio; never overwrites master or existing dest. Lossy compression, no guaranteed size or texture restoration. May take minutes."""
+        return publish_copy(source_path, dest, crf, preset)
 
     return server
 

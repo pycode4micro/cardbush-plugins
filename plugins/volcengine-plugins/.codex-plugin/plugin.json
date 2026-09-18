@@ -1,14 +1,14 @@
 {
   "name": "volcengine-plugins",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Independent Volcengine MCP tools for images, videos, enhancement and fine subtitle erasure.",
   "author": {
     "name": "Local developer"
   },
   "interface": {
     "displayName": "volcengine-plugins",
-    "shortDescription": "Seedream 生图、Seedance 视频、MediaKit 超分与精细化去字幕。",
-    "longDescription": "Independent wrapper for official Volcengine APIs: Seedream images, Seedance videos, MediaKit standard/generative enhancement, and standalone fine subtitle erasure with v5 Quality defaults. Includes source upload, offline preview, task query and unchanged result download. Existing reference-video workflow retained. Separate MediaKit credentials; no automatic paid retries or model fallback.",
+    "shortDescription": "生图、视频、超分、精细化去字幕与本地画质复查。",
+    "longDescription": "Independent wrapper for official Volcengine APIs: Seedream images, Seedance videos, MediaKit standard/generative enhancement, and standalone fine subtitle erasure with v5 Quality defaults. Includes source upload, offline preview, task query and unchanged result download. Existing reference-video workflow retained. Separate MediaKit credentials; no automatic paid retries or model fallback. Local source preflight, observed rectangle planning, texture/audio QC evidence and separate publishing export included.",
     "developerName": "Local developer",
     "category": "Productivity",
     "composerIcon": "./assets/icon.png",

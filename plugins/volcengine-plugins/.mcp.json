@@ -17,10 +17,11 @@
         "SEEDANCE_TIMEOUT_SECONDS",
         "MEDIAKIT_API_KEY",
         "MEDIAKIT_BASE_URL",
-        "MEDIAKIT_TIMEOUT_SECONDS"
+        "MEDIAKIT_TIMEOUT_SECONDS",
+        "IMAGEIO_FFMPEG_EXE"
       ],
       "startup_timeout_sec": 30,
-      "tool_timeout_sec": 360
+      "tool_timeout_sec": 1800
     }
   }
 }

@@ -22,7 +22,7 @@ async def main():
                 "request": {"prompt": "产品摄影", "size": "2K"}})
             assert not result.isError
             tools = await session.list_tools()
-            assert len(tools.tools) == 21
+            assert len(tools.tools) == 25
             assert all(tool.icons == initialized.serverInfo.icons for tool in tools.tools)
             for model in ["2.0", "2.0-fast", "2.0-mini", "2.5-pro"]:
                 preview = await session.call_tool("seedance_preview_request", {"request": {

@@ -52,11 +52,11 @@ def track(kind, width=1080, height=1920):
     return box(b"trak", box(b"tkhd", tkhd) + box(b"mdia", box(b"hdlr", hdlr)))
 
 
-def media(*, audio=True, video=True, mvhd_version=0, extended=False, to_end=False):
+def media(*, audio=True, video=True, mvhd_version=0, extended=False, to_end=False,width=1080,height=1920):
     # This fixture exercises container parsing, not codec/packet decoding.
     mvhd = (bytes(12) + struct.pack(">II", 1000, 15000) if mvhd_version == 0
             else b"\x01" + bytes(19) + struct.pack(">IQ", 1000, 15000))
-    tracks = (track(b"vide") if video else b"") + (track(b"soun", 0, 0) if audio else b"")
+    tracks = (track(b"vide",width,height) if video else b"") + (track(b"soun", 0, 0) if audio else b"")
     return (box(b"ftyp", b"isom" + bytes(4) + b"isommp42")
             + box(b"moov", box(b"mvhd", mvhd) + tracks, extended=extended)
             + box(b"mdat", b"fixture-data-not-a-real-codec", to_end=to_end))
@@ -151,6 +151,22 @@ class URLs(ErrorAssertions):
 
 
 class Metadata(ErrorAssertions):
+    def test_high_quality_variant_ranked_above_default_player(self):
+        target = item()
+        target['video']['play_addr'].update(width=576,height=1024)
+        target['video']['bit_rate'] = [{'bit_rate':4000000,'play_addr':{'width':1080,'height':1920,'url_list':[MEDIA+'&hd=1']}}]
+        info = d.extract_info([target],VIDEO_ID)
+        self.assertEqual(info['download_urls'][0],MEDIA+'&hd=1')
+
+    def test_browser_observations_keep_signed_query_unchanged(self):
+        url = 'https://www.douyin.com/aweme/v1/play/?file_id=OBSERVED&signature=x%2By&watermark=1'
+        info = d.observed_info(PAGE,[{'url':url,'width':1080,'height':1920}])
+        self.assertEqual(info['download_urls'],[url])
+        self.assertIn('caller_supplied',info['provenance'])
+
+    def test_browser_observations_require_target_page(self):
+        self.assertError('id_unavailable',d.observed_info,'https://www.douyin.com/',[{'url':MEDIA}])
+
     def test_router_state_json(self):
         result = d.extract_info(d.parse_states(page({"details": [item()]})), VIDEO_ID)
         self.assertEqual(result["title"], "测试视频")
@@ -285,6 +301,34 @@ class Downloads(ErrorAssertions):
         self.assertEqual(result["sha256"], hashlib.sha256(self.body).hexdigest())
         self.assertNotIn("download_urls", result)
         self.assertEqual(list(self.folder.iterdir()), [self.folder / f"{VIDEO_ID}.mp4"])
+
+    def test_valid_low_resolution_is_not_accepted_before_comparison(self):
+        info = {**self.info,'download_urls':[MEDIA,MEDIA+'&hd=1']}
+        client = FakeClient(responses=[Response(media(width=576,height=1024)),Response(self.body)])
+        result = d.download_info(info,self.folder,client,10000,min_short_side=1080)
+        self.assertEqual(result['width'],1080)
+        self.assertEqual(result['quality']['selected_candidate_index'],1)
+        self.assertEqual(len(client.open_calls),2)
+        self.assertNotIn('signature',json.dumps(result))
+
+    def test_low_quality_only_leaves_no_final_file(self):
+        client = FakeClient(responses=[Response(media(width=576,height=1024))])
+        self.assertError('quality_too_low',d.download_info,self.info,self.folder,client,10000,min_short_side=1080)
+        self.assertEqual(list(self.folder.iterdir()),[])
+
+    def test_verified_dimensions_override_false_candidate_metadata(self):
+        info = {**self.info,'download_urls':[MEDIA,MEDIA+'&other=1'],
+                'candidates':[{'url':MEDIA,'width':2160,'height':3840}]}
+        client = FakeClient(responses=[Response(media(width=576,height=1024)),Response(self.body)])
+        result = d.download_info(info,self.folder,client,10000)
+        self.assertEqual(result['quality']['selected_candidate_index'],1)
+        self.assertEqual(Path(result['file_path']).read_bytes(),self.body)
+
+    def test_access_denial_after_valid_candidate_stops_and_cleans(self):
+        info = {**self.info,'download_urls':[MEDIA,MEDIA+'&other=1']}
+        client = FakeClient(responses=[Response(self.body),d.DownloadError('access_required','denied')])
+        self.assertError('access_required',d.download_info,info,self.folder,client,10000)
+        self.assertEqual(list(self.folder.iterdir()),[])
 
     def test_existing_file_untouched_and_no_request(self):
         self.folder.mkdir()

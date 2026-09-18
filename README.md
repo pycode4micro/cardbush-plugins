@@ -22,14 +22,14 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 
 | 插件 | 包内基础版本 | 功能 | 安装说明 |
 | --- | --- | --- | --- |
-| `volcengine-plugins` | 0.5.0 | Seedream 图片、Seedance 视频、MediaKit 超分、精细化去字幕与参考视频 Skill | [生成服务配置](plugins/volcengine-plugins/README.md) |
+| `volcengine-plugins` | 0.6.0 | Seedream 图片、Seedance 视频、MediaKit 超分、精细化去字幕与参考视频 Skill | [生成服务配置](plugins/volcengine-plugins/README.md) |
 | `tencent-cos-upload` | 0.2.0 | COS 上传、下载及经确认的单对象删除或重命名 | [COS 配置](plugins/tencent-cos-upload/README.md) |
 | `qianchuan` | 1.0.0 | 自带运行代码的千川素材、报表及受控投放工具 | [千川配置](plugins/qianchuan/README.md) |
 | `video-editer`（video_editer） | 0.2.0 | 74 项无模型剪辑工具：长视频证据浏览、Agent 索引与候选、时间线、花字、转场及渲染 | [剪辑插件配置](plugins/video-editer/README.md) |
 | `video-face-stylizer` | 0.2.3 | 本地整头/脸部白模处理、帽子与侧背补漏、网格取坐标及覆盖统计 | [去真人化处理配置](plugins/video-face-stylizer/README.md) |
 | `minimax-music` | 1.0.0 | 主题曲、纯音乐 BGM、歌词创作与改写、参考翻唱；11 项工具、动画配乐技能和 Music 3 自部署连接 | [音乐插件配置](plugins/minimax-music/README.md) |
 | `feishu-bot` | 1.0.0 | 独立飞书机器人、电子表格、多维表格及账号分表；默认只读，环境变量和启动参数控制修改能力 | [飞书插件配置](plugins/feishu-bot/README.md) |
-| `douyin-video-download` | 0.1.0 | 抖音分享链接下载单条公开视频；独立 Skill 与标准库脚本，不启动 MCP 服务 | [抖音下载使用说明](plugins/douyin-video-download/README.md) |
+| `douyin-video-download` | 0.2.0 | 抖音分享链接下载单条公开视频；3 个 MCP 工具、独立 Skill/CLI、候选源比较及落盘校验 | [抖音下载使用说明](plugins/douyin-video-download/README.md) |
 
 市场添加成功后，也可按需用 CLI 安装：
 
@@ -48,7 +48,7 @@ codex plugin add douyin-video-download@cardbush-plugins
 
 ## 新电脑运行准备
 
-GitHub 托管的是市场索引和插件文件。前七个插件在本机通过 stdio 提供 MCP 工具；抖音下载是按需运行脚本的 Skill 型插件，不启动 MCP 服务。添加市场本身不会配置业务凭据，也不会把本地服务转换为云端 HTTPS MCP；各插件的依赖安装方式如下。
+GitHub 托管的是市场索引和插件文件。这些插件在本机通过 stdio 提供 MCP 工具；抖音下载也保留无需安装依赖的独立 Skill/CLI 入口。添加市场本身不会配置业务凭据，也不会把本地服务转换为云端 HTTPS MCP；各插件的依赖安装方式如下。
 
 ### Volcengine Plugins 与腾讯云 COS
 
@@ -123,11 +123,11 @@ FFmpeg 需支持 libx264/libass；已声明的 `imageio-ffmpeg` 提供二进制�
 
 ### 抖音视频下载
 
-需要 Python 3.10 或更新版本、网络及本地目录写入权限。插件内置完整分享文案解析、公开网页解析和 MP4 下载脚本，仅使用 Python 标准库，无需 `pip install`、浏览器、FFmpeg、API Key、`.env` 或其他项目。
+需要 Python 3.10 或更新版本、网络及本地目录写入权限。插件内置完整分享文案解析、公开网页解析和 MP4 下载脚本，CLI 仅使用 Python 标准库；使用 MCP 工具时执行 `python -m pip install -r ./plugins/douyin-video-download/requirements.txt`，然后重新加载插件。无需 API Key 或其他项目。
 
 安装后直接向助手提供分享链接及保存目录。插件只取目标视频 ID 对应的播放地址，按服务端返回字节保存，不覆盖现有文件，不转码、不去音，也不改写水印参数。登录、验证码、访问限制或网页结构变化可能导致下载失败，不会自动读取浏览器会话或调用第三方解析站兜底。
 
-已通过 57 项离线测试和独立目录运行测试；真实成功下载仍待有效分享链接验证。完整参数、限制和中英文说明见[抖音下载使用说明](plugins/douyin-video-download/README.md)。
+已通过 64 项离线测试及 3 个工具的 MCP stdio 启动验证；JS 页面可输入浏览器实际观察到的候选地址，下载后按分辨率/码率比较。真实分享链接成功率仍受页面与访问权限影响。完整参数、限制和中英文说明见[抖音下载使用说明](plugins/douyin-video-download/README.md)。
 
 ## 更新市场
 
@@ -213,6 +213,9 @@ plugins/
     scripts/
   douyin-video-download/
     .codex-plugin/plugin.json
+    .mcp.json
+    server.py
+    requirements.txt
     README.md
     scripts/build_release.py
     skills/douyin-video-download/

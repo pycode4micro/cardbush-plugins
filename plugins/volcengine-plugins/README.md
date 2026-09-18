@@ -1,5 +1,9 @@
 # volcengine-plugins
 
+## 0.6.0：取源核对、局部擦除计划和画质 QC
+
+新增 `video_media_preflight`、`video_subtitle_erase_plan`、`video_subtitle_erase_qc`、`video_export_publish`，共 25 个 MCP 工具。内置 [subtitle-erasure Skill](skills/subtitle-erasure/SKILL.md)；校验清晰度、按实际字幕位置与时段限定处理、输出纹理/音轨对照证据、另存发布版。NumPy、Pillow 和带 FFmpeg 的 imageio-ffmpeg 随 Python 依赖安装，不需要 imageio。QC 指标只提示可疑位置，不能自动证明无残留或无痕。
+
 ## 0.5.0：独立精细化去字幕与插件改名
 
 插件由 `seedream-mcp` 改名为 `volcengine-plugins`，新增 6 个独立字幕擦除工具，共 21 个 MCP 工具。

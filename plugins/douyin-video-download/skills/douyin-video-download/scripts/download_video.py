@@ -241,6 +241,52 @@ def address_urls(value) -> list[str]:
     return []
 
 
+def positive_number(value) -> float:
+    try:
+        number = float(value)
+        return number if math.isfinite(number) and number > 0 else 0
+    except (ValueError, TypeError):
+        return 0
+
+
+def rank_candidates(candidates: list[dict]) -> list[dict]:
+    unique = {}
+    for candidate in candidates:
+        try:
+            address = str(candidate.get("url", ""))
+            if address.startswith("//"):
+                address = "https:" + address
+            url = validate_url(address, page=False)
+        except DownloadError:
+            continue
+        if urlsplit(url).path.lower().endswith((".m3u8", ".mpd")):
+            continue
+        item = {"url": url, **{field: positive_number(candidate.get(field)) for field in ("width", "height", "bitrate", "bytes")}}
+        item["source"] = str(candidate.get("source", "observed"))[:80]
+        previous = unique.get(url)
+        if previous:
+            for field in ("width", "height", "bitrate", "bytes"):
+                item[field] = max(item[field], previous[field])
+        unique[url] = item
+    return sorted(unique.values(), key=lambda c: (c["width"]*c["height"], c["bitrate"], c["bytes"]), reverse=True)
+
+
+def observed_info(page_url: str, candidates: list[dict]) -> dict:
+    """Accept explicitly supplied observations; never read a browser profile or invent file IDs."""
+    page_url = validate_url(page_url, page=True)
+    video_id = extract_video_id(page_url)
+    if not video_id:
+        raise DownloadError("id_unavailable", "浏览器取源需提供含目标视频 ID 的页面地址")
+    if not 1 <= len(candidates) <= 30 or any(not isinstance(c, dict) for c in candidates):
+        raise DownloadError("invalid_candidates", "请提供从该页面实际观察到的 1..30 个候选地址")
+    ranked = rank_candidates(candidates)
+    if not ranked:
+        raise DownloadError("metadata_unavailable", "没有有效的公网视频候选地址")
+    return {"video_id": video_id, "title": video_id, "author": "", "page_url": page_url,
+            "download_urls": [c["url"] for c in ranked], "candidates": ranked,
+            "provenance": "caller_supplied_browser_observations; target-content binding requires visual verification"}
+
+
 def extract_info(states: list, video_id: str) -> dict | None:
     matched_nonvideo = False
     for node in walk_dicts(states):
@@ -251,29 +297,26 @@ def extract_info(states: list, video_id: str) -> dict | None:
         if not isinstance(video, dict):
             matched_nonvideo = matched_nonvideo or bool(node.get("images"))
             continue
-        addresses = []
+        candidates = []
+        def add(value, context, label):
+            address = value if isinstance(value, dict) else {}
+            for url in address_urls(value):
+                candidates.append({"url":url, "width":address.get("width",context.get("width")),
+                    "height":address.get("height",context.get("height")),
+                    "bitrate":context.get("bit_rate",context.get("bitRate")),
+                    "bytes":address.get("data_size",address.get("dataSize")), "source":label})
         # Do not search arbitrary descendants: those may contain music or recommendations.
         for key in ("play_addr", "playAddr", "play_addr_h264", "play_addr_265", "playApi"):
-            addresses.extend(address_urls(video.get(key)))
+            add(video.get(key), {}, key)
         variants = video.get("bit_rate") or video.get("bitRate") or []
         if isinstance(variants, list):
             for variant in variants:
                 if isinstance(variant, dict):
-                    addresses.extend(address_urls(variant.get("play_addr") or variant.get("playAddr")))
+                    add(variant.get("play_addr") or variant.get("playAddr"), variant, "bit_rate")
         for key in ("play_addr_lowbr", "download_addr", "downloadAddr"):
-            addresses.extend(address_urls(video.get(key)))
-        urls = []
-        for address in addresses:
-            if address.startswith("//"):
-                address = "https:" + address
-            try:
-                normalized = validate_url(address, page=False)
-            except DownloadError:
-                continue
-            if urlsplit(normalized).path.lower().endswith((".m3u8", ".mpd")):
-                continue
-            if normalized not in urls:
-                urls.append(normalized)
+            add(video.get(key), {}, key)
+        candidates = rank_candidates(candidates)
+        urls = [c["url"] for c in candidates]
         if not urls:
             continue
         author = node.get("author") or {}
@@ -283,6 +326,7 @@ def extract_info(states: list, video_id: str) -> dict | None:
             "author": str(author.get("nickname") or "") if isinstance(author, dict) else "",
             "page_url": f"https://www.douyin.com/video/{video_id}",
             "download_urls": urls,
+            "candidates": candidates,
         }
     if matched_nonvideo:
         raise DownloadError("unsupported_content", "目标是图文内容，不是可直接下载的视频")
@@ -419,64 +463,97 @@ def publish_new(source: Path, target: Path) -> None:
             raise
 
 
-def download_info(info: dict, output_dir: Path, client: PublicHTTP, max_bytes: int) -> dict:
+def download_info(info: dict, output_dir: Path, client: PublicHTTP, max_bytes: int,
+                  min_short_side: int = 0, max_candidates: int = 3) -> dict:
     if not ID_PATTERN.fullmatch(str(info.get("video_id", ""))):
         raise DownloadError("invalid_video_id", "视频 ID 无效")
-    if max_bytes < 1:
-        raise DownloadError("invalid_limit", "下载大小上限必须至少为 1 字节")
+    if max_bytes < 1 or not 0 <= min_short_side <= 8192 or not 1 <= max_candidates <= 8:
+        raise DownloadError("invalid_limit", "大小上限需为正数；最小短边 0..8192；候选数 1..8")
     output_dir = output_dir.expanduser().resolve()
     target = output_dir / f"{info['video_id']}.mp4"
     if os.path.lexists(target):
         raise DownloadError("output_exists", "目标文件已存在，不覆盖，请选择其他输出目录")
     output_dir.mkdir(parents=True, exist_ok=True)
-    last_error = None
-    for url in info["download_urls"][:3]:
-        temp_path = None
-        try:
-            with client.open(url, page=False) as response:
-                content_type = (response.headers.get("Content-Type") or "").split(";")[0].lower()
-                if content_type.startswith("text/") or content_type in {"application/json", "application/xml"}:
-                    raise DownloadError("invalid_video", "播放地址返回了网页或错误信息，而非视频")
-                length = response.headers.get("Content-Length")
-                try:
-                    expected = int(length) if length is not None else None
-                except ValueError:
-                    raise DownloadError("invalid_video", "远端文件长度无效") from None
-                if expected is not None and expected < 0:
-                    raise DownloadError("invalid_video", "远端文件长度无效")
-                if expected is not None and expected > max_bytes:
-                    raise DownloadError("too_large", "视频超过指定的下载大小上限")
-                fd, temp_name = tempfile.mkstemp(prefix=f".{info['video_id']}-", suffix=".part", dir=output_dir)
-                temp_path = Path(temp_name)
-                count, digest = 0, hashlib.sha256()
-                with os.fdopen(fd, "wb") as dest:
-                    while True:
-                        chunk = response.read(256 * 1024)
-                        if not chunk:
-                            break
-                        count += len(chunk)
-                        if count > max_bytes:
-                            raise DownloadError("too_large", "视频超过指定的下载大小上限")
-                        dest.write(chunk)
-                        digest.update(chunk)
-                if not count or expected is not None and count != expected:
-                    raise DownloadError("invalid_video", "视频下载为空或未完成")
-            probe = inspect_mp4(temp_path)
-            publish_new(temp_path, target)
-            return {"status": "downloaded", **{key: value for key, value in info.items() if key != "download_urls"},
-                    "file_path": str(target), "bytes": count, "sha256": digest.hexdigest(), **probe}
-        except DownloadError as exc:
-            if exc.code not in {"invalid_video", "http_error", "network_error"}:
-                raise
-            last_error = exc
-        except HTTPException:
-            last_error = DownloadError("network_error", "视频响应读取中断，未保存不完整视频")
-        except (OSError, TimeoutError):
-            raise DownloadError("io_error", "下载读写失败，请检查网络、磁盘空间和目录权限") from None
-        finally:
-            if temp_path is not None:
-                temp_path.unlink(missing_ok=True)
-    raise last_error or DownloadError("download_failed", "没有可用的视频下载地址")
+    last_error, best = None, None
+    temporary, checked = [], []
+    try:
+        for index, url in enumerate(info["download_urls"][:max_candidates]):
+            temp_path = None
+            try:
+                with client.open(url, page=False) as response:
+                    content_type = (response.headers.get("Content-Type") or "").split(";")[0].lower()
+                    if content_type.startswith("text/") or content_type in {"application/json", "application/xml"}:
+                        raise DownloadError("invalid_video", "播放地址返回了网页或错误信息，而非视频")
+                    length = response.headers.get("Content-Length")
+                    try:
+                        expected = int(length) if length is not None else None
+                    except ValueError:
+                        raise DownloadError("invalid_video", "远端文件长度无效") from None
+                    if expected is not None and expected < 0:
+                        raise DownloadError("invalid_video", "远端文件长度无效")
+                    if expected is not None and expected > max_bytes:
+                        raise DownloadError("too_large", "视频超过指定的下载大小上限")
+                    fd, temp_name = tempfile.mkstemp(prefix=f".{info['video_id']}-", suffix=".part", dir=output_dir)
+                    temp_path = Path(temp_name)
+                    temporary.append(temp_path)
+                    count, digest = 0, hashlib.sha256()
+                    with os.fdopen(fd, "wb") as dest:
+                        while chunk := response.read(256 * 1024):
+                            count += len(chunk)
+                            if count > max_bytes:
+                                raise DownloadError("too_large", "视频超过指定的下载大小上限")
+                            dest.write(chunk)
+                            digest.update(chunk)
+                    if not count or expected is not None and count != expected:
+                        raise DownloadError("invalid_video", "视频下载为空或未完成")
+                probe = inspect_mp4(temp_path)
+                width, height, duration = probe["width"], probe["height"], probe["duration_seconds"]
+                if not width or not height or not duration or duration <= 0:
+                    raise DownloadError("quality_unverified", "候选视频的分辨率或时长不可核实")
+                bitrate = count * 8 / duration
+                checked.append({"candidate_index":index,"width":width,"height":height,"bytes":count,
+                                "duration_seconds":duration,"average_bitrate":round(bitrate),"status":"verified"})
+                if min(width,height) < min_short_side:
+                    checked[-1]["status"] = "below_minimum_resolution"
+                    last_error = DownloadError("quality_too_low", "所有可用候选源均未达到指定的最小短边，未交付低清替代品")
+                    continue
+                score = (width*height,bitrate)
+                if best is None or score > best[0]:
+                    if best is not None:
+                        best[1].unlink(missing_ok=True)
+                    best = (score,temp_path,probe,count,digest.hexdigest(),index)
+                else:
+                    temp_path.unlink(missing_ok=True)
+            except DownloadError as exc:
+                if exc.code not in {"invalid_video", "http_error", "network_error", "quality_unverified"}:
+                    raise
+                last_error = exc
+                checked.append({"candidate_index":index,"status":"failed","code":exc.code})
+            except HTTPException:
+                last_error = DownloadError("network_error", "视频响应读取中断，未保存不完整视频")
+                checked.append({"candidate_index":index,"status":"failed","code":last_error.code})
+            except (OSError, TimeoutError):
+                raise DownloadError("io_error", "下载读写失败，请检查网络、磁盘空间和目录权限") from None
+            finally:
+                if temp_path is not None and (best is None or temp_path != best[1]):
+                    temp_path.unlink(missing_ok=True)
+        if best is None:
+            raise last_error or DownloadError("download_failed", "没有可用的视频下载地址")
+        _, best_path, probe, count, checksum, selected = best
+        publish_new(best_path,target)
+        warnings = ["只比较已检查的候选源；分辨率和码率不等于原画证明，也不能验证视频内容属于目标页面。"]
+        if min(probe["width"],probe["height"]) < 1080:
+            warnings.append("选中源低于 1080 短边；高质量去字幕前应确认是否还有更清晰的授权来源。")
+        if len(info["download_urls"]) > max_candidates:
+            warnings.append("候选数达到本次检查上限，仍有线路未核实；可显式提高 max_candidates，最多 8。")
+        return {"status":"downloaded", **{key:value for key,value in info.items() if key not in {"download_urls","candidates"}},
+                "file_path":str(target),"bytes":count,"sha256":checksum,**probe,
+                "quality":{"selection":"highest_verified_resolution_then_bitrate", "selected_candidate_index":selected,
+                           "checked_candidates":checked,"min_short_side":min_short_side,
+                           "all_candidates_checked":len(checked)==len(info["download_urls"])},"warnings":warnings}
+    finally:
+        for path in temporary:
+            path.unlink(missing_ok=True)
 
 
 def positive_float(value: str) -> float:
@@ -490,25 +567,36 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("share_text", nargs="?", help="a Douyin link or complete share text")
     parser.add_argument("--input-file", type=Path, help="read share text from a UTF-8 file instead")
+    parser.add_argument("--candidates-file", type=Path, help="JSON with page_url and candidates observed in an authorized browser")
     parser.add_argument("--output-dir", type=Path, default=Path("downloads"))
     parser.add_argument("--resolve-only", action="store_true")
     parser.add_argument("--timeout", type=positive_float, default=30)
     parser.add_argument("--max-mb", type=positive_float, default=1024)
+    parser.add_argument("--min-short-side", type=int, default=0, help="reject lower-resolution sources, e.g. 1080")
+    parser.add_argument("--max-candidates", type=int, default=3, help="compare at most 1..8 candidate downloads")
     args = parser.parse_args(argv)
-    if (args.share_text is None) == (args.input_file is None):
-        parser.error("provide share_text OR --input-file, not both")
+    if sum(value is not None for value in (args.share_text,args.input_file,args.candidates_file)) != 1:
+        parser.error("provide exactly one of share_text, --input-file or --candidates-file")
     if args.timeout > 3600 or args.max_mb > 1024 * 1024 or args.max_mb * 1024 * 1024 < 1:
         parser.error("timeout must be at most 3600 seconds; max-mb must describe 1 byte to 1 TiB")
     try:
-        text = args.share_text if args.share_text is not None else args.input_file.read_text(encoding="utf-8-sig")
         client = PublicHTTP(args.timeout)
-        info = resolve_share(text, client)
+        if args.candidates_file is not None:
+            data = json.loads(args.candidates_file.read_text(encoding="utf-8-sig"))
+            if not isinstance(data,dict) or not isinstance(data.get("candidates"),list):
+                raise DownloadError("invalid_candidates", "候选 JSON 必须包含 page_url 和 candidates 数组")
+            info = observed_info(data.get("page_url", ""),data["candidates"])
+        else:
+            text = args.share_text if args.share_text is not None else args.input_file.read_text(encoding="utf-8-sig")
+            info = resolve_share(text, client)
         result = ({"status": "resolved", **info} if args.resolve_only else
-                  download_info(info, args.output_dir, client, int(args.max_mb * 1024 * 1024)))
+                  download_info(info, args.output_dir, client, int(args.max_mb * 1024 * 1024),args.min_short_side,args.max_candidates))
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except DownloadError as exc:
         result = {"status": "error", "code": exc.code, "message": exc.message}
+    except (ValueError, TypeError):
+        result = {"status": "error", "code": "invalid_candidates", "message": "候选 JSON 或参数类型无效"}
     except (OSError, UnicodeError):
         result = {"status": "error", "code": "io_error", "message": "无法读写输入或输出文件，请检查编码和目录权限"}
     except KeyboardInterrupt:

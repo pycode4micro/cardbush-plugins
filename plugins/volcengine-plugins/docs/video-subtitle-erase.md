@@ -116,6 +116,25 @@ Windows 当前用户环境变量的读取与原插件一致，进程变量（包
 
 ## 验证与官方依据
 
+### 0.6.0 本地计划、对照检查与发布版
+
+以下四个工具只处理明确指定的本地文件，不产生 MediaKit 费用：
+
+| 工具 | 输入 / 用途 |
+| --- | --- |
+| `video_media_preflight` | `file_paths`：核对解码、尺寸、帧率、时长、字节数、码率和 SHA-256，返回当前 Python/依赖环境；多个同内容源按实测分辨率和码率排序。 |
+| `video_subtitle_erase_plan` | `source_path`、`regions`：把实际观察到的像素框（left/top/right/bottom）和 start_time/end_time 转成分段参数，默认补 4 像素边界。不会自动定位文字或提交任务。 |
+| `video_subtitle_erase_qc` | `source_path`、`result_path`、全新 `output_dir`；默认 16 帧，可传 1..60 个 `samples`，每项有 `time`、`erase_regions`、`protected_regions`（归一化矩形）。输出对照图、差异图、原像素局部图、音轨哈希、纹理变化指标和 JSON 报告。 |
+| `video_export_publish` | `source_path`、不存在的 `.mp4` `dest`；默认 CRF18/slow，H.264 有损压缩，复制原音轨，不覆盖母版；核对尺寸、帧率、时长和音轨。 |
+
+预览新增 `scope`：没有空间框或时间过滤时明确提示实际范围，不改写用户请求。未知字幕位置不宜猜框；优先从源帧观察字幕换行、首尾和镜头变化。框中包含描边和阴影，过紧可能漏擦。
+
+质量检查中的 `erase_regions` 会从背景纹理指标中排除字形消失的干扰。`protected_regions` 适合查看框外或原本未被文字覆盖的纹理。修补区仍须看原像素裁剪和连续播放：像素差异、边缘能量不是 OCR，也不能恢复字幕遮住的真实细节。报告固定 `automatic_quality_pass=false`，不可把音轨一致当作整体画质通过。
+
+环境依赖由 `python -m pip install .` 安装：NumPy、Pillow、imageio-ffmpeg（含 FFmpeg）。不要求额外的 imageio 或独立 ffprobe；元数据时长精度为 0.01 秒，工具明确标注；如需更精确的封装时间戳，应使用专业媒体探测工具。可用 `IMAGEIO_FFMPEG_EXE` 指定已有的 FFmpeg。诊断始终返回实际运行解释器，避免检查另一个 Python 环境。所有本地解码限制为 file/pipe 协议，不从播放列表隐式访问网络。
+
+分发包包含 [subtitle-erasure Skill](../skills/subtitle-erasure/SKILL.md)，用于从取源到交付的流程。保留 Quality 母版，发布版只在需要时另存；压缩不会修好既有修补糊块。没有真实付费复跑的素材，不声称缩小范围后的画质已经验证。
+
 离线测试覆盖请求映射、默认值、区域/时间段规则、敏感字段脱敏、付费请求不重试、独立鉴权、异步状态、原样下载及 MCP stdio。
 模拟 HTTP 测试不代表真实付费接口或特定素材修复质量已经验证。
 

@@ -117,13 +117,22 @@ def subtitle_erase_preview(request: SubtitleEraseRequest) -> dict:
         "Remote duration, resolution, account access and repair quality are validated by the provider; no local probe, upload or paid request occurs in preview.",
         "No translation, dubbing, trimming, muting, frame-rate change or enhancement is requested. Repair is not guaranteed pixel-identical or artifact-free.",
     ]
+    spatially_scoped = bool(request.erase_ratio_location) or bool(request.time_segment_filter and
+        all(segment.erase_ratio_location for segment in request.time_segment_filter.segments))
+    if not spatially_scoped:
+        warnings.append("No complete rectangle scope: inspect source frames and consider tight observed subtitle rectangles including outlines/shadows. Unspecified segments use the provider's default detection area.")
+    if request.time_segment_filter is None:
+        warnings.append("No time scope: the full video is submitted for erasure and billing. Use observed subtitle intervals when only part needs processing.")
+    warnings.append("Before delivery, compare source/result texture, edges and temporal flicker as well as remaining subtitles/audio. Use video_subtitle_erase_qc for evidence; it never gives an automatic visual-quality pass. Keep the master and use video_export_publish for a separate smaller copy.")
     if request.mode == "Subtitle":
         warnings.append("Subtitle mode applies only to the lower 50% of the frame, intersected with any supplied rectangles. Rectangles do not override this restriction.")
     else:
         warnings.append("Text mode may erase other overlaid text, including names and titles. Use only with explicit authorization; scope rectangles to the intended captions.")
     if request.time_segment_filter is not None:
         warnings.append("Time filters control erasure only; they do not shorten the output video. The provider validates times against source duration.")
-    return {"endpoint": endpoint, "body": body, "warnings": warnings, "paid_request_sent": False}
+    return {"endpoint": endpoint, "body": body, "warnings": warnings, "paid_request_sent": False,
+            "scope": {"rectangles_for_all_processed_segments": spatially_scoped,
+                      "time_filter_supplied": request.time_segment_filter is not None}}
 
 
 def subtitle_erase_capabilities() -> dict:

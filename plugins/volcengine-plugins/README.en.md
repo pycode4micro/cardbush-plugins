@@ -1,5 +1,9 @@
 # volcengine-plugins
 
+## 0.6.0: source verification, scoped plans and visual QC
+
+Adds `video_media_preflight`, `video_subtitle_erase_plan`, `video_subtitle_erase_qc` and `video_export_publish`, for 25 MCP tools. The bundled subtitle-erasure Skill covers verified sources, observed rectangles/times, texture/audio comparison evidence and a separate publishing copy. NumPy, Pillow and imageio-ffmpeg are declared dependencies; imageio is not required. Metrics flag review candidates and never certify visual quality.
+
 ## 0.5.0: standalone fine subtitle erasure and plugin rename
 
 Renamed from `seedream-mcp` to `volcengine-plugins`. Six new erasure tools bring the MCP total to 21.

@@ -11,6 +11,10 @@ SKILL = "skills/douyin-video-download/"
 FILES = (
     ".codex-plugin/plugin.json",
     "README.md",
+    ".mcp.json",
+    "server.py",
+    "requirements.txt",
+    "scripts/test_mcp.py",
     "scripts/build_release.py",
     SKILL + "SKILL.md",
     SKILL + "agents/openai.yaml",

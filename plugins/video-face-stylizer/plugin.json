@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "video-face-stylizer",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "本地视频整头/脸部石膏处理，可调检测、局部放大、时序补漏，自动准备锁定依赖。",
   "author": {
     "name": "Local developer"

@@ -128,7 +128,8 @@ def test_no_face_still_runs_opaque_head_coverage():
     pipeline.last_box=None;pipeline.detected=0;pipeline.frames_seen=0;pipeline.person_detector=None
     pipeline.temporal=TemporalCoverage(.2);pipeline.review_intervals=[]
     pipeline.timings={'segmentation':0.,'tracking':0.,'render_composite':0.}
-    pipeline.coverage_counts={'covered_frames':0,'uncovered_frames':0,'segmentation_fallback_frames':0}
+    pipeline.coverage_counts={'covered_frames':0,'uncovered_frames':0,'segmentation_fallback_frames':0,
+                             'no_mask_frames':0,'fallback_only_frames':0}
     probability=np.zeros((80,100),np.float32);probability[10:45,30:65]=1
     pipeline._head_probability=lambda rgb:probability
     pipeline._detect=lambda *args:None
@@ -137,7 +138,41 @@ def test_no_face_still_runs_opaque_head_coverage():
     assert meta['landmarks'] is None and meta['covered']
     assert result[25,50].min()>140 and result[70,90].max()==20
     assert pipeline.coverage_counts['segmentation_fallback_frames']==1
+    assert pipeline.coverage_counts['fallback_only_frames']==1
+    assert pipeline.coverage_counts['no_mask_frames']==0
     assert pipeline.review_intervals[0]['reason']=='segmentation_only'
+
+
+@pytest.mark.parametrize('source', ['none', 'segmentation', 'manual', 'flow', 'manual_and_segmentation', 'mesh', 'face_miss'])
+def test_final_mask_statistics_distinguish_fallback_from_no_mask(source):
+    pipeline=object.__new__(FacePipeline)
+    manual=source in {'manual','manual_and_segmentation'}
+    pipeline.w=100;pipeline.h=80
+    pipeline.options=ProcessingOptions(person_filter=False,tiled_detection=False,tiled_segmentation=False,
+        coverage='face' if source=='face_miss' else 'head',head_regions=[region()] if manual else [])
+    pipeline.last_box=None;pipeline.detected=0;pipeline.person_detector=None
+    pipeline.review_intervals=[];pipeline.timings={'segmentation':0.,'tracking':0.,'render_composite':0.}
+    pipeline.coverage_counts=dict.fromkeys(['covered_frames','uncovered_frames','segmentation_fallback_frames',
+        'temporal_fallback_frames','manual_mask_frames','no_mask_frames','fallback_only_frames'],0)
+    probability=np.zeros((80,100),np.float32)
+    if source in {'segmentation','manual_and_segmentation'}:probability[10:45,30:65]=1
+    pipeline._head_probability=lambda rgb:cv2.resize(probability,(rgb.shape[1],rgb.shape[0]))
+    pipeline._detect=lambda *args:np.array([[.3,.2,0],[.6,.5,0]],np.float32) if source=='mesh' else None
+    pipeline.renderer=SimpleNamespace(render=lambda lm:np.zeros((80,100,4),np.uint8))
+    pipeline.temporal=SimpleNamespace(apply=lambda frame,observed,timestamp:
+        (ellipse_mask(frame.shape,(.3,.2,.6,.5)),True,False) if source=='flow' else (observed,False,False))
+    frame=np.full((80,100,3),20,np.uint8)
+    result,_=pipeline.process(frame,0,8.5)
+    counts=pipeline.coverage_counts
+    covered=source not in {'none','face_miss'}
+    assert bool(np.any(result!=frame))==covered
+    assert counts['no_mask_frames']==counts['uncovered_frames']==int(not covered)
+    assert counts['covered_frames']==int(covered)
+    assert counts['fallback_only_frames']==int(covered and source!='mesh')
+    assert counts['covered_frames']+counts['no_mask_frames']==1
+    if source=='manual_and_segmentation':
+        assert counts['manual_mask_frames']==counts['segmentation_fallback_frames']==1
+        assert counts['fallback_only_frames']==1  # Both mechanisms still cover one frame.
 
 
 @pytest.mark.parametrize('channel_axis',[False,True])

@@ -1,4 +1,6 @@
-# 视频生成去真人化处理 0.2.2
+# 视频生成去真人化处理 0.2.3
+
+0.2.3 增加交付前逐镜头抽查、帽子/侧背头部的人工区域补漏指引，以及带归一化网格和实际椭圆轮廓的取坐标脚本。覆盖统计新增 `no_mask_frames` 和 `fallback_only_frames`，区分无掩膜与无网格但已有回退遮挡的帧；保留旧字段含义和检测默认值。
 
 0.2.2 修复 Windows 后台启动仍弹出终端窗口的问题。启动、依赖检查、CPU/GPU 工作进程及 FFmpeg 都按无窗口方式运行；MCP 消息保持原始字节传递，关闭连接时正确传递输入结束。使用原有依赖，无需补装新包。
 
@@ -99,15 +101,24 @@
 }
 ```
 
-将这个字段放入渲染工具的 request。框内会按椭圆填充白模，请让框包住整个头部，快速移动或明显变形时增加关键帧。该机制无需人脸检测成功，但位置是否合适仍需查看画面。
+将这个字段放入渲染工具的 request。框内会按椭圆填充白模，矩形四角不在填充范围内；需要检查整个头部和帽檐都落在椭圆内，快速移动或明显变形时增加关键帧。mask_padding 只影响自动分割，不扩大人工椭圆。该机制无需人脸检测成功，但位置是否合适仍需查看画面。
+
+### 帽子、侧背与交付前抽查
+
+`segmentation_requires_hair=true` 限制的是分割候选，人脸网格和人工区域不要求头发；帽子、头巾、光头或侧背镜头可能只盖住部分头部。此时优先按镜头用 head_regions 补跑，不把关闭 person_filter 当作关闭头发筛选，也不因覆盖数字好看而扩大到整个人物框。
+
+成功后先查看每镜头首/中/末、转场两侧和 review_intervals，检查帽檐、发型、耳朵残留及宠物、商品、手部的误遮挡。修复后再次抽查，再交付或送入下游。使用插件 Python 执行 `skills/video-face-stylizer/scripts/head_region_grid.py` 可抽帧、标注 5% 网格，并用 `--box` 预览与渲染一致的椭圆轮廓；命令与 QC 流程见 [补漏与抽查](skills/video-face-stylizer/references/head-region-repair.md)。
 
 ## 如何判断结果
 
 - `faces_detected_frames` / `missed_frames` 仅统计三维人脸网格，漏网格不代表没有头部遮挡。
 - `coverage.covered_frames` / `uncovered_frames` 表示该帧是否存在至少一个遮挡区域，**不是“全部人物都遮好了”的证明**。
+- `coverage.no_mask_frames` 与 uncovered_frames 含义相同，包括空镜，不能直接叫“真人漏遮帧”；`coverage.fallback_only_frames` 统计无人脸网格但最终已有遮挡的帧（分割、光流、人工区域），同一帧只计一次。它是 covered_frames 的子集，不与 covered_frames 相加。
 - coverage 还包括 full_frame_faces、crop_faces、segmentation_crop_frames、segmentation_fallback_frames、temporal_fallback_frames、manual_mask_frames；不同方式可能重叠，不能简单相加。
 - person_frames / no_person_frames 单独记录人物检测情况。未开启 person_filter 时这两个计数为 0，不能据此判断人物是否出现。
 - `review_intervals` 为源视频上的左闭右开时间段：person_not_detected 表示人物检测未通过，no_head_mask / no_face_mask 表示没有头部/脸部遮挡，segmentation_only 表示只有分割补漏，optical_flow 表示沿用跟踪遮挡。无人物的空镜和头部出画镜头也会被列为未遮挡，应结合画面判断。
+
+不返回推测性的 hair_unsupported_frames 或 mask_partial：头发筛选拒绝的区域也可能是手臂，面积变小也可能是转身或出画，不能据此判定真实漏遮。用现有复查区间和源/输出画面定位，统计只报告实际执行事实。
 
 非常小的头部、严重遮挡、快速移动、侧背镜头仍可能漏检或误分割。默认分割筛选适合站立、坐姿人物；光头、横躺等特殊画面可调整相应筛选项或用 head_regions 补漏。自动结果必须抽查。当前每帧最多渲染一张三维脸，头部分割可覆盖其他检出的头部；不保证多人完整覆盖。建议固定帧率素材；可变帧率素材应先转固定帧率。
 

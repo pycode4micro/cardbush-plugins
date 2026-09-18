@@ -123,6 +123,7 @@ def work(directory:Path):
                job_wall_seconds=time.time()-state['created_at'],
                notes=['Head mode covers hair and face; face mode retains hair. Source video is unchanged.',
                       'Review coverage and review_intervals. missed_frames counts frames without a face mesh, including successful head fallback.',
+                      'coverage.no_mask_frames counts frames with no mask (including empty shots); fallback_only_frames counts masked frames without a face mesh, once per frame.',
                       'A frame with a mask is not proof that every head is covered; no guarantee about downstream video generation.'])
     except Exception as exc:
         if proc is not None and proc.poll() is None:terminate_owned_process(proc)

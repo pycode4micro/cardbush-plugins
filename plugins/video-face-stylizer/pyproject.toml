@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "video-face-stylizer-local"
-version = "0.2.2"
+version = "0.2.3"
 description = "Local CPU and GPU video face plaster rendering tools for Codex"
 requires-python = ">=3.12,<3.13"
 dependencies = [

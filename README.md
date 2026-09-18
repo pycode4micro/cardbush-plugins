@@ -22,11 +22,11 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 
 | 插件 | 包内基础版本 | 功能 | 安装说明 |
 | --- | --- | --- | --- |
-| `seedream-mcp` | 0.4.0 | Seedream 图片、Seedance 视频、MediaKit 超分与参考视频 Skill | [生成服务配置](plugins/seedream-mcp/README.md) |
+| `seedream-mcp` | 0.4.1 | Seedream 图片、Seedance 视频、MediaKit 超分与参考视频 Skill | [生成服务配置](plugins/seedream-mcp/README.md) |
 | `tencent-cos-upload` | 0.2.0 | COS 上传、下载及经确认的单对象删除或重命名 | [COS 配置](plugins/tencent-cos-upload/README.md) |
 | `qianchuan` | 1.0.0 | 自带运行代码的千川素材、报表及受控投放工具 | [千川配置](plugins/qianchuan/README.md) |
 | `video-editer`（video_editer） | 0.2.0 | 74 项无模型剪辑工具：长视频证据浏览、Agent 索引与候选、时间线、花字、转场及渲染 | [剪辑插件配置](plugins/video-editer/README.md) |
-| `video-face-stylizer` | 0.2.2 | 本地整头/脸部白模处理、小脸补漏与 CPU/GPU 渲染，Windows 后台启动不弹终端 | [去真人化处理配置](plugins/video-face-stylizer/README.md) |
+| `video-face-stylizer` | 0.2.3 | 本地整头/脸部白模处理、帽子与侧背补漏、网格取坐标及覆盖统计 | [去真人化处理配置](plugins/video-face-stylizer/README.md) |
 | `minimax-music` | 1.0.0 | 主题曲、纯音乐 BGM、歌词创作与改写、参考翻唱；11 项工具、动画配乐技能和 Music 3 自部署连接 | [音乐插件配置](plugins/minimax-music/README.md) |
 | `feishu-bot` | 1.0.0 | 独立飞书机器人、电子表格、多维表格及账号分表；默认只读，环境变量和启动参数控制修改能力 | [飞书插件配置](plugins/feishu-bot/README.md) |
 | `douyin-video-download` | 0.1.0 | 抖音分享链接下载单条公开视频；独立 Skill 与标准库脚本，不启动 MCP 服务 | [抖音下载使用说明](plugins/douyin-video-download/README.md) |
@@ -99,7 +99,7 @@ FFmpeg 需支持 libx264/libass；已声明的 `imageio-ffmpeg` 提供二进制�
 
 源码包含四个模型/网格资产及来源、许可和 SHA256，依赖包含 FFmpeg 编码器。CPU 模式无需独显；GPU 模式需要支持 OpenGL 3.3 的驱动。0.2.2 修复 Python、FFmpeg 和依赖检查弹出终端窗口的问题，并保留原始 MCP 字节流。安装后也可在插件目录运行 `setup.cmd` 预先准备环境。
 
-自动处理仍需抽查漏检时间段，白模效果不保证可靠身份匿名化。功能、参数及 65 项测试与实际处理验证记录见[插件说明](plugins/video-face-stylizer/README.md)和[验证记录](plugins/video-face-stylizer/VALIDATION.md)。
+自动处理仍需抽查漏检时间段，白模效果不保证可靠身份匿名化。0.2.3 增加椭圆取坐标预览与无掩膜/回退覆盖计数。功能、参数及 83 项测试与实际处理验证记录见[插件说明](plugins/video-face-stylizer/README.md)和[验证记录](plugins/video-face-stylizer/VALIDATION.md)。
 
 ### MiniMax 音乐创作
 

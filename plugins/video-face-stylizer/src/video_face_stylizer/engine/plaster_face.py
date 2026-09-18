@@ -203,7 +203,8 @@ class FacePipeline:
         self.renderer=(CPUPlasterRenderer if renderer=='cpu' else PlasterRenderer)(w,h,model_dir)
         self.detected=0
         self.coverage_counts={'person_frames':0,'no_person_frames':0,'full_frame_faces':0,'crop_faces':0,'segmentation_crop_frames':0,'segmentation_fallback_frames':0,
-                              'temporal_fallback_frames':0,'manual_mask_frames':0,'covered_frames':0,'uncovered_frames':0}
+                              'temporal_fallback_frames':0,'manual_mask_frames':0,'covered_frames':0,'uncovered_frames':0,
+                              'no_mask_frames':0,'fallback_only_frames':0}
         self.review_intervals=[]
         self.timings={'tracking':0.,'segmentation':0.,'render_composite':0.}
 
@@ -281,6 +282,14 @@ class FacePipeline:
             self.review_intervals[-1].update(end_seconds=source_seconds,last_frame=self.frames_seen)
         else:self.review_intervals.append({'start_seconds':source_seconds,'end_seconds':source_seconds,'last_frame':self.frames_seen,'reason':reason})
 
+    def _record_coverage(self,covered,has_face):
+        self.coverage_counts['covered_frames' if covered else 'uncovered_frames']+=1
+        # Count final masks, not candidate detections. Empty shots can also have no mask.
+        if not covered:
+            self.coverage_counts['no_mask_frames']+=1
+        elif not has_face:
+            self.coverage_counts['fallback_only_frames']+=1
+
     def _head(self,frame,rgb,lm,timestamp_ms,source_seconds,probability,allowed):
         t=time.perf_counter()
         geometry=np.zeros((self.h,self.w),np.uint8)
@@ -308,7 +317,7 @@ class FacePipeline:
         if bridged:self.coverage_counts['temporal_fallback_frames']+=1
         elif lm is None and np.any(observed):self.coverage_counts['segmentation_fallback_frames']+=1
         covered=bool(np.any(mask))
-        self.coverage_counts['covered_frames' if covered else 'uncovered_frames']+=1
+        self._record_coverage(covered,lm is not None)
         reason=('person_not_detected' if self.options.person_filter and not np.any(allowed) else 'no_head_mask') if not covered else 'optical_flow' if bridged else 'segmentation_only' if lm is None and not np.any(manual) else None
         if reason:self._review(reason,source_seconds)
         out=plaster_fill(frame,mask)
@@ -354,10 +363,10 @@ class FacePipeline:
         if self.options.coverage=='head':
             return self._head(frame,rgb,lm,timestamp_ms,source_seconds if source_seconds is not None else timestamp_ms/1000,probability,allowed)
         if lm is None:
-            self.coverage_counts['uncovered_frames']+=1
+            self._record_coverage(False,False)
             self._review('no_face_mask',source_seconds if source_seconds is not None else timestamp_ms/1000)
             return frame,None
-        self.coverage_counts['covered_frames']+=1
+        self._record_coverage(True,True)
         points=lm[:468,:2]*[self.w,self.h]
         xmin,ymin=points.min(axis=0); xmax,ymax=points.max(axis=0)
         fw,fh=xmax-xmin,ymax-ymin

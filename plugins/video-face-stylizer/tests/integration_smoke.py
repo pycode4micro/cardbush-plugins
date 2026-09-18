@@ -58,6 +58,9 @@ async def main(root,plugin=None):
                     assert status['benchmark']['frames_processed']==10
                     assert status['coverage']['manual_mask_frames']==5,status['coverage']
                     assert status['coverage']['uncovered_frames']==5,status['coverage']
+                    assert status['coverage']['no_mask_frames']==5,status['coverage']
+                    assert status['coverage']['fallback_only_frames']==5,status['coverage']
+                    assert status['benchmark']['missed_frames']==10,status['benchmark']
                     assert status['review_intervals']==[
                         {'start_seconds':.5,'end_seconds':.7,'reason':'person_not_detected'},
                         {'start_seconds':1.2,'end_seconds':1.5,'reason':'person_not_detected'}],status['review_intervals']

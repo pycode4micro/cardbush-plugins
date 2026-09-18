@@ -1,5 +1,9 @@
 # Seedream + Seedance + 视频超分 MCP
 
+## 0.4.1：参考文字检查
+
+参考视频 Skill 增加上传前的小字、字幕、水印和署名检查，按任务要求保留或清理，并提供按当前切片坐标执行的 delogo 模板及复核要求。本次不改变生成接口。
+
 ## 0.4.0：任务管理与可靠下载
 
 新增 `seedance_list_tasks`、`seedance_get_tasks` 和 `seedance_download_task(task_id, dest)`，支持服务端分页、批量状态与完整签名 URL 直接落盘。创建任务自动执行免费预检；本地拒绝明确未发出付费请求，已发出请求但没有账单证据时不猜扣费/退款。进度与 ETA 缺失时返回空值。

@@ -820,7 +820,7 @@ wheels = [
 
 [[package]]
 name = "video-face-stylizer-local"
-version = "0.2.2"
+version = "0.2.3"
 source = { editable = "." }
 dependencies = [
     { name = "imageio-ffmpeg" },

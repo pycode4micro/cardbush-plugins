@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import threading
+import time
 from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -8,6 +11,25 @@ from decimal import Decimal
 from typing import Any
 
 import httpx
+
+# Shared across client instances in this MCP process. Never retain access tokens.
+_read_rate_lock = threading.Lock()
+_read_last: dict[tuple[str, str], float] = {}
+
+
+def _pace_read(token: str, path: str) -> None:
+    key = (hashlib.sha256(token.encode()).hexdigest(), path)
+    with _read_rate_lock:
+        now = time.monotonic()
+        delay = 0.65 - (now - _read_last.get(key, 0))
+        if delay > 0:
+            time.sleep(delay)
+        _read_last[key] = time.monotonic()
+        if len(_read_last) > 1024:
+            cutoff = time.monotonic() - 60
+            for old in list(_read_last):
+                if _read_last[old] < cutoff:
+                    del _read_last[old]
 
 
 @dataclass(frozen=True)
@@ -40,7 +62,16 @@ class QianchuanClient:
         self.config = config
 
     def get(self, path: str, *, access_token: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        return self._request("GET", path, access_token=access_token, params=params)
+        for attempt in range(3):
+            _pace_read(access_token, path)
+            try:
+                return self._request("GET", path, access_token=access_token, params=params)
+            except QianchuanApiError as exc:
+                retryable = str(exc.code) in {"40110", "50000"} or exc.status_code in {429, 502, 503, 504}
+                if not retryable or attempt == 2:
+                    raise
+                time.sleep(1.0 * (2 ** attempt))
+        raise AssertionError("unreachable")
 
     def post(
         self,

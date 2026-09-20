@@ -406,6 +406,65 @@ def qianchuan_request_delivery_stop(ctx: McpContext, ad_ids: list[int], confirm:
     return {"status": "stop_requested", "verified_paused": False, "next_tool": "qianchuan_delivery_deadline_status"}
 
 
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+def qianchuan_report_routing_guide() -> dict[str, Any]:
+    """报表选路说明：账户消耗、商品全域、直播全域、历史标准、审核建议各用什么。
+
+    不发网络请求。先读本工具，禁止把19个主题轮询后相加或用空标准报表断言零消耗。
+    """
+    from app.spend_report import guide
+    return guide()
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True))
+def qianchuan_start_spend_report(ctx: McpContext, start_date: str, end_date: str,
+                               advertiser_ids: list[str] | None = None, marketing_goal: str = "ALL") -> dict[str, Any]:
+    """查询指定日期PC千川消耗的首选入口；启动只读后台查询，立即返回job_id。
+
+    日期YYYY-MM-DD，北京时间；最多31天。省略advertiser_ids查询当前网关token所有
+    active QIANCHUAN账户与本地白名单的交集。显式账户也必须在此范围，不能传店铺ID。
+    固定all_promotion/get、stat_cost_for_roi2(元)，全域+乘方各一次；不扫描19个主题。
+    marketing_goal=ALL是直播+商品合计；VIDEO_PROM_GOODS不等于纯商品卡流量。
+    不含随心推、历史标准投放。用qianchuan_get_spend_report_result轮询，只有complete=true
+    才能报完整总额；partial/running中的known_cost_yuan只是已知小计。任务仅进程内保留。
+    不写广告、不启动投放；认证可能刷新token。不要重复启动同一运行中任务。
+    """
+    from app.spend_report import start_report, validate_dates
+    validate_dates(start_date, end_date)
+    settings = _settings(ctx)
+    if not (settings.oauth_gateway_base_url and settings.oauth_gateway_hmac_secret):
+        return {"status": "blocked", "reason": "resolved_gateway_accounts_required"}
+    payload = OAuthGatewayClient(settings).get_access_token_response()
+    rows = payload.get("advertisers")
+    if not payload.get("access_token") or not isinstance(rows, list):
+        raise ToolError("Gateway missing access token or resolved advertisers")
+    allowed = set(settings.qianchuan_allowed_advertiser_ids)
+    accounts = {str(a["advertiser_id"]): {"advertiser_id": str(a["advertiser_id"]),
+                "advertiser_name": a.get("advertiser_name")} for a in rows
+                if a.get("status") == "active" and a.get("account_role") == "QIANCHUAN"
+                and (str(a.get("advertiser_id")) in allowed or
+                     (not allowed and settings.qianchuan_allow_all_authorized_advertisers))}
+    if advertiser_ids is not None:
+        if not advertiser_ids or not set(advertiser_ids) <= accounts.keys():
+            raise ToolError("Requested accounts are empty or outside resolved authorization/local allowlist")
+        accounts = {a: accounts[a] for a in dict.fromkeys(advertiser_ids)}
+    client = QianchuanClient(QianchuanConfig(api_base_url=settings.qianchuan_api_base_url,
+        timeout_seconds=settings.qianchuan_request_timeout_seconds,
+        allowed_advertiser_ids=frozenset(accounts), trust_env=settings.outbound_http_trust_env))
+    return start_report(client, payload["access_token"], list(accounts.values()), start_date, end_date, marketing_goal)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+def qianchuan_get_spend_report_result(job_id: str) -> dict[str, Any]:
+    """获取消耗查询进度/结果，无网络请求。不把known_cost_yuan当完整总额。
+
+    complete=true才使用total_cost_yuan；逐账户parts保留场景、错误码、request_id。
+    failed/missing指标不是0；任务过期或服务重启返回not_found，可重新发起只读查询。
+    """
+    from app.spend_report import result
+    return result(job_id)
+
+
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
 def qianchuan_connection_status(ctx: McpContext) -> dict[str, Any]:
     """Check live OAuth connection without exposing credentials or changing account policies."""
@@ -686,7 +745,7 @@ def qianchuan_get_account_report(
 ) -> dict[str, Any]:
     """Get account-level reports for classic Qianchuan campaigns only.
 
-    Full-domain (uni-promotion) campaigns use qianchuan_get_uni_promotion_report;
+    Full-domain account spend uses qianchuan_start_spend_report; breakdowns use qianchuan_get_uni_promotion_report;
     this endpoint does not cover their spend. An empty result is not zero spend.
     Distinguish no data for the requested dates, no active ads, and a reporting
     scope mismatch (campaign type, marketing_goal, filters or dimensions) using
@@ -851,7 +910,12 @@ def qianchuan_get_uni_promotion_report(
     end_time: str | None = None,
     order_by: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Get current topic-based Qianchuan full-domain report data.
+    """高级全域细分报表，不是查询账户总消耗的首选工具。
+
+    总消耗请用qianchuan_start_spend_report。本工具用于单个主题的项目/商品/素材
+    细分；先调用配置接口选择主题对应指标。OVERALL_ROI_*的整体消耗通常是
+    stat_cost_for_roi2，不要盲填stat_cost。不同主题/维度不可相加，否则重复计数。
+    商品全域不等于纯商品卡流量。旧无data_topic路径兼容保留，不推荐新查询使用。
 
     For current APIs, first call qianchuan_get_uni_promotion_report_config, then pass
     data_topic, dimensions, metrics, filters, start_time, end_time, and order_by. The
@@ -976,7 +1040,11 @@ def qianchuan_get_uni_promotion_report_config(
     data_topics: list[str],
     data_period: str = "ALL_DATA",
 ) -> dict[str, Any]:
-    """Get official dimensions and metrics before querying full-domain report data.
+    """查询一个业务粒度的官方主题维度/指标配置，不查询实际消耗。
+
+    普通日期/账户总消耗直接用qianchuan_start_spend_report，不必扫描所有主题。
+    OVERALL_ROI_PRODUCT_*用于商品全域，OVERALL_ROI_LIVE_*用于直播全域；
+    SITE_PROMOTION_*也必须按返回配置确认指标和适用粒度，不混用指标，不跨主题求和。
 
     Useful topics for product full-domain diagnosis include SITE_PROMOTION_PRODUCT_AD,
     SITE_PROMOTION_PRODUCT_PRODUCT, and SITE_PROMOTION_PRODUCT_POST_DATA_VIDEO.

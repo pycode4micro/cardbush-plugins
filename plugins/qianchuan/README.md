@@ -31,6 +31,19 @@ uv run --frozen --script <此插件绝对路径>/scripts/launch.py
 
 ## 内置能力
 
+### 报表不要猜主题
+
+查询“昨天/指定日期所有账户消耗”优先调用 `qianchuan_start_spend_report`，
+再用 `qianchuan_get_spend_report_result` 获取结果。账户解析、全域/乘方口径、
+顺序查询、GET限流重试和完整性判断都由插件处理，不依赖Agent遵守某份Skill。
+`qianchuan_report_routing_guide` 可离线查询接口用途。
+详见 [报表选路与口径](docs/report-routing.md)。
+
+Windows启动支持 `QIANCHUAN_UV_PATH` 显式绝对路径、可选bin/uv.exe、进程PATH、
+用户/系统登记PATH和常见uv安装路径。不更改全局PATH、不复制其他项目的Python环境。
+找不到运行时返回ASCII诊断 `QIANCHUAN_RUNTIME_MISSING` 和退出码127；应停止自动重试。
+此版仍需uv，不宣称已是自包含二进制包。隐藏启动用UTF-8无BOM，防止MCP首帧损坏。
+
 千川官方API调用、OAuth客户端、授权选择、素材上传及绑定、投放操作、安全校验、审计、限时任务及后台暂停全部由插件代码执行，不依赖Agent读取Skill来启用保护。Skill及其任务相关参考文档用于选择业务口径和解释结果，不能以工具执行成功代替业务判断；关键适用范围与空结果说明同时写在工具描述中，策略建议仍可按需采用。
 
 配置有效时自动启动插件自己的独立到期保障进程。关闭Agent会话不会主动终止该进程，系统退出或电脑关机仍会中断；不自动安装开机自启。任务数据持久保存，插件下次启动继续恢复。动态ROI决策与外部通知仍不是本地自治算法。

@@ -5,6 +5,8 @@
 *.pem
 *.key
 credentials.json
+config.env
+.cardbush-marketplace.json
 oauth_selection.json
 
 # Python and build outputs

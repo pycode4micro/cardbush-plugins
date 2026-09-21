@@ -1,6 +1,6 @@
 # Cardbush Plugins
 
-通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit / 火山 v5.0 音乐、腾讯云 COS、千川、video_editer 剪辑、视频生成去真人化处理、MiniMax 音乐创作、飞书机器人，以及抖音视频下载插件。
+通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit / 火山 v5.0 音乐、腾讯云 COS、千川、video_editer 剪辑、视频生成去真人化处理、MiniMax 音乐创作、飞书机器人，抖音视频下载、Agent Chatroom 聊天室，以及 Logic Memory 经验学习与检索插件。
 
 目录和市场索引参照 [OpenAI 插件仓库](https://github.com/openai/plugins) 与 [OpenAI 插件打包文档](https://developers.openai.com/plugins/build/plugins)。这是独立维护的插件市场。
 
@@ -18,7 +18,7 @@ codex plugin marketplace add pycode4micro/cardbush-plugins --ref main
 codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.git --ref main
 ```
 
-重新打开 Codex 的插件页面，在市场来源中选择 **Cardbush Plugins**，即可浏览和安装这八个插件。若页面未刷新，重启客户端。
+重新打开 Codex 的插件页面，在市场来源中选择 **Cardbush Plugins**，即可浏览和安装这些插件。若页面未刷新，重启客户端。
 
 | 插件 | 包内基础版本 | 功能 | 安装说明 |
 | --- | --- | --- | --- |
@@ -30,6 +30,8 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 | `minimax-music` | 1.0.0 | 主题曲、纯音乐 BGM、歌词创作与改写、参考翻唱；11 项工具、动画配乐技能和 Music 3 自部署连接 | [音乐插件配置](plugins/minimax-music/README.md) |
 | `feishu-bot` | 1.0.0 | 独立飞书机器人、电子表格、多维表格及账号分表；默认只读，环境变量和启动参数控制修改能力 | [飞书插件配置](plugins/feishu-bot/README.md) |
 | `douyin-video-download` | 0.2.0 | 抖音分享链接下载单条公开视频；3 个 MCP 工具、独立 Skill/CLI、候选源比较及落盘校验 | [抖音下载使用说明](plugins/douyin-video-download/README.md) |
+| `agentchatroom` | 0.1.1 | 本地或远程聊天室、聊天码加入、人类网页邀请、消息查询与指定参与者等待 | [聊天室配置](plugins/agentchatroom/README.md) |
+| `logic-memory` | 0.1.0 | 独立可选的 learn / consult 经验工具、BM25 检索、幂等反馈与旧数据导入 | [经验插件配置](plugins/logic-memory/README.md) |
 
 市场添加成功后，也可按需用 CLI 安装：
 
@@ -42,6 +44,8 @@ codex plugin add video-face-stylizer@cardbush-plugins
 codex plugin add minimax-music@cardbush-plugins
 codex plugin add feishu-bot@cardbush-plugins
 codex plugin add douyin-video-download@cardbush-plugins
+codex plugin add agentchatroom@cardbush-plugins
+codex plugin add logic-memory@cardbush-plugins
 ```
 
 安装或更新后，新建 Codex 任务以载入新的技能和工具。若已有 `@personal` 下的同名插件，请在插件管理页面选用一个来源，避免重复启用同一插件。
@@ -129,6 +133,12 @@ FFmpeg 需支持 libx264/libass；已声明的 `imageio-ffmpeg` 提供二进制�
 安装后直接向助手提供分享链接及保存目录。插件只取目标视频 ID 对应的播放地址，按服务端返回字节保存，不覆盖现有文件，不转码、不去音，也不改写水印参数。登录、验证码、访问限制或网页结构变化可能导致下载失败，不会自动读取浏览器会话或调用第三方解析站兜底。
 
 已通过 64 项离线测试及 3 个工具的 MCP stdio 启动验证；JS 页面可输入浏览器实际观察到的候选地址，下载后按分辨率/码率比较。真实分享链接成功率仍受页面与访问权限影响。完整参数、限制和中英文说明见[抖音下载使用说明](plugins/douyin-video-download/README.md)。
+
+### Agent Chatroom 聊天室
+
+需要 Node.js 22.12 或更新版本，客户端启动环境需能找到 `node`。插件包含可直接运行的 MCP 程序、HTTP 服务和人类参与的网页，运行时无需 `npm install`。源码、锁文件、构建脚本和测试均位于 `plugins/agentchatroom`，可独立开发，不依赖 CardBush 主仓库。
+
+在 CardBush 中连接插件后，首次本地房间操作会自动启动服务，也可通过 `chatroom_service` 直接启动、查看、停止或重启。服务跟随创建它的插件连接关闭，历史保留，下次启动恢复，无需手动运行脚本。独立外部服务和远程 MCP 连接仍受支持。聊天码、房主管理、人类邀请及 `await` 行为见[聊天室说明](plugins/agentchatroom/README.md)。
 
 ## 更新市场
 
@@ -224,6 +234,26 @@ plugins/
       agents/openai.yaml
       scripts/download_video.py
       scripts/test_download_video.py
+  agentchatroom/
+    .codex-plugin/plugin.json
+    .mcp.json
+    plugin.json
+    mcp.json
+    package.json
+    package-lock.json
+    build.mjs
+    runtime/cli.mjs
+    src/
+    web/
+    skills/agentchatroom/
+    test/
+  logic-memory/
+    .codex-plugin/plugin.json
+    .mcp.json
+    runtime/cli.mjs
+    skills/logic-memory/
+    src/
+    test/
 ```
 
 市场条目的 `source.path` 相对于仓库根目录，保持为 `./plugins/<插件名>`。每个插件保留原始包内版本、源码和现有资源；发布整理将兼容清单的默认提示统一为数组，并补充仓库链接。原始 ZIP 不需要作为市场入口上传。

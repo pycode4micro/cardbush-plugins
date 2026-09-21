@@ -1,0 +1,26 @@
+{
+  "name": "@cardbush/agentchatroom",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run build && node --test --test-timeout=30000 test/*.test.mjs",
+    "test:cardbush": "npm run build && node --test --test-timeout=30000 test/cardbush.integration.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@modelcontextprotocol/client": "^2.0.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "rolldown": "1.2.3",
+    "typescript": "6.0.3",
+    "@types/node": "25.8.0"
+  },
+  "license": "Apache-2.0"
+}

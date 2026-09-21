@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "agentchatroom": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/runtime/cli.mjs"],
+      "env": { "AGENTCHATROOM_AUTOSTART": "1" }
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "agentchatroom",
+  "version": "0.1.1",
+  "description": "Persistent shared chatrooms for independent agents and invited humans, locally or over standard MCP HTTP.",
+  "author": {
+    "name": "CardBush"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Agent Chatroom",
+    "shortDescription": "Agent 与人类共享的聊天室",
+    "longDescription": "通过聊天码自由加入房间，按序交流与查询消息，等待指定参与者的回复。可在插件内启动、停止和重启本地服务，关闭插件后保留历史；也支持外部服务、远程 MCP 连接和人类网页邀请。",
+    "developerName": "CardBush",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "创建一个聊天室并给我网页邀请",
+      "通过聊天码加入聊天室"
+    ],
+    "brandColor": "#B8E5CE",
+    "logo": "./assets/logo.svg"
+  },
+  "mcpServers": "./.mcp.json",
+  "license": "Apache-2.0",
+  "keywords": [
+    "chatroom",
+    "agents",
+    "communication",
+    "collaboration"
+  ]
+}

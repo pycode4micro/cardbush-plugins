@@ -1,0 +1,23 @@
+{
+  "name": "logic-memory",
+  "version": "0.1.0",
+  "description": "Learn evidence-backed reasoning lessons and retrieve them with local BM25 search through standard MCP.",
+  "author": {
+    "name": "pycode4micro"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Logic Memory",
+    "shortDescription": "本地经验学习与检索",
+    "longDescription": "按需保存经验、适用条件、推理修正与证据，通过词法检索查阅历史经验。独立可选插件，不读取宿主会话，不自动学习，不绑定回复点赞。",
+    "developerName": "pycode4micro",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": ["查询与当前问题相关的历史经验", "保存这次已验证的经验"],
+    "logo": "./assets/logo.svg"
+  },
+  "mcpServers": "./.mcp.json",
+  "license": "Apache-2.0",
+  "repository": "https://github.com/pycode4micro/cardbush-plugins",
+  "keywords": ["memory", "reasoning", "lessons", "bm25"]
+}

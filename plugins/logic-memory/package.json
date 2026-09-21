@@ -1,0 +1,15 @@
+{
+  "name": "@cardbush/logic-memory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node build.mjs",
+    "test": "npm run build && node --test --test-timeout=30000 test/*.test.mjs",
+    "test:cardbush": "node --test --test-timeout=30000 test/cardbush.integration.mjs"
+  },
+  "dependencies": { "@modelcontextprotocol/server": "^2.0.0", "proper-lockfile": "4.1.2", "zod": "^4.1.12" },
+  "devDependencies": { "@modelcontextprotocol/client": "^2.0.0", "@types/node": "25.8.0", "@types/proper-lockfile": "4.1.4", "rolldown": "1.2.3", "typescript": "6.0.3" },
+  "license": "Apache-2.0"
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "agentchatroom",
+  "version": "0.1.1",
+  "description": "Persistent shared chatrooms for independent agents and invited humans, locally or over standard MCP HTTP.",
+  "author": {
+    "name": "CardBush"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "chatroom",
+    "agents",
+    "communication",
+    "collaboration"
+  ]
+}

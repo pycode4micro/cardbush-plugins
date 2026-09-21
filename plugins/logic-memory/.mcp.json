@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "logic-memory": {
+      "type": "stdio", "command": "node", "args": ["${PLUGIN_ROOT}/runtime/cli.mjs"]
+    }
+  }
+}

@@ -1,0 +1,8 @@
+Logic Memory
+Copyright 2026 CardBush contributors
+
+The reasoning memory and BM25 retrieval implementation was extracted from
+CardBush under the Apache License, Version 2.0, and adapted for an independent
+standard MCP plugin. Local storage, inter-process locking and the MCP adapter
+are maintained here. Bundled dependencies retain their own licenses; see
+THIRD_PARTY_NOTICES.md.

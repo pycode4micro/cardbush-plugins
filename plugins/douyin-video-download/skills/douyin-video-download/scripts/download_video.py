@@ -15,11 +15,13 @@ import socket
 import struct
 import sys
 import tempfile
+import time
 from html.parser import HTMLParser
 from http.client import HTTPException
+from http.cookiejar import Cookie, CookieJar, DefaultCookiePolicy
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, unquote, urljoin, urlsplit, urlunsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPCookieProcessor, HTTPRedirectHandler, Request, build_opener
 
 USER_AGENT = (
     "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
@@ -38,6 +40,7 @@ STATE_PATTERN = re.compile(
 )
 MAX_HTML_BYTES = 8 * 1024 * 1024
 MAX_REDIRECTS = 6
+MAX_COOKIE_BYTES = 1024 * 1024
 
 
 class DownloadError(Exception):
@@ -49,6 +52,22 @@ class DownloadError(Exception):
 def is_douyin_host(host: str) -> bool:
     return any(host == root or host.endswith("." + root)
                for root in ("douyin.com", "iesdouyin.com"))
+
+
+def login_state_dir() -> Path:
+    """Plugin-owned state only; never inspect another browser's profile."""
+    return Path.home() / ".douyin-video-download" / "auth"
+
+
+def cookie_file_for_request(explicit: Path | None = None, *, guest: bool = False) -> Path | None:
+    if explicit is not None:
+        return explicit
+    if guest:
+        return None
+    saved = login_state_dir() / "cookies.json"
+    if saved.is_symlink() or saved.parent.is_symlink():
+        raise DownloadError("cookie_file_error", "插件登录状态路径不能是符号链接")
+    return saved if saved.is_file() else None
 
 
 def validate_url(url: str, *, page: bool, check_dns: bool = False) -> str:
@@ -130,20 +149,125 @@ class CheckedRedirect(HTTPRedirectHandler):
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         newurl = validate_url(urljoin(req.full_url, newurl), page=self.page, check_dns=True)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected is not None:
+            # CookieProcessor will select cookies again for the destination domain/path.
+            redirected.remove_header("Cookie")
+        return redirected
+
+
+class DouyinCookiePolicy(DefaultCookiePolicy):
+    """Accept and return cookies only for official Douyin hosts over HTTPS."""
+    def __init__(self):
+        super().__init__(strict_ns_domain=DefaultCookiePolicy.DomainStrictNonDomain)
+
+    @staticmethod
+    def in_scope(cookie, request):
+        host = (urlsplit(request.full_url).hostname or "").lower()
+        return (request.type == "https" and is_douyin_host(host)
+                and is_douyin_host(cookie.domain.lstrip(".").lower()))
+
+    def set_ok(self, cookie, request):
+        return self.in_scope(cookie, request) and super().set_ok(cookie, request)
+
+    def return_ok(self, cookie, request):
+        return self.in_scope(cookie, request) and super().return_ok(cookie, request)
+
+
+def load_cookie_file(path: Path, jar: CookieJar) -> int:
+    """Import an explicitly selected Netscape or browser-export JSON file; never log values."""
+    try:
+        with path.expanduser().open("rb") as handle:
+            data = handle.read(MAX_COOKIE_BYTES + 1)
+        if len(data) > MAX_COOKIE_BYTES:
+            raise DownloadError("invalid_cookies", "Cookie 文件超过 1 MiB 限制")
+        source = data.decode("utf-8-sig")
+    except (OSError, UnicodeError, ValueError):
+        raise DownloadError("cookie_file_error", "无法读取指定的 UTF-8 Cookie 文件") from None
+    try:
+        if source.lstrip().startswith(("[", "{")):
+            entries = json.loads(source)
+            if isinstance(entries, dict):
+                entries = entries.get("cookies")
+            if not isinstance(entries, list) or not all(isinstance(c, dict) for c in entries):
+                raise ValueError
+        else:
+            entries = []
+            for line in source.splitlines():
+                if line.startswith("#HttpOnly_"):
+                    line = line[len("#HttpOnly_"):]
+                elif not line.strip() or line.startswith("#"):
+                    continue
+                domain, subdomains, cookie_path, secure, expires, name, value = line.split("\t")
+                if subdomains not in {"TRUE", "FALSE"} or secure not in {"TRUE", "FALSE"}:
+                    raise ValueError
+                entries.append({"domain": domain, "hostOnly": subdomains == "FALSE",
+                                "path": cookie_path, "secure": secure == "TRUE",
+                                "expires": int(expires) if expires else None,
+                                "name": name, "value": value})
+        imported, expired = [], 0
+        for entry in entries:
+            domain = entry.get("domain", "")
+            if not isinstance(domain, str):
+                raise ValueError
+            domain = domain.lower()
+            host = domain.lstrip(".")
+            if not is_douyin_host(host):
+                continue
+            if (domain.startswith("..") or not all(re.fullmatch(r"[a-z0-9-]+", part) for part in host.split("."))):
+                raise ValueError
+            name, value, cookie_path = entry.get("name"), entry.get("value"), entry.get("path", "/")
+            if (not isinstance(name, str) or not re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", name)
+                    or not isinstance(value, str) or not value.isascii() or re.search(r"[\x00-\x20\x7f;]", value)
+                    or not isinstance(cookie_path, str) or not cookie_path.startswith("/")
+                    or re.search(r"[\x00-\x20\x7f]", cookie_path)):
+                raise ValueError
+            host_only = entry.get("hostOnly", not domain.startswith("."))
+            secure = entry.get("secure", True)
+            if not isinstance(host_only, bool) or not isinstance(secure, bool):
+                raise ValueError
+            expiry = entry.get("expires", entry.get("expirationDate"))
+            if expiry is not None:
+                if isinstance(expiry, bool):
+                    raise ValueError
+                expiry = float(expiry)
+                if not math.isfinite(expiry) or expiry < -1:
+                    raise ValueError
+                expiry = int(expiry) if expiry > 0 else None
+            if expiry is not None and expiry <= time.time():
+                expired += 1
+                continue
+            stored_domain = host if host_only else "." + host
+            imported.append(Cookie(0, name, value, None, False, stored_domain, not host_only,
+                                   not host_only, cookie_path, True, secure, expiry, expiry is None,
+                                   None, None, {}, False))
+        if not imported:
+            if expired:
+                raise DownloadError("cookies_expired", "文件中的抖音 Cookie 均已过期，请重新导出")
+            raise DownloadError("cookies_unavailable", "文件中没有可用的抖音 Cookie")
+        for cookie in imported:
+            jar.set_cookie(cookie)
+        return len(imported)
+    except (ValueError, TypeError, OverflowError, RecursionError):
+        raise DownloadError("invalid_cookies", "Cookie 文件格式无效；请使用 Netscape 或浏览器导出的 JSON 文件") from None
 
 
 class PublicHTTP:
-    """No cookies, account sessions, browser profiles or third-party resolvers."""
-    def __init__(self, timeout: float = 30):
+    """In-memory guest session, optionally seeded by an explicitly supplied cookie file."""
+    def __init__(self, timeout: float = 30, cookies_file: Path | None = None):
         self.timeout = timeout
+        self.cookies = CookieJar(policy=DouyinCookiePolicy())
+        self.imported_cookies = load_cookie_file(cookies_file, self.cookies) if cookies_file is not None else 0
+        self._openers = {}
 
     def open(self, url: str, *, page: bool, user_agent: str = USER_AGENT):
         url = validate_url(url, page=page, check_dns=True)
         headers = {"User-Agent": user_agent, "Accept-Encoding": "identity"}
         if not page:
             headers["Referer"] = "https://www.douyin.com/"
-        opener = build_opener(CheckedRedirect(page))
+        if page not in self._openers:
+            self._openers[page] = build_opener(CheckedRedirect(page), HTTPCookieProcessor(self.cookies))
+        opener = self._openers[page]
         try:
             return opener.open(Request(url, headers=headers), timeout=self.timeout)
         except HTTPError as exc:
@@ -364,7 +488,7 @@ def resolve_share(text: str, client: PublicHTTP) -> dict:
         except DownloadError as exc:
             if exc.code not in {"network_error", "http_error"}:
                 raise
-    raise DownloadError("metadata_unavailable", "未找到目标视频的公开播放地址；可能涉及登录验证、不可用内容或页面结构变化")
+    raise DownloadError("metadata_unavailable", "页面中未找到目标视频播放地址；可能需要浏览器渲染、登录验证，或内容/页面结构已变化，不能仅凭此判断缺少 Cookie")
 
 
 def boxes(handle, start: int, end: int):
@@ -568,6 +692,9 @@ def main(argv=None) -> int:
     parser.add_argument("share_text", nargs="?", help="a Douyin link or complete share text")
     parser.add_argument("--input-file", type=Path, help="read share text from a UTF-8 file instead")
     parser.add_argument("--candidates-file", type=Path, help="JSON with page_url and candidates observed in an authorized browser")
+    authentication = parser.add_mutually_exclusive_group()
+    authentication.add_argument("--cookies-file", type=Path, help="optional user-selected Netscape/JSON cookie file; otherwise reuse this plugin's QR login")
+    authentication.add_argument("--guest", action="store_true", help="ignore this plugin's saved login and use a fresh guest session")
     parser.add_argument("--output-dir", type=Path, default=Path("downloads"))
     parser.add_argument("--resolve-only", action="store_true")
     parser.add_argument("--timeout", type=positive_float, default=30)
@@ -580,7 +707,7 @@ def main(argv=None) -> int:
     if args.timeout > 3600 or args.max_mb > 1024 * 1024 or args.max_mb * 1024 * 1024 < 1:
         parser.error("timeout must be at most 3600 seconds; max-mb must describe 1 byte to 1 TiB")
     try:
-        client = PublicHTTP(args.timeout)
+        client = PublicHTTP(args.timeout, cookies_file=cookie_file_for_request(args.cookies_file, guest=args.guest))
         if args.candidates_file is not None:
             data = json.loads(args.candidates_file.read_text(encoding="utf-8-sig"))
             if not isinstance(data,dict) or not isinstance(data.get("candidates"),list):

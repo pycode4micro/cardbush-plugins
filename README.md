@@ -29,7 +29,7 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 | `video-face-stylizer` | 0.2.3 | 本地整头/脸部白模处理、帽子与侧背补漏、网格取坐标及覆盖统计 | [去真人化处理配置](plugins/video-face-stylizer/README.md) |
 | `minimax-music` | 1.0.0 | 主题曲、纯音乐 BGM、歌词创作与改写、参考翻唱；11 项工具、动画配乐技能和 Music 3 自部署连接 | [音乐插件配置](plugins/minimax-music/README.md) |
 | `feishu-bot` | 1.0.0 | 独立飞书机器人、电子表格、多维表格及账号分表；默认只读，环境变量和启动参数控制修改能力 | [飞书插件配置](plugins/feishu-bot/README.md) |
-| `douyin-video-download` | 0.2.0 | 抖音分享链接下载单条公开视频；3 个 MCP 工具、独立 Skill/CLI、候选源比较及落盘校验 | [抖音下载使用说明](plugins/douyin-video-download/README.md) |
+| `douyin-video-download` | 0.2.0 | 单条抖音视频下载、Cookie 会话复用及可选 Linux 无桌面扫码登录；6 个 MCP 工具、独立 Skill/CLI、候选源比较及落盘校验 | [抖音下载使用说明](plugins/douyin-video-download/README.md) |
 | `agentchatroom` | 0.1.1 | 本地或远程聊天室、聊天码加入、人类网页邀请、消息查询与指定参与者等待 | [聊天室配置](plugins/agentchatroom/README.md) |
 | `logic-memory` | 0.1.0 | 独立可选的 learn / consult 经验工具、BM25 检索、幂等反馈与旧数据导入 | [经验插件配置](plugins/logic-memory/README.md) |
 
@@ -128,11 +128,13 @@ FFmpeg 需支持 libx264/libass；已声明的 `imageio-ffmpeg` 提供二进制�
 
 ### 抖音视频下载
 
-需要 Python 3.10 或更新版本、网络及本地目录写入权限。插件内置完整分享文案解析、公开网页解析和 MP4 下载脚本，CLI 仅使用 Python 标准库；使用 MCP 工具时执行 `python -m pip install -r ./plugins/douyin-video-download/requirements.txt`，然后重新加载插件。无需 API Key 或其他项目。
+需要 Python 3.10 或更新版本、网络及本地目录写入权限。插件内置完整分享文案解析、公开网页解析和 MP4 下载脚本，访客或 Cookie 文件下载 CLI 仅使用 Python 标准库；使用 MCP 工具时执行 `python -m pip install -r ./plugins/douyin-video-download/requirements.txt`，然后重新加载插件。无需 API Key 或其他项目。
 
-安装后直接向助手提供分享链接及保存目录。插件只取目标视频 ID 对应的播放地址，按服务端返回字节保存，不覆盖现有文件，不转码、不去音，也不改写水印参数。登录、验证码、访问限制或网页结构变化可能导致下载失败，不会自动读取浏览器会话或调用第三方解析站兜底。
+安装后直接向助手提供分享链接及保存目录。自动复用官方站点的访客 Cookie，也可指定 Netscape/JSON Cookie 文件。可选扫码登录需要安装 `requirements-browser.txt` 和 Playwright Chromium；服务器无桌面浏览器打开官方登录页，MCP 返回登录面板图片供手机扫码确认，成功后自动保存并复用会话。Linux 使用普通用户运行，并把 MCP 的 Python 路径指向安装依赖的虚拟环境，详见插件说明。
 
-已通过 64 项离线测试及 3 个工具的 MCP stdio 启动验证；JS 页面可输入浏览器实际观察到的候选地址，下载后按分辨率/码率比较。真实分享链接成功率仍受页面与访问权限影响。完整参数、限制和中英文说明见[抖音下载使用说明](plugins/douyin-video-download/README.md)。
+插件只取目标视频 ID 对应的播放地址，按服务端返回字节保存，不覆盖现有文件，不转码、不去音，也不改写水印参数。扫码浏览器不负责视频取源；JS 页面可输入浏览器实际观察到的候选地址，下载后按分辨率/码率比较。验证码、访问限制或网页结构变化可能导致失败，不扫描其他浏览器账号配置或调用第三方解析站兜底。
+
+已在 Linux 通过 104 项离线测试；另通过 8 项本地页面的无头浏览器测试及 6 个工具的 MCP stdio 启动验证。真实抖音页面和手机扫码尚未完成验收，下载成功率仍受页面与访问权限影响。完整参数、限制和中英文说明见[抖音下载使用说明](plugins/douyin-video-download/README.md)。
 
 ### Agent Chatroom 聊天室
 
@@ -227,13 +229,19 @@ plugins/
     .mcp.json
     server.py
     requirements.txt
+    requirements-browser.txt
     README.md
     scripts/build_release.py
+    scripts/test_mcp.py
+    scripts/test_qr_browser.py
     skills/douyin-video-download/
       SKILL.md
       agents/openai.yaml
       scripts/download_video.py
+      scripts/qr_login.py
       scripts/test_download_video.py
+      scripts/test_cookies.py
+      scripts/test_qr_login.py
   agentchatroom/
     .codex-plugin/plugin.json
     .mcp.json

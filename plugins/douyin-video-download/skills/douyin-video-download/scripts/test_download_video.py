@@ -405,6 +405,13 @@ class Downloads(ErrorAssertions):
 
 
 class NetworkAndCLI(ErrorAssertions):
+    def setUp(self):
+        self.auth_temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.auth_temp.cleanup)
+        isolated_login = patch.object(d, "login_state_dir", return_value=Path(self.auth_temp.name)/"managed")
+        isolated_login.start()
+        self.addCleanup(isolated_login.stop)
+
     def test_http_errors_are_sanitized(self):
         for status, code in ((403, "access_required"), (429, "rate_limited"), (500, "http_error")):
             opener = Mock()

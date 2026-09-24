@@ -12,7 +12,7 @@ description: 使用火山引擎 v5.0 生成带歌词人声歌曲或纯音乐 BGM
 - 纯音乐使用 `music_preview_bgm` → `music_create_bgm`，用中文 `Text` 描述曲风、心情、场景、乐器。请求体版本字段为 `Version="v5.0"`，时长 30～120 秒。明确分段需要时使用 `Segments`；总时长优先于描述里的时长，再优先于外层 `Duration`。避免三处相互矛盾。`EnableInputRewrite` 默认关闭。
 - 预览是本地免费操作。`billing_mode` 默认 `postpaid`；用户明确使用资源包时选 `prepaid`。资源包与后付费不互相抵扣，权限/余额错误时不要改计费方式重试。价格预览只引用公开 standard/BGM 价目，不代表已确认的 v5.0 报价。
 
-提交后保存 `task.id`，用 `music_get_task` 查询同一 ID。接口调用成功不等于歌曲完成；只有 `status="succeeded"` 才下载。尊重返回的建议查询间隔，缺少进度不猜测完成时间。超时或响应丢失可能已创建任务，不自动重提或降级；拿不到 ID 时报告不确定结果和请求编号，先检查控制台。
+提交后保存 `task.id`，优先用 `generation_wait_tasks`（`kind=music`）在插件内等待同一 ID；宿主支持后台只读工具时交给它等待并继续独立工作，续等只匹配 `structuredContent.status=timeout`，设有限预算。`ready` 后逐项核对结果，已结束 ID 不再加入后续等待；旧版才用 `music_get_task`。接口调用成功不等于歌曲完成；只有 `status="succeeded"` 才下载。尊重返回的建议查询间隔，缺少进度不猜测完成时间。超时或响应丢失可能已创建任务，不自动重提或降级；拿不到 ID 时报告不确定结果和请求编号，先检查控制台。
 
 用 `music_download_task` 保存到新的绝对路径；可同时指定新的 `metadata_dest` JSON 路径保存歌词、原生 Captions 和 StyleInfo。直接传任务 ID，由工具读取完整签名地址。不要抄写、重排或截断签名 URL。
 

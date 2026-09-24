@@ -32055,7 +32055,7 @@ async function detailSvg(scene, partId) {
 function overviewSvg(scene) {
   const views = ["front", "back"].filter((view) => scene.parts.some((p) => p.view === view && p.visible));
   const column = scene.width + 40, height = scene.height + 100;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${column * views.length}" height="${height}"><rect width="100%" height="100%" fill="white"/>${views.map((view, index) => `<g transform="translate(${index * column + 20} 60)"><text y="-20" font-family="sans-serif" font-size="24" fill="#444444">${view === "front" ? "FRONT" : "BACK"}</text>${scene.parts.filter((p) => p.view === view).sort((a, b) => a.z - b.z).map((p) => partSvg(p)).join("")}</g>`).join("")}<title>${escapeXml(scene.title)}</title></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${column * views.length}" height="${height}" viewBox="0 0 ${column * views.length} ${height}"><rect width="100%" height="100%" fill="white"/>${views.map((view, index) => `<g transform="translate(${index * column + 20} 60)"><text y="-20" font-family="sans-serif" font-size="24" fill="#444444">${view === "front" ? "FRONT" : "BACK"}</text>${scene.parts.filter((p) => p.view === view).sort((a, b) => a.z - b.z).map((p) => partSvg(p)).join("")}</g>`).join("")}<title>${escapeXml(scene.title)}</title></svg>`;
 }
 
 // src/service.mjs
@@ -32241,8 +32241,33 @@ Required: ${m.requirements.join("; ") || "Match the vector design."}`),
 
 // src/server.mjs
 init_model();
+
+// src/presentation-schema.mjs
+init_zod();
+init_model();
+var presentationSlideSchema = external_exports3.object({
+  title: external_exports3.string().min(1).max(60),
+  visual: external_exports3.enum(["overview", "front", "back", "part", "palette"]).default("overview"),
+  part_id: id.optional(),
+  bullets: external_exports3.array(external_exports3.string().min(1).max(120)).max(5).default([]),
+  notes: external_exports3.string().max(4e3).default("")
+}).strict().superRefine((slide, ctx) => {
+  if (slide.visual === "part" && !slide.part_id) ctx.addIssue({ code: "custom", message: "A detail slide requires part_id." });
+  if (slide.visual !== "part" && slide.part_id) ctx.addIssue({ code: "custom", message: "part_id is only used by a part detail slide." });
+  if (slide.bullets.join("").length > 280) ctx.addIssue({ code: "custom", message: "Keep slide bullets within 280 characters; put explanation in notes or split the slide." });
+});
+var presentationSchema = external_exports3.object({
+  project_id: id,
+  revision: external_exports3.number().int().positive(),
+  formats: external_exports3.array(external_exports3.enum(["pdf", "pptx", "html"])).min(1).max(3).default(["pdf", "pptx", "html"]),
+  language: external_exports3.enum(["zh", "en"]).default("zh"),
+  title: external_exports3.string().min(1).max(160).optional(),
+  slides: external_exports3.array(presentationSlideSchema).min(1).max(24).optional()
+}).strict();
+
+// src/server.mjs
 var service = new GarmentService();
-var server = new McpServer({ name: "garment-designer", version: "0.1.0" });
+var server = new McpServer({ name: "garment-designer", version: "0.2.0" });
 var uri = "ui://garment-designer/editor";
 var positive = external_exports3.number().int().positive();
 var file2 = external_exports3.string().min(1).max(4096);
@@ -32397,5 +32422,10 @@ register("garment_review", "Read actual generated image plus its confirmed vecto
     text("Image 2: actual generated result."),
     image(await service.store.asset(a.project_id, job.result.asset), job.result.asset.mime)
   ] };
+}, { app: false });
+register("garment_present", "Export a saved design revision as a vector PDF, editable-text PPTX with embedded SVG, or offline HTML presentation. Optional slides provide the model-authored explanation and speaker notes; otherwise derive a quick outline from saved facts. Does not change the design or generate images. Read garment-presentation for the workflow. Files are created on this plugin server; inspect files and errors separately for partial success.", presentationSchema, async (a) => {
+  const { exportPresentation } = await import("./presentation.mjs");
+  const result = await exportPresentation(service.store, a);
+  return { content: [text(result)], structuredContent: result, ...!result.files.length ? { isError: true } : {} };
 }, { app: false });
 await server.connect(new StdioServerTransport());

@@ -163,6 +163,10 @@ class SeedreamClient:
 
     async def generate(self, request: ImageRequest, options: LocalOptions) -> dict:
         body, warnings = prepare(request, options, get_config("SEEDREAM_MODEL", DEFAULT_MODEL))
+        return await self.generate_prepared(body, warnings, options)
+
+    async def generate_prepared(self, body: dict, warnings: list, options: LocalOptions) -> dict:
+        """Execute an already validated snapshot once (also used by background jobs)."""
         if not self.api_key.strip():
             raise SeedreamError("ARK_API_KEY is not configured; no API request was sent")
         try:

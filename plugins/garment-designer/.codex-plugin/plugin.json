@@ -1,7 +1,7 @@
 {
   "name": "garment-designer",
-  "version": "0.1.0",
-  "description": "分部位矢量服装设计，确认后生成效果图，并对照原设计分析和改款。",
+  "version": "0.2.0",
+  "description": "分部位矢量服装设计，确认后生成效果图，并导出 PDF、PPTX、HTML 设计方案。",
   "repository": "https://github.com/pycode4micro/cardbush-plugins",
   "homepage": "https://github.com/pycode4micro/cardbush-plugins/tree/main/plugins/garment-designer",
   "author": {
@@ -11,13 +11,13 @@
   "interface": {
     "displayName": "衣服设计",
     "shortDescription": "用语言设计衣服，先看矢量稿，再生成真实效果。",
-    "longDescription": "从一句话开始，按衣身、领口、袖子、口袋等部位设计可编辑矢量款式。支持自由形状、可选参考图、历史版本和细节锁定；确认后复用已有生图服务，再对照原设计分析并修改。设计数据保存在插件所在机器，生图阶段才由宿主调用所选外部服务。",
+    "longDescription": "从一句话开始，按衣身、领口、袖子、口袋等部位设计可编辑矢量款式。支持自由形状、可选参考图、历史版本和细节锁定；确认后复用已有生图服务，再对照原设计分析并修改。可直接导出矢量 PDF、含 SVG 的 PPTX 和离线 HTML 设计讲解方案。设计数据保存在插件所在机器，生图阶段才由宿主调用所选外部服务。",
     "developerName": "Local developer",
     "category": "Productivity",
     "capabilities": ["Interactive", "Write"],
     "brandColor": "#365B3B",
     "screenshots": ["./assets/screenshot-light.png", "./assets/screenshot-dark.png"],
-    "defaultPrompt": ["帮我设计一件不对称短外套，先画矢量稿。", "把这件衣服的领口重新设计，其他部位保持不变。", "对照原设计分析这张效果图，看看哪些细节需要修改。"]
+    "defaultPrompt": ["帮我设计一件不对称短外套，先画矢量稿。", "把这件衣服的领口重新设计，其他部位保持不变。", "把当前服装设计整理成 PDF、PPT 和 HTML 讲解方案。"]
   },
   "mcpServers": "./.mcp.json"
 }

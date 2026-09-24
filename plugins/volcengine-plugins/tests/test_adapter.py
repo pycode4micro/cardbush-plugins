@@ -153,6 +153,12 @@ def test_url_output_does_not_download(tmp_path):
 def test_mcp_tools_schema():
     server = create_server()
     tools = asyncio.run(server.list_tools())
+    background = {tool.name: tool for tool in tools if tool.name in {'seedream_create_task', 'generation_wait_tasks'}}
+    assert set(background) == {'seedream_create_task', 'generation_wait_tasks'}
+    assert background['seedream_create_task'].annotations.readOnlyHint is False
+    assert background['generation_wait_tasks'].annotations.readOnlyHint is True
+    assert {'request', 'request_id'} <= set(background['seedream_create_task'].inputSchema['required'])
+    tools = [tool for tool in tools if tool.name not in background]
     assert {tool.name for tool in tools} == {"seedream_generate", "seedream_capabilities", "seedream_preview_request", "seedance_capabilities", "seedance_preview_request", "seedance_create_task", "seedance_get_task", "seedance_list_tasks", "seedance_get_tasks", "seedance_download_task", "video_enhance_capabilities", "video_enhance_preview_request", "video_enhance_upload", "video_enhance_create_task", "video_enhance_get_task", "video_subtitle_erase_capabilities", "video_subtitle_erase_preview_request", "video_subtitle_erase_upload", "video_subtitle_erase_create_task", "video_subtitle_erase_get_task", "video_subtitle_erase_download_task", "video_media_preflight", "video_subtitle_erase_plan", "video_subtitle_erase_qc", "video_export_publish", "music_capabilities", "music_preview_song", "music_preview_bgm", "music_create_song", "music_create_bgm", "music_get_task", "music_download_task"}
     tool = next(tool for tool in tools if tool.name == "seedream_generate")
     assert not tool.annotations.idempotentHint

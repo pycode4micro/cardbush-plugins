@@ -26,6 +26,9 @@ def test_real_stdio_handshake_and_preview():
                 assert initialized.serverInfo.icons[0].src.startswith("data:image/png;base64,")
                 tools = await session.list_tools()
                 music_tools = {"music_capabilities", "music_preview_song", "music_preview_bgm", "music_create_song", "music_create_bgm", "music_get_task", "music_download_task"}
+                background_tools = {"seedream_create_task", "generation_wait_tasks"}
+                assert background_tools <= {tool.name for tool in tools.tools}
+                tools.tools = [tool for tool in tools.tools if tool.name not in background_tools]
                 assert music_tools <= {tool.name for tool in tools.tools}
                 assert all(tool.icons == initialized.serverInfo.icons for tool in tools.tools)
                 assert {tool.name for tool in tools.tools} - music_tools == {"seedream_capabilities", "seedream_preview_request", "seedream_generate", "seedance_capabilities", "seedance_preview_request", "seedance_create_task", "seedance_get_task", "seedance_list_tasks", "seedance_get_tasks", "seedance_download_task", "video_enhance_capabilities", "video_enhance_preview_request", "video_enhance_upload", "video_enhance_create_task", "video_enhance_get_task", "video_subtitle_erase_capabilities", "video_subtitle_erase_preview_request", "video_subtitle_erase_upload", "video_subtitle_erase_create_task", "video_subtitle_erase_get_task", "video_subtitle_erase_download_task", "video_media_preflight", "video_subtitle_erase_plan", "video_subtitle_erase_qc", "video_export_publish"}
@@ -94,4 +97,52 @@ def test_real_stdio_handshake_and_preview():
                 assert payload["body"]["watermark"] is False
                 missing = await session.call_tool("seedream_generate", arguments={"request": {"prompt": "test"}})
                 assert missing.isError
+    asyncio.run(run())
+
+
+def test_background_image_stdio_receipt_and_wait(tmp_path):
+    # Exercise the real protocol using only a fake provider and isolated job state.
+    child = tmp_path / 'fake_provider.py'
+    child.write_text('''
+import asyncio, sys
+from pathlib import Path
+import volcengine_plugins.server as plugin
+from volcengine_plugins.client import SeedreamClient
+from volcengine_plugins.image_jobs import ImageJobs
+class FakeClient(SeedreamClient):
+    def __init__(self):
+        super().__init__(api_key='fixture',base_url='https://fixture.example/v3',output_dir=Path(sys.argv[1]))
+    async def generate_prepared(self, body, warnings, options):
+        await asyncio.sleep(0.1)
+        return {'data':[{'local_path':str(self.output_dir/'fixture.png')}], 'fixture_only': True}
+plugin.SeedreamClient=FakeClient
+plugin.ImageJobs=lambda: ImageJobs(Path(sys.argv[1])/'state')
+plugin.create_server().run()
+''', encoding='utf-8')
+
+    async def run():
+        env = {'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'src'), 'ARK_READ_USER_ENV': '0'}
+        params = StdioServerParameters(command=sys.executable, args=[str(child), str(tmp_path)], env=env)
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write, read_timeout_seconds=timedelta(seconds=15)) as session:
+                await session.initialize()
+                definitions = {tool.name: tool for tool in (await session.list_tools()).tools}
+                assert definitions['generation_wait_tasks'].annotations.readOnlyHint is True
+                assert definitions['seedream_create_task'].annotations.readOnlyHint is False
+                args = {'request': {'prompt': 'fixture'}, 'request_id': 'unique-fixture'}
+                submitted = tool_payload(await session.call_tool('seedream_create_task', args))
+                assert submitted['task']['status'] == 'queued'
+                task_id = submitted['task']['id']
+                duplicate = tool_payload(await session.call_tool('seedream_create_task', args))
+                assert duplicate['reused'] and duplicate['task']['id'] == task_id
+                result = await session.call_tool('generation_wait_tasks', {
+                    'tasks': [{'kind': 'seedream', 'task_id': task_id}], 'timeout_seconds': 5})
+                # This is exactly the structured path the existing host checks.
+                assert not result.isError and result.structuredContent['status'] == 'ready'
+                item = tool_payload(result)['items'][0]
+                assert item['status'] == 'succeeded'
+                assert item['observation']['task']['result']['fixture_only'] is True
+                single = tool_payload(await session.call_tool('generation_wait_tasks', {
+                    'tasks': [{'kind': 'seedream', 'task_id': task_id}], 'timeout_seconds': 0}))
+                assert single['items'][0] == item
     asyncio.run(run())

@@ -33,12 +33,13 @@
 
 ## Seedance
 
-顺序：`seedance_capabilities` → 本地媒体核对 → `seedance_preview_request` → 经授权 `seedance_create_task` → `seedance_get_task` / `seedance_get_tasks` → `seedance_download_task`。
+顺序：`seedance_capabilities` → 本地媒体核对 → `seedance_preview_request` → 经授权 `seedance_create_task` → `generation_wait_tasks`（旧版 get_task/get_tasks）→ `seedance_download_task`。
 
 | 新接口/返回字段 | 用法 |
 | --- | --- |
 | `seedance_list_tasks` | `page_num/page_size` 分页，按 status、task_ids、model 筛选服务端历史；不生成 |
 | `seedance_get_tasks` | 1..100 个 ID，最多 4 个并发 GET，单项查询失败不抹掉其他结果 |
+| `generation_wait_tasks` | 1..32 个 `{kind, task_id}`；视频用 `kind=seedance`。`mode=any` 先交付已结束部分，`all` 等全部；`timeout_seconds=0` 单次查询，1..120 在插件内按间隔等待。`ready` 不等于成功，逐项检查 |
 | `seedance_download_task` | `task_id, dest`，可选 video/last_frame；新绝对文件名、不覆盖，签名 URL 原样传输，下载默认最多重试 2 次 |
 | `preflight` | create 的强制免费本地预检记录和请求摘要；不是服务端接收承诺 |
 | `billing` | 本地拒绝 charged=false；已发送请求/查询任务时未获账单证据则 charged/refunded=null |
@@ -55,7 +56,7 @@
   "request": {
     "model": "<当前模型或端点>",
     "content": [
-      {"type": "text", "text": "<完整覆盖约定、镜头安排及逐字台词>"},
+      {"type": "text", "text": "<完整覆盖约定、镜头安排及逐字台词；明确指定角色全片音色固定为音频1，每段标注绑定，禁止替换/混用音色；台词以本提示词为准>"},
       {"type": "image_url", "image_url": {"url": "<已处理商品图或合法资产引用>"}, "role": "reference_image"},
       {"type": "video_url", "video_url": {"url": "<COS 返回的已处理切片 HTTPS URL>"}, "role": "reference_video"},
       {"type": "audio_url", "audio_url": {"url": "<用户指定音色的合法引用>"}, "role": "reference_audio"}

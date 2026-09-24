@@ -22,7 +22,7 @@ app.whenReady().then(async()=>{
   initial=await client.callTool({name:'garment_edit',arguments:{project_id:project,expected_revision:1,patch:{globalPrompt:'雾蓝色棉质短外套，柔和哑光表面',parts:initial._meta.garment.document.scene.parts.filter(p=>p.id!=='buttons').map(p=>({id:p.id,fill:'#b8cdd5',...(p.id==='collar'?{fill:'#7e9daa',prompt:'不对称的尖翻领。左侧更宽，边缘细银色包边。',elements:[{type:'path',d:'M340 145 L395 195 L335 270 L300 180 Z M460 145 L405 195 L450 250 L495 180 Z'}]}:{} )}))}}});
   let delay=0;const messages=[];
   ipcMain.handle('garment-ui-test',async(event,{method,params})=>{
-    if(method==='ui/initialize')return {protocolVersion:'2026-01-26',hostInfo:{name:'test-host',version:'1'},hostCapabilities:{serverTools:{}},hostContext:{theme:'light',locale:'zh-CN'}};
+    if(method==='ui/initialize')return {protocolVersion:'2026-01-26',hostInfo:{name:'test-host',version:'1'},hostCapabilities:{serverTools:{}},hostContext:{theme:'light',locale:'zh-CN',styles:{variables:{'--color-background-primary':'#ffffff','--color-background-secondary':'#f5f5f5','--color-text-primary':'#202020','--color-text-secondary':'#595959','--color-border-primary':'#dedede','--font-sans':'system-ui, sans-serif'}}}};
     if(method==='tools/call'){if(delay)await sleep(delay);return client.callTool(params);}
     if(method==='ui/message'){messages.push(params);return {};}
     throw Error('Unexpected UI method '+method);
@@ -66,9 +66,11 @@ app.whenReady().then(async()=>{
   await run("document.getElementById('save').click();");await waitFor("document.getElementById('revision').textContent==='v6'");
   latest=await client.callTool({name:'garment_project',arguments:{action:'get',project_id:project}});assert.equal(latest.structuredContent.document.scene.parts.find(p=>p.id==='collar').fill,'#779999');
   // Theme notification, narrow layout and historical version are all real DOM checks.
-  await win.webContents.executeJavaScript("document.querySelector('iframe').contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/host-context-changed',params:{theme:'dark'}},'*');");
+  await win.webContents.executeJavaScript("document.querySelector('iframe').contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/host-context-changed',params:{theme:'dark',styles:{variables:{'--color-background-primary':'#181818','--color-background-secondary':'#252525','--color-text-primary':'#f2f2f2','--color-text-secondary':'#c2c2c2','--color-border-primary':'#3c3c3c','--cardbush-accent':'#b7d9c3'}}}},'*');");
   await waitFor("getComputedStyle(document.documentElement).colorScheme==='dark'");
-  assert.equal(await run("getComputedStyle(document.body).backgroundColor"),'rgb(30, 33, 31)');
+  assert.equal(await run("getComputedStyle(document.body).backgroundColor"),'rgb(24, 24, 24)');
+  assert.equal(await run("getComputedStyle(document.body).color"),'rgb(242, 242, 242)');
+  assert.equal(await run("getComputedStyle(document.querySelector('.canvas')).backgroundColor"),'rgb(255, 255, 255)', 'design canvas stays color-neutral');
   await paintFrame();
   await fs.writeFile(path.join(root,'assets','screenshot-dark.png'),(await win.webContents.capturePage({x:0,y:0,width:1024,height:880})).toPNG());
   win.setSize(420,980);await sleep(100);assert(await run("document.documentElement.scrollWidth<=innerWidth+1"));

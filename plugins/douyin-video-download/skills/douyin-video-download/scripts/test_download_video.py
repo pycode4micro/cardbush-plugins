@@ -405,13 +405,6 @@ class Downloads(ErrorAssertions):
 
 
 class NetworkAndCLI(ErrorAssertions):
-    def setUp(self):
-        self.auth_temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.auth_temp.cleanup)
-        isolated_login = patch.object(d, "login_state_dir", return_value=Path(self.auth_temp.name)/"managed")
-        isolated_login.start()
-        self.addCleanup(isolated_login.stop)
-
     def test_http_errors_are_sanitized(self):
         for status, code in ((403, "access_required"), (429, "rate_limited"), (500, "http_error")):
             opener = Mock()
@@ -428,25 +421,27 @@ class NetworkAndCLI(ErrorAssertions):
         with patch.object(client, "open", return_value=response):
             self.assertError("network_error", client.page, PAGE)
 
-    def test_cli_resolve_has_no_download(self):
-        client = FakeClient(pages=[(MOBILE_PAGE, page(item()))])
+    def test_cli_download_uses_shared_cookie_entrypoint(self):
+        client = FakeClient(pages=[(MOBILE_PAGE, page(item()))], responses=[Response(media())])
         output = io.StringIO()
-        with patch.object(d, "PublicHTTP", return_value=client), contextlib.redirect_stdout(output):
-            code = d.main([SHORT, "--resolve-only"])
+        with tempfile.TemporaryDirectory() as folder, patch.object(d, "PublicHTTP", return_value=client) as create, contextlib.redirect_stdout(output):
+            cookies = str(Path(folder) / 'cookies.txt')
+            code = d.main([SHORT, '--cookies-file', cookies, '--output-dir', folder])
+            create.assert_called_once_with(cookies_file=Path(cookies))
         self.assertEqual(code, 0)
-        self.assertEqual(json.loads(output.getvalue())["status"], "resolved")
-        self.assertEqual(client.open_calls, [])
+        self.assertEqual(json.loads(output.getvalue())["status"], "downloaded")
+        self.assertEqual(len(client.open_calls), 1)
 
     def test_cli_input_file_utf8_bom(self):
         with tempfile.TemporaryDirectory() as folder:
             source = Path(folder) / "input.txt"
             source.write_text("分享链接 " + SHORT, encoding="utf-8-sig")
-            client = FakeClient(pages=[(MOBILE_PAGE, page(item()))])
+            client = FakeClient(pages=[(MOBILE_PAGE, page(item()))], responses=[Response(media())])
             with patch.object(d, "PublicHTTP", return_value=client), contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(d.main(["--input-file", str(source), "--resolve-only"]), 0)
+                self.assertEqual(d.main(["--input-file", str(source), '--cookies-file', str(Path(folder) / 'cookies.txt'), '--output-dir', folder]), 0)
 
-    def test_cli_usage_rejects_ambiguous_input_and_extreme_limits(self):
-        for args in ([], [SHORT, "--input-file", "a.txt"], [SHORT, "--timeout", "inf"], [SHORT, "--max-mb", "1e308"]):
+    def test_cli_usage_rejects_ambiguous_input_and_removed_options(self):
+        for args in ([], [SHORT, "--input-file", "a.txt"], [SHORT, "--guest"], [SHORT, "--resolve-only"], [SHORT, "--max-candidates", "8"]):
             with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
                 d.main(args)
             self.assertEqual(raised.exception.code, 2)
@@ -462,10 +457,15 @@ class NetworkAndCLI(ErrorAssertions):
             cwd.mkdir()
             result = subprocess.run([sys.executable, "-I", "-B", str(copy), "--help"], cwd=cwd, capture_output=True, text=True, encoding="utf-8", timeout=15)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("--resolve-only", result.stdout)
+            self.assertIn("--cookies-file", result.stdout)
             result = subprocess.run([sys.executable, "-I", "-B", str(copy), "not a link"], cwd=cwd, capture_output=True, text=True, encoding="utf-8", timeout=15)
             self.assertEqual(result.returncode, 2, result.stderr)
-            self.assertEqual(json.loads(result.stdout)["code"], "no_share_url")
+            self.assertEqual(json.loads(result.stdout)["code"], "cookies_required")
+            cookies = root / 'cookies.txt'
+            cookies.write_text('session_fixture=FAKE_VALUE', encoding='utf-8')
+            result = subprocess.run([sys.executable, '-I', '-B', str(copy), 'not a link', '--cookies-file', str(cookies)], cwd=cwd, capture_output=True, text=True, encoding='utf-8', timeout=15)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertEqual(json.loads(result.stdout)['code'], 'no_share_url')
             self.assertFalse((cwd / "downloads").exists())
 
 

@@ -7,9 +7,10 @@ import path from 'node:path';
 import { GarmentService } from './service.mjs';
 import { id, sceneSchema, patchSchema, findingSchema } from './model.mjs';
 import { templateNames } from './templates.mjs';
+import { presentationSchema } from './presentation-schema.mjs';
 
 const service=new GarmentService();
-const server=new McpServer({name:'garment-designer',version:'0.1.0'});
+const server=new McpServer({name:'garment-designer',version:'0.2.0'});
 const uri='ui://garment-designer/editor';
 const positive=z.number().int().positive(), file=z.string().min(1).max(4096);
 function required(value,name){if(value===undefined)throw new Error(`Missing ${name}.`);return value;}
@@ -93,6 +94,12 @@ register('garment_review','Read actual generated image plus its confirmed vector
   const job=await service.status(a.project_id,a.job_id);if(!job.result)throw new Error('没有已保存的效果图。');
   return {content:[text({projectId:a.project_id,jobId:job.id,confirmedRevision:job.revision,prompt:job.prompt,parts:job.parts,existingReview:job.review,stale:job.stale}),
     text('Image 1: confirmed vector design.'),image(await fs.readFile(job.overview)),text('Image 2: actual generated result.'),image(await service.store.asset(a.project_id,job.result.asset),job.result.asset.mime)]};
+},{app:false});
+
+register('garment_present','Export a saved design revision as a vector PDF, editable-text PPTX with embedded SVG, or offline HTML presentation. Optional slides provide the model-authored explanation and speaker notes; otherwise derive a quick outline from saved facts. Does not change the design or generate images. Read garment-presentation for the workflow. Files are created on this plugin server; inspect files and errors separately for partial success.',presentationSchema,async a=>{
+  const {exportPresentation}=await import('./presentation.mjs');
+  const result=await exportPresentation(service.store,a);
+  return {content:[text(result)],structuredContent:result,...(!result.files.length?{isError:true}:{})};
 },{app:false});
 
 await server.connect(new StdioServerTransport());

@@ -22,17 +22,17 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 
 | 插件 | 包内基础版本 | 功能 | 安装说明 |
 | --- | --- | --- | --- |
-| `volcengine-plugins` | 0.7.0 | Seedream 图片、Seedance 视频、v5.0 歌曲/BGM、MediaKit 超分与去字幕；32 个 MCP 工具 | [生成服务配置](plugins/volcengine-plugins/README.md) |
+| `volcengine-plugins` | 0.7.0 | Seedream 图片、Seedance 视频、v5.0 歌曲/BGM、MediaKit 超分与去字幕；34 个 MCP 工具 | [生成服务配置](plugins/volcengine-plugins/README.md) |
 | `tencent-cos-upload` | 0.2.0 | COS 上传、下载及经确认的单对象删除或重命名 | [COS 配置](plugins/tencent-cos-upload/README.md) |
 | `qianchuan` | 1.0.0 | 自带运行代码的千川素材、报表及受控投放工具 | [千川配置](plugins/qianchuan/README.md) |
 | `video-editer`（video_editer） | 0.2.0 | 74 项无模型剪辑工具：长视频证据浏览、Agent 索引与候选、时间线、花字、转场及渲染 | [剪辑插件配置](plugins/video-editer/README.md) |
 | `video-face-stylizer` | 0.2.3 | 本地整头/脸部白模处理、帽子与侧背补漏、网格取坐标及覆盖统计 | [去真人化处理配置](plugins/video-face-stylizer/README.md) |
 | `minimax-music` | 1.0.0 | 主题曲、纯音乐 BGM、歌词创作与改写、参考翻唱；11 项工具、动画配乐技能和 Music 3 自部署连接 | [音乐插件配置](plugins/minimax-music/README.md) |
 | `feishu-bot` | 1.0.0 | 独立飞书机器人、电子表格、多维表格及账号分表；默认只读，环境变量和启动参数控制修改能力 | [飞书插件配置](plugins/feishu-bot/README.md) |
-| `douyin-video-download` | 0.2.0 | 单条抖音视频下载、Cookie 会话复用及可选 Linux 无桌面扫码登录；6 个 MCP 工具、独立 Skill/CLI、候选源比较及落盘校验 | [抖音下载使用说明](plugins/douyin-video-download/README.md) |
+| `douyin-video-download` | 0.2.0 | 获取 Cookie 文件后下载单条视频；1 个 MCP 工具、3 个参数，内部完成候选选择及落盘校验 | [抖音下载使用说明](plugins/douyin-video-download/README.md) |
 | `agentchatroom` | 0.1.1 | 本地或远程聊天室、聊天码加入、人类网页邀请、消息查询与指定参与者等待 | [聊天室配置](plugins/agentchatroom/README.md) |
 | `logic-memory` | 0.1.0 | 独立可选的 learn / consult 经验工具、BM25 检索、幂等反馈与旧数据导入 | [经验插件配置](plugins/logic-memory/README.md) |
-| `garment-designer` | 0.1.0 | 分部位矢量衣服设计、可选参考图、版本管理、确认后整体生图及对照分析；6 个 MCP 工具和交互面板 | [衣服设计使用说明](plugins/garment-designer/README.md) |
+| `garment-designer` | 0.2.0 | 分部位矢量衣服设计、确认后整体生图及对照分析，支持 PDF、PPTX、HTML 设计方案导出；7 个 MCP 工具和交互面板 | [衣服设计使用说明](plugins/garment-designer/README.md) |
 
 市场添加成功后，也可按需用 CLI 安装：
 
@@ -130,13 +130,13 @@ FFmpeg 需支持 libx264/libass；已声明的 `imageio-ffmpeg` 提供二进制�
 
 ### 抖音视频下载
 
-需要 Python 3.10 或更新版本、网络及本地目录写入权限。插件内置完整分享文案解析、公开网页解析和 MP4 下载脚本，访客或 Cookie 文件下载 CLI 仅使用 Python 标准库；使用 MCP 工具时执行 `python -m pip install -r ./plugins/douyin-video-download/requirements.txt`，然后重新加载插件。无需 API Key 或其他项目。
+需要 Python 3.10 或更新版本、网络及本地目录写入权限。CLI 仅使用 Python 标准库；使用 MCP 工具时执行 `python -m pip install -r ./plugins/douyin-video-download/requirements.txt`，然后重新加载插件。无需 API Key、Playwright 或浏览器安装。
 
-安装后直接向助手提供分享链接及保存目录。自动复用官方站点的访客 Cookie，也可指定 Netscape/JSON Cookie 文件。可选扫码登录需要安装 `requirements-browser.txt` 和 Playwright Chromium；服务器无桌面浏览器打开官方登录页，MCP 返回登录面板图片供手机扫码确认，成功后自动保存并复用会话。Linux 使用普通用户运行，并把 MCP 的 Python 路径指向安装依赖的虚拟环境，详见插件说明。
+在已登录的抖音网页中，从开发者工具 Network 的请求头复制 Cookie，保存为私有 UTF-8 文件；也支持已有 Netscape/JSON 导出。向唯一工具 `douyin_download` 传分享链接、Cookie 文件绝对路径和保存目录即可。云端使用服务器上的 Cookie 文件路径。没有 Cookie 时先提示获取步骤，不尝试访客下载、扫码或扫描浏览器账号目录。
 
-插件只取目标视频 ID 对应的播放地址，按服务端返回字节保存，不覆盖现有文件，不转码、不去音，也不改写水印参数。扫码浏览器不负责视频取源；JS 页面可输入浏览器实际观察到的候选地址，下载后按分辨率/码率比较。验证码、访问限制或网页结构变化可能导致失败，不扫描其他浏览器账号配置或调用第三方解析站兜底。
+工具内部只取目标视频 ID 对应的播放地址，比较最多三个候选并验证 MP4、分辨率、时长和大小；不覆盖已有文件、不转码或改写水印参数。Cookie 不能代替网页 JavaScript 或额外验证，工具未取得地址时报告具体限制，不另建下载流程。
 
-已在 Linux 通过 104 项离线测试；另通过 8 项本地页面的无头浏览器测试及 6 个工具的 MCP stdio 启动验证。真实抖音页面和手机扫码尚未完成验收，下载成功率仍受页面与访问权限影响。完整参数、限制和中英文说明见[抖音下载使用说明](plugins/douyin-video-download/README.md)。
+离线测试覆盖 Cookie 格式与域名限制、重定向、下载校验、不覆盖及错误脱敏；MCP stdio 测试检查唯一工具和必填 Cookie。真实抖音页面与账号需另行验收，详见[抖音下载使用说明](plugins/douyin-video-download/README.md)。
 
 ### Agent Chatroom 聊天室
 
@@ -150,7 +150,7 @@ FFmpeg 需支持 libx264/libass；已声明的 `imageio-ffmpeg` 提供二进制�
 
 设计阶段不调用图片生成。用户确认具体版本后，宿主复用已有 Seedream（`volcengine-plugins`）或其他生图能力生成整体效果，再由宿主视觉模型对照原设计分析偏差并继续改款。插件不提供生产纸样或合体仿真，也不内置模型凭据。
 
-已通过 13 项自动化测试、交互面板回归和 CardBush ZIP 安装验证。真实付费生图的款式还原质量尚未验收，详见[插件说明](plugins/garment-designer/README.md)及[验证记录](plugins/garment-designer/TESTING.md)。
+通过 `garment-presentation` Skill 可将已保存的设计版本整理为讲解方案，导出矢量 PDF、含 SVG 与可编辑文字的 PPTX、离线 HTML 和讲稿。已通过 17 项自动化测试、交互面板和导出回归，以及 CardBush ZIP 安装验证。真实付费生图的款式还原质量尚未验收，详见[插件说明](plugins/garment-designer/README.md)及[验证记录](plugins/garment-designer/TESTING.md)。
 
 ## 更新市场
 
@@ -239,19 +239,15 @@ plugins/
     .mcp.json
     server.py
     requirements.txt
-    requirements-browser.txt
     README.md
     scripts/build_release.py
     scripts/test_mcp.py
-    scripts/test_qr_browser.py
     skills/douyin-video-download/
       SKILL.md
       agents/openai.yaml
       scripts/download_video.py
-      scripts/qr_login.py
       scripts/test_download_video.py
       scripts/test_cookies.py
-      scripts/test_qr_login.py
   agentchatroom/
     .codex-plugin/plugin.json
     .mcp.json
@@ -281,6 +277,7 @@ plugins/
     src/
     ui/
     skills/garment-design/
+    skills/garment-presentation/
     scripts/
     test/
     third-party/

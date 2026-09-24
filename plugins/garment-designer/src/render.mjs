@@ -43,5 +43,5 @@ export async function detailSvg(scene,partId){
 export function overviewSvg(scene){
   const views=['front','back'].filter(view=>scene.parts.some(p=>p.view===view&&p.visible));
   const column=scene.width+40,height=scene.height+100;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${column*views.length}" height="${height}"><rect width="100%" height="100%" fill="white"/>${views.map((view,index)=>`<g transform="translate(${index*column+20} 60)"><text y="-20" font-family="sans-serif" font-size="24" fill="#444444">${view==='front'?'FRONT':'BACK'}</text>${scene.parts.filter(p=>p.view===view).sort((a,b)=>a.z-b.z).map(p=>partSvg(p)).join('')}</g>`).join('')}<title>${escapeXml(scene.title)}</title></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${column*views.length}" height="${height}" viewBox="0 0 ${column*views.length} ${height}"><rect width="100%" height="100%" fill="white"/>${views.map((view,index)=>`<g transform="translate(${index*column+20} 60)"><text y="-20" font-family="sans-serif" font-size="24" fill="#444444">${view==='front'?'FRONT':'BACK'}</text>${scene.parts.filter(p=>p.view===view).sort((a,b)=>a.z-b.z).map(p=>partSvg(p)).join('')}</g>`).join('')}<title>${escapeXml(scene.title)}</title></svg>`;
 }

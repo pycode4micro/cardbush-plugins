@@ -8,7 +8,12 @@ function rpc(method,params){
   const id='garment-'+(++serial);
   return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{pending.delete(id);reject(new Error('连接超时。请刷新确认操作是否已保存；不要重复提交生图。'));},120000);pending.set(id,{resolve,reject,timer});parent.postMessage({jsonrpc:'2.0',id,method,params},'*');});
 }
-function theme(context){if(context?.theme)document.documentElement.style.colorScheme=context.theme==='dark'?'dark':'light';}
+function theme(context){
+  if(context?.theme)document.documentElement.style.colorScheme=context.theme==='dark'?'dark':'light';
+  for(const [key,value] of Object.entries(context?.styles?.variables||{})){
+    if(/^--[a-z0-9-]+$/.test(key)&&typeof value==='string')document.documentElement.style.setProperty(key,value);
+  }
+}
 function status(message,error=false){$('status').textContent=message;$('status').classList.toggle('error',error);}
 function changed(event){dirty=true;if(event?.target?.id)dirtyFields.add(event.target.id);$('save').textContent='保存修改';}
 function accept(result){

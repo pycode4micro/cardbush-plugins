@@ -1,8 +1,10 @@
 # volcengine-plugins
 
+长任务优先使用后台生图入口与统一批量等待；插件自行控制轮询频率，复用宿主现有后台只读工具，CardBush 无需修改。[后台任务、重复提交保护与重启边界](docs/background-generation.md)。参考视频 Skill 已明确要求在实际生成提示词中绑定音频编号、角色与音色，不能只附带音频。
+
 ## 0.7.0：v5.0 歌曲与纯音乐
 
-新增 7 个音乐工具，现共 32 个 MCP 工具。支持自带歌词/创作描述生成人声歌曲、分段纯音乐 BGM、免费预览、异步查询、原样下载及歌词/字幕 JSON 保存。歌曲和 BGM 均显式使用官方 `v5.0`，不自动降级或重提付费任务。默认按时长后付费，也可明确选择预付费资源包。
+新增 7 个音乐工具，加上后台生图和统一等待，现共 34 个 MCP 工具。支持自带歌词/创作描述生成人声歌曲、分段纯音乐 BGM、免费预览、异步查询、原样下载及歌词/字幕 JSON 保存。歌曲和 BGM 均显式使用官方 `v5.0`，不自动降级或重提付费任务。默认按时长后付费，也可明确选择预付费资源包。
 
 音乐使用独立的 `VOLCENGINE_ACCESS_KEY_ID` / `VOLCENGINE_SECRET_ACCESS_KEY`，已有 Ark 或 MediaKit Key 不能替代。配置、调用示例和官方版本差异见[音乐生成说明](docs/music-generation.md)，内置 [music-generation Skill](skills/music-generation/SKILL.md)。更新后重新安装 Python 包并重连 MCP。
 
@@ -168,7 +170,7 @@ export MEDIAKIT_API_KEY
 
 | 用途 | 免费能力 / 预览 | 付费执行 | 查询 |
 | --- | --- | --- | --- |
-| 图片 | `seedream_capabilities` / `seedream_preview_request` | `seedream_generate` | 生图调用直接返回结果 |
+| 图片 | `seedream_capabilities` / `seedream_preview_request` | `seedream_create_task` | `generation_wait_tasks`；旧同步 `seedream_generate` 保留 |
 | 视频 | `seedance_capabilities` / `seedance_preview_request` | `seedance_create_task` | `seedance_get_task` |
 | 超分 | `video_enhance_capabilities` / `video_enhance_preview_request` | `video_enhance_create_task` | `video_enhance_get_task` |
 | 去字幕 | `video_subtitle_erase_capabilities` / `video_subtitle_erase_preview_request` | `video_subtitle_erase_create_task` | `video_subtitle_erase_get_task` |
@@ -185,7 +187,7 @@ export MEDIAKIT_API_KEY
 
 ### 图片生成
 
-以下参数先传给 `seedream_preview_request`，确认后传给 `seedream_generate`：
+以下参数先传给 `seedream_preview_request`，确认后连同唯一 `request_id` 传给 `seedream_create_task`。按回执 ID 等待结果；旧同步调用可继续用 `seedream_generate`：
 
 ```json
 {

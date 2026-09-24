@@ -14,17 +14,13 @@ FILES = (
     ".mcp.json",
     "server.py",
     "requirements.txt",
-    "requirements-browser.txt",
     "scripts/test_mcp.py",
-    "scripts/test_qr_browser.py",
     "scripts/build_release.py",
     SKILL + "SKILL.md",
     SKILL + "agents/openai.yaml",
     SKILL + "scripts/download_video.py",
     SKILL + "scripts/test_download_video.py",
     SKILL + "scripts/test_cookies.py",
-    SKILL + "scripts/qr_login.py",
-    SKILL + "scripts/test_qr_login.py",
 )
 
 

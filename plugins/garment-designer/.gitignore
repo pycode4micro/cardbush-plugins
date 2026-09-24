@@ -6,5 +6,6 @@ release/
 !dist/
 dist/*
 !dist/server.mjs
+!dist/presentation.mjs
 !dist/editor.html
 !dist/index_bg.wasm

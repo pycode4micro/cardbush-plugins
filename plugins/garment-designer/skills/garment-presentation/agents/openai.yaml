@@ -1,0 +1,6 @@
+interface:
+  display_name: "服装设计方案"
+  short_description: "将已有款式整理成 PDF、PPTX 和离线 HTML，保留矢量细节用于讲解"
+  default_prompt: "使用 $garment-presentation 把当前服装设计整理成可直接讲解的 PDF、PPTX 和 HTML 方案。"
+policy:
+  allow_implicit_invocation: true

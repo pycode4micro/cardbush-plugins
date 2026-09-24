@@ -1,8 +1,10 @@
 # volcengine-plugins
 
+Prefer background image jobs and unified bounded task waits. Polling stays inside the plugin; existing host background read tools allow concurrent work without CardBush changes. See [background jobs and recovery boundaries](docs/background-generation.md). Reference-video prompts must explicitly bind each voice reference to its character and dialogue, beyond attaching reference_audio.
+
 ## 0.7.0: v5.0 vocal songs and BGM
 
-Seven new music tools bring the total to 32. Create vocal songs from custom lyrics/prompts or structured instrumental BGM with the official v5.0 model, preview offline, query tasks, download unchanged audio and optionally save lyrics/captions JSON. Both modes pin v5.0; no automatic model/billing fallback or paid retry. Postpaid billing is the default; prepaid packages can be explicitly selected.
+Seven music tools plus background image creation and unified waiting bring the total to 34. Create vocal songs from custom lyrics/prompts or structured instrumental BGM with the official v5.0 model, preview offline, query tasks, download unchanged audio and optionally save lyrics/captions JSON. Both modes pin v5.0; no automatic model/billing fallback or paid retry. Postpaid billing is the default; prepaid packages can be explicitly selected.
 
 Configure `VOLCENGINE_ACCESS_KEY_ID` and `VOLCENGINE_SECRET_ACCESS_KEY`, plus `VOLCENGINE_SESSION_TOKEN` only for STS credentials. Enable the selected service in the [music console](https://console.volcengine.com/ai-music/product). Ark/MediaKit keys are not substitutes. Use `music_capabilities`, `music_preview_song` / `music_preview_bgm`, `music_create_song` / `music_create_bgm`, `music_get_task` and `music_download_task`. Songs use body `ModelVersion=v5.0` (30–240 seconds); BGM uses body `Version=v5.0` (30–120 seconds), while the OpenAPI query version remains `2024-08-12`. See the [request guide](docs/music-generation.md) and bundled [music-generation Skill](skills/music-generation/SKILL.md). Reinstall the Python package and reconnect MCP after updating.
 
@@ -170,7 +172,7 @@ You can also run `python scripts/diagnose_config.py` for diagnostics without dis
 
 | Purpose | Free capabilities / preview | Paid execution | Query |
 | --- | --- | --- | --- |
-| Images | `seedream_capabilities` / `seedream_preview_request` | `seedream_generate` | Generation returns results directly |
+| Images | `seedream_capabilities` / `seedream_preview_request` | `seedream_create_task` | `generation_wait_tasks`; synchronous `seedream_generate` remains compatible |
 | Videos | `seedance_capabilities` / `seedance_preview_request` | `seedance_create_task` | `seedance_get_task` |
 | Enhancement | `video_enhance_capabilities` / `video_enhance_preview_request` | `video_enhance_create_task` | `video_enhance_get_task` |
 | Subtitle erasure | `video_subtitle_erase_capabilities` / `video_subtitle_erase_preview_request` | `video_subtitle_erase_create_task` | `video_subtitle_erase_get_task` |
@@ -183,7 +185,7 @@ Check capabilities, preview parameters, then submit once after approval. An acce
 
 ### Generate an image
 
-Pass these arguments to `seedream_preview_request`, then to `seedream_generate` after approval:
+Preview these arguments with `seedream_preview_request`, then submit them with a unique `request_id` to `seedream_create_task` when authorized. Wait for the returned ID; `seedream_generate` remains a synchronous compatibility path:
 
 ```json
 {

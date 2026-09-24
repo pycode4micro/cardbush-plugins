@@ -14,13 +14,14 @@ test('packaged stdio server: discovery, tools, resource, errors, restart persist
   };
   let client;
   try{
-    client=await connect();const tools=await client.listTools();assert.equal(tools.tools.length,6);assert(tools.tools.find(t=>t.name==='garment_project')._meta.ui.resourceUri);
+    client=await connect();const tools=await client.listTools();assert.equal(tools.tools.length,7);assert(tools.tools.find(t=>t.name==='garment_project')._meta.ui.resourceUri);
     const resources=await client.listResources();assert.equal(resources.resources[0].mimeType,'text/html;profile=mcp-app');
     const page=await client.readResource({uri:resources.resources[0].uri});assert(page.contents[0].text.includes('确认此版本'));assert(!page.contents[0].text.includes('/* APP_SCRIPT */'));assert(!page.contents[0].text.includes('<script src='));
     const create=await client.callTool({name:'garment_project',arguments:{action:'create',title:'协议实测',template:'shirt'}});assert(!create.isError);const id=create.structuredContent.projectId;assert(create._meta.garment.document);
     const edit=await client.callTool({name:'garment_edit',arguments:{project_id:id,expected_revision:1,patch:{parts:[{id:'collar',prompt:'窄小圆领',fill:'#445577'}]}}});assert(!edit.isError);assert.equal(edit.structuredContent.revision,2);
     const stale=await client.callTool({name:'garment_edit',arguments:{project_id:id,expected_revision:1,patch:{title:'不应覆盖'}}});assert(stale.isError);
     const preview=await client.callTool({name:'garment_preview',arguments:{project_id:id}});assert.equal(preview.content[1].type,'image');assert.equal(preview.content[1].mimeType,'image/png');
+    const presentation=await client.callTool({name:'garment_present',arguments:{project_id:id,revision:2,formats:['html','pptx']}});assert(!presentation.isError);assert.equal(presentation.structuredContent.files.length,2);assert.deepEqual(presentation.structuredContent.errors,[]);assert(!tools.tools.find(t=>t.name==='garment_present')._meta?.ui);
     const unconfirmed=await client.callTool({name:'garment_render',arguments:{action:'prepare',project_id:id,revision:2,request_id:'attempt'}});assert(unconfirmed.isError);
     const missing=await client.callTool({name:'garment_project',arguments:{action:'get'}});assert(missing.isError);
     await client.close();client=await connect();const reopened=await client.callTool({name:'garment_project',arguments:{action:'get',project_id:id}});assert.equal(reopened.structuredContent.revision,2);assert.equal(reopened.structuredContent.document.scene.parts.find(p=>p.id==='collar').fill,'#445577');

@@ -9,6 +9,7 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
+import sys
 from unittest.mock import patch
 from urllib.request import HTTPSHandler, Request, build_opener
 from urllib.response import addinfourl
@@ -16,6 +17,8 @@ from urllib.response import addinfourl
 SPEC = importlib.util.spec_from_file_location("cookie_downloader", Path(__file__).with_name("download_video.py"))
 d = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(d)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_download_video import media
 PAGE = "https://www.douyin.com/video/1234567890123456789"
 DNS = [(0, 0, 0, "", ("8.8.8.8", 443))]
 
@@ -48,9 +51,6 @@ class Cookies(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.path = Path(self.temp.name) / "cookies.txt"
-        isolated_login = patch.object(d, "login_state_dir", return_value=Path(self.temp.name)/"managed")
-        isolated_login.start()
-        self.addCleanup(isolated_login.stop)
 
     def client(self, data):
         self.path.write_text(json.dumps(data) if not isinstance(data, str) else data, encoding="utf-8")
@@ -86,6 +86,39 @@ class Cookies(unittest.TestCase):
             client = self.client(data)
             self.assertEqual(self.header(client), "session_fixture=FAKE_TEST_VALUE")
             self.assertEqual(client.imported_cookies, 1)
+
+    def test_cookie_header_text_is_scoped_to_exact_www_host(self):
+        for prefix in ('', 'Cookie: ', 'cookie: '):
+            client = self.client(prefix + 'session_fixture=FAKE_TEST_VALUE; token=abc==; empty=;\n')
+            self.assertEqual(self.header(client), 'session_fixture=FAKE_TEST_VALUE; token=abc==; empty=')
+            for url in ('https://cdn.example/a.mp4', 'https://v.douyin.com/x/', 'https://sub.www.douyin.com/',
+                        'https://www.iesdouyin.com/', 'http://www.douyin.com/', 'https://www.douyin.com.evil.example/'):
+                self.assertIsNone(self.header(client, url))
+
+    def test_header_injection_and_copying_other_headers_are_rejected(self):
+        for data in ('session=FAKE_TEST_VALUE\r\nX-Leak: secret', 'Cookie: session=FAKE_TEST_VALUE\nCookie: other=1',
+                     'session=FAKE_TEST_VALUE; broken-pair', 'Set-Cookie: session=FAKE_TEST_VALUE',
+                     'session=FAKE_TEST_VALUE\x00', 'session=FAKE_TEST_VALUE; invalid name=1'):
+            self.error('invalid_cookies', data)
+
+    def test_missing_cookie_never_reads_saved_state_or_starts_network(self):
+        with patch.object(d, 'PublicHTTP', side_effect=AssertionError('No implicit authentication')):
+            for value in (None, '', '  '):
+                with self.assertRaises(d.DownloadError) as raised:
+                    d.download_video(PAGE, value, self.temp.name)
+                self.assertEqual(raised.exception.code, 'cookies_required')
+
+    def test_supplied_raw_header_reaches_page_then_download_without_leaking_to_cdn(self):
+        self.client('Cookie: session_fixture=FAKE_TEST_VALUE')
+        html = '<script>window._ROUTER_DATA = ' + json.dumps({
+            'aweme_id': '1234567890123456789', 'video': {'play_addr': {'url_list': ['https://cdn.example/video.mp4']}}}) + ';</script>'
+        with self.network([(200, [], html.encode()), (200, [('Content-Type', 'video/mp4')], media())]) as fake:
+            result = d.download_video(PAGE, str(self.path), str(Path(self.temp.name) / 'download'))
+        self.assertEqual(result['status'], 'downloaded')
+        self.assertEqual(Path(result['file_path']).read_bytes(), media())
+        self.assertEqual(fake.requests[0].get_header('Cookie'), 'session_fixture=FAKE_TEST_VALUE')
+        self.assertIsNone(fake.requests[1].get_header('Cookie'))
+        self.assertNotIn('FAKE_TEST_VALUE', json.dumps(result))
 
     def test_editor_expiration_date_and_utf8_bom(self):
         entry = exported()
@@ -140,7 +173,7 @@ class Cookies(unittest.TestCase):
             self.assertTrue(next(iter(client.cookies)).discard)
 
     def test_malformed_secret_sanitized(self):
-        for data in ("session=FAKE_TEST_VALUE", "[{FAKE_TEST_VALUE", {}, [42],
+        for data in ("not-a-cookie", "[{FAKE_TEST_VALUE", {}, [42],
                      [exported(value="FAKE_TEST_VALUE\r\nX-Leak: yes")],
                      [exported(value="FAKE_TEST_VALUE; injected=yes")],
                      [exported(value="FAKE_TEST_VALUE😀")], [exported(name="invalid;name")],
@@ -230,10 +263,10 @@ class Cookies(unittest.TestCase):
         html = '<script>window._ROUTER_DATA = ' + json.dumps({
             "aweme_id": "1234567890123456789", "video": {"play_addr": {"url_list": ["https://cdn.example/video.mp4"]}}}) + ';</script>'
         output = io.StringIO()
-        with self.network([(200, [], html.encode())]) as fake, contextlib.redirect_stdout(output):
-            result = d.main([PAGE, "--resolve-only", "--cookies-file", str(self.path)])
+        with self.network([(200, [], html.encode()), (200, [], media())]) as fake, contextlib.redirect_stdout(output):
+            result = d.main([PAGE, "--cookies-file", str(self.path), '--output-dir', str(Path(self.temp.name) / 'download')])
         self.assertEqual(result, 0)
-        self.assertEqual(json.loads(output.getvalue())["status"], "resolved")
+        self.assertEqual(json.loads(output.getvalue())["status"], "downloaded")
         self.assertEqual(fake.requests[0].get_header("Cookie"), "session_fixture=FAKE_TEST_VALUE")
         self.assertNotIn("FAKE_TEST_VALUE", output.getvalue())
         self.path.write_text("[{FAKE_TEST_VALUE", encoding="utf-8")

@@ -4,7 +4,7 @@
 
 ## 已完成
 
-`npm test`：13 项通过，覆盖：
+`npm test`：17 项通过，覆盖：
 
 - 局部修改不重置未指定字段、移动部位不重置旋转/缩放、自由矢量部位、锁定部位保护。
 - 脚本/外链注入、重复 ID、路径穿越拒绝。
@@ -13,7 +13,11 @@
 - 未确认/过时版本拒绝、相同 request_id 幂等、5 个领取者仅一个成功。
 - 模拟生图超时后保存已有图片、重复保存幂等、分析固定到原确认版。
 - 参考图拷贝、原文件删除后仍可读。
-- 启动打包后的 MCP stdio 服务，真实 SDK 发现 6 个工具，调用创建、修改、预览，读取 MCP App 资源，校验错误及进程重启后持久化。
+- 启动打包后的 MCP stdio 服务，真实 SDK 发现 7 个工具，调用创建、修改、预览和方案导出，读取 MCP App 资源，校验错误及进程重启后持久化。
+- PDF 嵌入中文字体及 ToUnicode 表，服装图没有转为位图；PPTX 保留文字、SVG、备注以及真实 PNG 兼容预览，HTML 内嵌可缩放 SVG。
+- 缺字体时部分格式成功、指定历史版导出、4 次并发导出复用完整文件、未知视图/部位及路径穿越拒绝、设计文字不能注入 HTML。
+
+`node scripts/test-presentation-ui.mjs <Electron 可执行文件>`：真实离线 HTML，完整 SVG 部位边界、密集中文布局、键盘翻页、备注、主题切换和窄屏无横向溢出。实际生成 5 页 PDF/PPTX/HTML，PDF 经 Poppler 渲染检查整体、细节和密集页；PPTX 经 CardBush Office 预览器读取，未用 Microsoft PowerPoint / WPS 实机验收。
 
 `node scripts/test-ui.mjs <Electron 可执行文件>`：隐藏窗口、隔离目录、真实 MCP 服务、模拟宿主桥接。已通过：
 
@@ -27,7 +31,7 @@
 
 插件清单和 Skill 官方校验脚本通过。Codex 个人市场能够发现正确的源码目录。
 
-`node scripts/test-cardbush.mjs <已构建的 CardBush 源码目录>`：使用 CardBush 当前真实 ZIP 安装器，在隔离临时目录安装发行包，验证清单无兼容问题、Skill/MCP 组件发现、安装目录变量展开、无需 node_modules 的 MCP 启动、真实 PNG 渲染及交互资源读取。已通过。
+`node scripts/test-cardbush.mjs <已构建的 CardBush 源码目录>`：使用 CardBush 当前真实 ZIP 安装器，在隔离临时目录安装发行包，验证清单无兼容问题、两个 Skill / MCP 组件发现、安装目录变量展开、无需 node_modules 的 MCP 启动、真实 PNG 渲染、PDF/PPTX/HTML 三格式导出及交互资源读取。已通过。
 
 ## 验证边界
 

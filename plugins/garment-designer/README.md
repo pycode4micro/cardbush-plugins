@@ -7,7 +7,7 @@
 ## 安装与使用
 
 - 运行要求：**Node.js 22 或更新版本**，支持 Windows、Linux、macOS；插件主机需为可写的普通本地文件系统（NTFS/APFS/ext4 等，要求原子硬链接）。沙盒/只读/不支持硬链接的文件系统会明确报错，不会降级为不安全覆盖。
-- CardBush：从 **Cardbush Plugins** 市场安装“衣服设计”；也可导入本地插件目录或自行打包得到的 `release/garment-designer-0.1.0.zip`。启用其中的 MCP 服务与 `garment-design` Skill。仓库和发行包均包含打包后的 JS 和矢量渲染 WASM，**运行时无需 npm install**。若宿主找不到 `node`，先把 Node 安装到该主机的 PATH。
+- CardBush：从 **Cardbush Plugins** 市场安装“衣服设计”；也可导入本地插件目录或自行打包得到的 `release/garment-designer-0.2.0.zip`。启用其中的 MCP 服务与 `garment-design`、`garment-presentation` Skill。仓库和发行包均包含打包后的 JS 和矢量渲染 WASM，**运行时无需 npm install**。若宿主找不到 `node`，先把 Node 安装到该主机的 PATH。
 - Codex：从 **Cardbush Plugins** 市场安装/启用，已有该市场时可运行 `codex plugin add garment-designer@cardbush-plugins`。源码目录本身也可作为插件源。市场添加方式见[仓库说明](../../README.md)。
 - 云端 Agent：把包安装在云端 Agent 使用的插件主机上。设计数据与路径均属于该主机；生图服务若在另一台机器，需宿主支持文件传输。无需修改 CardBush 核心代码。
 - 直接说：“帮我设计一件宽松短外套，偏运动风，先看矢量稿。”
@@ -21,6 +21,17 @@
 生成准备会保存整体视图、部位特写、可选掩膜和完整提示词。支持多部位自由路径、非对称造型和增删自定义部件，不局限于模板开关。图片服务的参考图数量、文字能力、局部编辑能力取决于实际提供方；掩膜导出不代表服务具备区域编辑。
 
 图后分析由宿主视觉模型对照真实图片和已确认设计完成，区分偏差、建议和不确定项。无生图服务时可正常设计、导出；无视觉能力时可保存成图，但不能声称完成视觉分析。
+
+## 设计方案导出
+
+直接说：“把当前设计整理成能讲解的 PDF、PPT 和 HTML 方案。”`garment-presentation` 会读取指定设计版本，组织整体款式、部位细节、配色、设计要点与讲解备注，通过 `garment_present` 一次导出所需格式，不重新生图。
+
+- **PDF**：矢量款式、可搜索文字、嵌入字体，适合交付和打印。
+- **PPTX**：可编辑文字、讲解备注、内嵌 SVG；同时附真实 PNG 兼容预览。旧版软件可能使用 PNG 显示，不声称所有应用都可拆开 SVG 编辑。
+- **HTML**：离线单文件，内嵌 SVG，支持键盘翻页、备注、明暗主题和打印。
+- 同目录保存独立 SVG 与 `outline.json`，便于复用。导出不修改设计，相同版本和大纲复用完成文件；缺失格式单独报告，不影响其他成功文件。
+
+只需要 Node 22+，无需浏览器、Office 或付费服务。PDF 需要覆盖正文字符的本机字体，自动探测 Windows 雅黑、macOS 苹方、Linux Noto CJK 等；自定义字体可设置 `GARMENT_PRESENTATION_FONT` 为已有 TTF/OTF/TTC 文件路径。缺字体时 HTML/PPTX 仍能导出，不会静默输出缺字 PDF。导出文件在插件主机上，由宿主预览或传输；未嵌入用户参考照片和生成效果图。
 
 ## 数据与恢复
 
@@ -43,6 +54,6 @@ npm run package
 
 `npm run package` 需要开发机器上的 Python 3，仅用于生成 ZIP。发布运行不依赖 Python。MCP stdio 调试可运行 `npm start`；stdout 仅用于协议消息。
 
-市场直接分发 Git 中的插件目录，因此源码变更后应重新构建并一并提交 `dist/server.mjs`、`dist/editor.html`、`dist/index_bg.wasm` 和第三方声明。依赖目录、测试数据与本地 ZIP 不提交。
+市场直接分发 Git 中的插件目录，因此源码变更后应重新构建并一并提交 `dist/server.mjs`、`dist/presentation.mjs`、`dist/editor.html`、`dist/index_bg.wasm` 和第三方声明。依赖目录、测试数据与本地 ZIP 不提交。
 
 测试范围与实测记录见 [TESTING.md](TESTING.md)。

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download one public Douyin share video; Python 3.10+, standard library only."""
+"""Download one Douyin video using a supplied Cookie file; Python 3.10+, standard library only."""
 from __future__ import annotations
 
 import argparse
@@ -52,22 +52,6 @@ class DownloadError(Exception):
 def is_douyin_host(host: str) -> bool:
     return any(host == root or host.endswith("." + root)
                for root in ("douyin.com", "iesdouyin.com"))
-
-
-def login_state_dir() -> Path:
-    """Plugin-owned state only; never inspect another browser's profile."""
-    return Path.home() / ".douyin-video-download" / "auth"
-
-
-def cookie_file_for_request(explicit: Path | None = None, *, guest: bool = False) -> Path | None:
-    if explicit is not None:
-        return explicit
-    if guest:
-        return None
-    saved = login_state_dir() / "cookies.json"
-    if saved.is_symlink() or saved.parent.is_symlink():
-        raise DownloadError("cookie_file_error", "插件登录状态路径不能是符号链接")
-    return saved if saved.is_file() else None
 
 
 def validate_url(url: str, *, page: bool, check_dns: bool = False) -> str:
@@ -175,7 +159,7 @@ class DouyinCookiePolicy(DefaultCookiePolicy):
 
 
 def load_cookie_file(path: Path, jar: CookieJar) -> int:
-    """Import an explicitly selected Netscape or browser-export JSON file; never log values."""
+    """Import an explicit Cookie-header/Netscape/JSON file without logging values."""
     try:
         with path.expanduser().open("rb") as handle:
             data = handle.read(MAX_COOKIE_BYTES + 1)
@@ -191,7 +175,7 @@ def load_cookie_file(path: Path, jar: CookieJar) -> int:
                 entries = entries.get("cookies")
             if not isinstance(entries, list) or not all(isinstance(c, dict) for c in entries):
                 raise ValueError
-        else:
+        elif "\t" in source or source.lstrip().startswith("#"):
             entries = []
             for line in source.splitlines():
                 if line.startswith("#HttpOnly_"):
@@ -205,6 +189,21 @@ def load_cookie_file(path: Path, jar: CookieJar) -> int:
                                 "path": cookie_path, "secure": secure == "TRUE",
                                 "expires": int(expires) if expires else None,
                                 "name": name, "value": value})
+        else:
+            header = source.strip()
+            if header.lower().startswith("cookie:"):
+                header = header[7:].lstrip()
+            if "\r" in header or "\n" in header:
+                raise ValueError
+            entries = []
+            for pair in header.split(";"):
+                if not pair.strip():
+                    continue
+                name, value = pair.strip().split("=", 1)
+                # Header exports carry no domain/path metadata. Limit them to the
+                # exact host named in the acquisition instructions, never CDN hosts.
+                entries.append({"domain": "www.douyin.com", "hostOnly": True,
+                                "path": "/", "secure": True, "name": name, "value": value})
         imported, expired = [], 0
         for entry in entries:
             domain = entry.get("domain", "")
@@ -249,11 +248,11 @@ def load_cookie_file(path: Path, jar: CookieJar) -> int:
             jar.set_cookie(cookie)
         return len(imported)
     except (ValueError, TypeError, OverflowError, RecursionError):
-        raise DownloadError("invalid_cookies", "Cookie 文件格式无效；请使用 Netscape 或浏览器导出的 JSON 文件") from None
+        raise DownloadError("invalid_cookies", "Cookie 文件格式无效；请保存单行 Cookie 请求头值，或使用 Netscape/JSON 导出文件") from None
 
 
 class PublicHTTP:
-    """In-memory guest session, optionally seeded by an explicitly supplied cookie file."""
+    """Request-local Cookie jar; public entrypoints require an explicit Cookie file."""
     def __init__(self, timeout: float = 30, cookies_file: Path | None = None):
         self.timeout = timeout
         self.cookies = CookieJar(policy=DouyinCookiePolicy())
@@ -274,7 +273,7 @@ class PublicHTTP:
             status = exc.code
             exc.close()
             if status in {401, 403}:
-                raise DownloadError("access_required", "远端拒绝访问；请提供可公开访问的链接或已有视频") from None
+                raise DownloadError("access_required", "远端拒绝访问；请在浏览器确认目标可播放并重新获取 Cookie，或提供已有视频") from None
             if status == 429:
                 raise DownloadError("rate_limited", "远端限流，请稍后再试，不要反复请求") from None
             raise DownloadError("http_error", f"远端返回 HTTP {status}") from None
@@ -488,7 +487,7 @@ def resolve_share(text: str, client: PublicHTTP) -> dict:
         except DownloadError as exc:
             if exc.code not in {"network_error", "http_error"}:
                 raise
-    raise DownloadError("metadata_unavailable", "页面中未找到目标视频播放地址；可能需要浏览器渲染、登录验证，或内容/页面结构已变化，不能仅凭此判断缺少 Cookie")
+    raise DownloadError("metadata_unavailable", "已携带 Cookie，但页面未返回目标视频地址；可能需要页面 JavaScript 或额外验证，也可能已改版。此工具没有取得视频，请提供可用源文件")
 
 
 def boxes(handle, start: int, end: int):
@@ -669,7 +668,7 @@ def download_info(info: dict, output_dir: Path, client: PublicHTTP, max_bytes: i
         if min(probe["width"],probe["height"]) < 1080:
             warnings.append("选中源低于 1080 短边；高质量去字幕前应确认是否还有更清晰的授权来源。")
         if len(info["download_urls"]) > max_candidates:
-            warnings.append("候选数达到本次检查上限，仍有线路未核实；可显式提高 max_candidates，最多 8。")
+            warnings.append("已达到候选检查上限，仍有线路未核实；仅交付已检查候选中最佳的文件。")
         return {"status":"downloaded", **{key:value for key,value in info.items() if key not in {"download_urls","candidates"}},
                 "file_path":str(target),"bytes":count,"sha256":checksum,**probe,
                 "quality":{"selection":"highest_verified_resolution_then_bitrate", "selected_candidate_index":selected,
@@ -680,50 +679,37 @@ def download_info(info: dict, output_dir: Path, client: PublicHTTP, max_bytes: i
             path.unlink(missing_ok=True)
 
 
-def positive_float(value: str) -> float:
-    parsed = float(value)
-    if not math.isfinite(parsed) or parsed <= 0:
-        raise argparse.ArgumentTypeError("must be a positive finite number")
-    return parsed
+def download_video(share_text: str, cookies_file: str | None, output_dir: str) -> dict:
+    """Shared public boundary: no implicit credentials or network access without a file."""
+    if not cookies_file or not cookies_file.strip():
+        raise DownloadError("cookies_required", "请先在已登录的 www.douyin.com 页面复制 Cookie 请求头，保存为 UTF-8 文件，再传入 cookies_file 的绝对路径")
+    if not Path(cookies_file).is_absolute():
+        raise DownloadError("cookie_file_error", "cookies_file 必须是用户指定的 Cookie 文件绝对路径")
+    if not output_dir or not Path(output_dir).is_absolute():
+        raise DownloadError("invalid_output_dir", "output_dir 必须是保存目录的绝对路径")
+    client = PublicHTTP(cookies_file=Path(cookies_file))
+    info = resolve_share(share_text, client)
+    return download_info(info, Path(output_dir), client, 1024 * 1024 * 1024)
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("share_text", nargs="?", help="a Douyin link or complete share text")
     parser.add_argument("--input-file", type=Path, help="read share text from a UTF-8 file instead")
-    parser.add_argument("--candidates-file", type=Path, help="JSON with page_url and candidates observed in an authorized browser")
-    authentication = parser.add_mutually_exclusive_group()
-    authentication.add_argument("--cookies-file", type=Path, help="optional user-selected Netscape/JSON cookie file; otherwise reuse this plugin's QR login")
-    authentication.add_argument("--guest", action="store_true", help="ignore this plugin's saved login and use a fresh guest session")
+    parser.add_argument("--cookies-file", help="required absolute path to a UTF-8 Cookie header or Netscape/JSON file")
     parser.add_argument("--output-dir", type=Path, default=Path("downloads"))
-    parser.add_argument("--resolve-only", action="store_true")
-    parser.add_argument("--timeout", type=positive_float, default=30)
-    parser.add_argument("--max-mb", type=positive_float, default=1024)
-    parser.add_argument("--min-short-side", type=int, default=0, help="reject lower-resolution sources, e.g. 1080")
-    parser.add_argument("--max-candidates", type=int, default=3, help="compare at most 1..8 candidate downloads")
     args = parser.parse_args(argv)
-    if sum(value is not None for value in (args.share_text,args.input_file,args.candidates_file)) != 1:
-        parser.error("provide exactly one of share_text, --input-file or --candidates-file")
-    if args.timeout > 3600 or args.max_mb > 1024 * 1024 or args.max_mb * 1024 * 1024 < 1:
-        parser.error("timeout must be at most 3600 seconds; max-mb must describe 1 byte to 1 TiB")
+    if sum(value is not None for value in (args.share_text, args.input_file)) != 1:
+        parser.error("provide exactly one of share_text or --input-file")
     try:
-        client = PublicHTTP(args.timeout, cookies_file=cookie_file_for_request(args.cookies_file, guest=args.guest))
-        if args.candidates_file is not None:
-            data = json.loads(args.candidates_file.read_text(encoding="utf-8-sig"))
-            if not isinstance(data,dict) or not isinstance(data.get("candidates"),list):
-                raise DownloadError("invalid_candidates", "候选 JSON 必须包含 page_url 和 candidates 数组")
-            info = observed_info(data.get("page_url", ""),data["candidates"])
-        else:
-            text = args.share_text if args.share_text is not None else args.input_file.read_text(encoding="utf-8-sig")
-            info = resolve_share(text, client)
-        result = ({"status": "resolved", **info} if args.resolve_only else
-                  download_info(info, args.output_dir, client, int(args.max_mb * 1024 * 1024),args.min_short_side,args.max_candidates))
+        text = args.share_text if args.share_text is not None else args.input_file.read_text(encoding="utf-8-sig")
+        result = download_video(text, args.cookies_file, str(args.output_dir.expanduser().resolve()))
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except DownloadError as exc:
         result = {"status": "error", "code": exc.code, "message": exc.message}
     except (ValueError, TypeError):
-        result = {"status": "error", "code": "invalid_candidates", "message": "候选 JSON 或参数类型无效"}
+        result = {"status": "error", "code": "invalid_input", "message": "输入或参数类型无效"}
     except (OSError, UnicodeError):
         result = {"status": "error", "code": "io_error", "message": "无法读写输入或输出文件，请检查编码和目录权限"}
     except KeyboardInterrupt:

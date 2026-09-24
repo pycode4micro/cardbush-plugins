@@ -50,14 +50,19 @@ def test_package_contains_complete_portable_skill(tmp_path):
 
 @pytest.mark.parametrize("profile", PROFILES)
 def test_reference_request_mapping_and_audio_are_preserved(profile):
+    prompt = ('素材职责：音频1仅绑定讲解者甲的音色，台词以本提示词为准。'
+              '声音：甲全片必须严格使用音频1音色原生同步发声。'
+              '0–4秒：甲，画内，音色固定为音频1，说“介绍袖口”。'
+              '禁止替换或混用音色，禁止参考视频原声和音频旧台词覆盖上述安排。')
     request = VideoRequest(model=profile, duration=PROFILES[profile]["max_duration"],
         generate_audio=True, content=[
-            {"type": "text", "text": "视频1保留节奏，图片1控制商品，音频1仅参考音色。"},
+            {"type": "text", "text": prompt},
             {"type": "image_url", "image_url": {"url": "https://example.com/product.png"}, "role": "reference_image"},
             {"type": "video_url", "video_url": {"url": "https://example.com/processed.mp4"}, "role": "reference_video"},
             {"type": "audio_url", "audio_url": {"url": "https://example.com/voice.wav"}, "role": "reference_audio"}])
     body, warnings, mapping = prepare_video(request, VideoLocalOptions())
     assert body["generate_audio"] is True
+    assert body['content'][0]['text'] == prompt  # Hard constraints must reach the provider unchanged.
     assert body["content"][2]["video_url"]["url"] == "https://example.com/processed.mp4"
     assert body["content"][2]["role"] == "reference_video"
     assert [item["label"] for item in mapping] == ["图片1", "视频1", "音频1"]

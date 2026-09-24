@@ -1,6 +1,6 @@
 # Cardbush Plugins
 
-通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit / 火山 v5.0 音乐、腾讯云 COS、千川、video_editer 剪辑、视频生成去真人化处理、MiniMax 音乐创作、飞书机器人，抖音视频下载、Agent Chatroom 聊天室，以及 Logic Memory 经验学习与检索插件。
+通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit / 火山 v5.0 音乐、腾讯云 COS、千川、video_editer 剪辑、视频生成去真人化处理、MiniMax 音乐创作、飞书机器人，抖音视频下载、Agent Chatroom 聊天室、Logic Memory 经验学习与检索，以及分部位衣服设计插件。
 
 目录和市场索引参照 [OpenAI 插件仓库](https://github.com/openai/plugins) 与 [OpenAI 插件打包文档](https://developers.openai.com/plugins/build/plugins)。这是独立维护的插件市场。
 
@@ -32,6 +32,7 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 | `douyin-video-download` | 0.2.0 | 单条抖音视频下载、Cookie 会话复用及可选 Linux 无桌面扫码登录；6 个 MCP 工具、独立 Skill/CLI、候选源比较及落盘校验 | [抖音下载使用说明](plugins/douyin-video-download/README.md) |
 | `agentchatroom` | 0.1.1 | 本地或远程聊天室、聊天码加入、人类网页邀请、消息查询与指定参与者等待 | [聊天室配置](plugins/agentchatroom/README.md) |
 | `logic-memory` | 0.1.0 | 独立可选的 learn / consult 经验工具、BM25 检索、幂等反馈与旧数据导入 | [经验插件配置](plugins/logic-memory/README.md) |
+| `garment-designer` | 0.1.0 | 分部位矢量衣服设计、可选参考图、版本管理、确认后整体生图及对照分析；6 个 MCP 工具和交互面板 | [衣服设计使用说明](plugins/garment-designer/README.md) |
 
 市场添加成功后，也可按需用 CLI 安装：
 
@@ -46,6 +47,7 @@ codex plugin add feishu-bot@cardbush-plugins
 codex plugin add douyin-video-download@cardbush-plugins
 codex plugin add agentchatroom@cardbush-plugins
 codex plugin add logic-memory@cardbush-plugins
+codex plugin add garment-designer@cardbush-plugins
 ```
 
 安装或更新后，新建 Codex 任务以载入新的技能和工具。若已有 `@personal` 下的同名插件，请在插件管理页面选用一个来源，避免重复启用同一插件。
@@ -141,6 +143,14 @@ FFmpeg 需支持 libx264/libass；已声明的 `imageio-ffmpeg` 提供二进制�
 需要 Node.js 22.12 或更新版本，客户端启动环境需能找到 `node`。插件包含可直接运行的 MCP 程序、HTTP 服务和人类参与的网页，运行时无需 `npm install`。源码、锁文件、构建脚本和测试均位于 `plugins/agentchatroom`，可独立开发，不依赖 CardBush 主仓库。
 
 在 CardBush 中连接插件后，首次本地房间操作会自动启动服务，也可通过 `chatroom_service` 直接启动、查看、停止或重启。服务跟随创建它的插件连接关闭，历史保留，下次启动恢复，无需手动运行脚本。独立外部服务和远程 MCP 连接仍受支持。聊天码、房主管理、人类邀请及 `await` 行为见[聊天室说明](plugins/agentchatroom/README.md)。
+
+### 衣服设计
+
+需要 Node.js 22 或更新版本，客户端启动环境需能找到 `node`。插件包含源码、可直接运行的 MCP 程序和 WASM 矢量渲染器，安装后运行无需 `npm install`。先用自然语言设计衣身、领口、袖子、口袋等部位，查看和修改可编辑的矢量稿；可选参考图、部位锁定和历史恢复均保存在插件主机的数据目录。
+
+设计阶段不调用图片生成。用户确认具体版本后，宿主复用已有 Seedream（`volcengine-plugins`）或其他生图能力生成整体效果，再由宿主视觉模型对照原设计分析偏差并继续改款。插件不提供生产纸样或合体仿真，也不内置模型凭据。
+
+已通过 13 项自动化测试、交互面板回归和 CardBush ZIP 安装验证。真实付费生图的款式还原质量尚未验收，详见[插件说明](plugins/garment-designer/README.md)及[验证记录](plugins/garment-designer/TESTING.md)。
 
 ## 更新市场
 
@@ -262,6 +272,18 @@ plugins/
     skills/logic-memory/
     src/
     test/
+  garment-designer/
+    .codex-plugin/plugin.json
+    .mcp.json
+    package.json
+    package-lock.json
+    dist/
+    src/
+    ui/
+    skills/garment-design/
+    scripts/
+    test/
+    third-party/
 ```
 
 市场条目的 `source.path` 相对于仓库根目录，保持为 `./plugins/<插件名>`。每个插件保留原始包内版本、源码和现有资源；发布整理将兼容清单的默认提示统一为数组，并补充仓库链接。原始 ZIP 不需要作为市场入口上传。

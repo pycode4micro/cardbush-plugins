@@ -1,0 +1,6 @@
+interface:
+  display_name: "衣服设计"
+  short_description: "先分部位设计矢量款式，确认后生成整体效果图，并对照原设计继续修改"
+  default_prompt: "使用 $garment-design 帮我设计一件衣服，先画可编辑的矢量款式，等我确认后再生成效果图。"
+policy:
+  allow_implicit_invocation: true

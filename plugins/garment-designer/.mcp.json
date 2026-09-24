@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "garment-designer": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/server.mjs"],
+      "env_vars": ["GARMENT_DESIGNER_DATA_DIR"],
+      "startup_timeout_sec": 30,
+      "tool_timeout_sec": 120
+    }
+  }
+}

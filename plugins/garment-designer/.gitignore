@@ -1,0 +1,10 @@
+node_modules/
+.test-data/
+release/
+
+# The marketplace installs from Git. Track the ready-to-run runtime bundle.
+!dist/
+dist/*
+!dist/server.mjs
+!dist/editor.html
+!dist/index_bg.wasm

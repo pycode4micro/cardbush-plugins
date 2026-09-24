@@ -1,0 +1,8 @@
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.html text eol=lf
+*.txt text eol=lf
+*.wasm binary
+# Preserve whitespace inside upstream template literals in generated bundles.
+dist/server.mjs linguist-generated=true -whitespace
+dist/editor.html linguist-generated=true -whitespace

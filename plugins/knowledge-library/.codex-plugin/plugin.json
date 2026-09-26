@@ -1,0 +1,35 @@
+{
+  "name": "knowledge-library",
+  "version": "0.1.0",
+  "description": "企业与个人资料管理、中文全文检索及可追溯引用的插件 demo。",
+  "repository": "https://github.com/pycode4micro/cardbush-plugins",
+  "homepage": "https://github.com/pycode4micro/cardbush-plugins/tree/main/plugins/knowledge-library",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "资料库",
+    "shortDescription": "按部门和场景管理资料，检索带出处的原文。",
+    "longDescription": "导入 PDF、Word、Markdown、文本与 HTML，按领域建立资料库，支持版本更新、归档、原文检索及管理面板。离线全文检索，无需外部模型；本机与云 Agent 使用同一 MCP 接口。当前为可验证的 demo，不含企业统一身份与向量检索。",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Interactive"
+    ],
+    "logo": "./assets/logo.svg",
+    "brandColor": "#42644f",
+    "defaultPrompt": [
+      "建立一个部门资料库并导入已有文档。",
+      "从资料库查找相关规定，并标注出处。",
+      "打开资料库，管理文档和检索结果。"
+    ],
+    "screenshots": [
+      "./assets/screenshot-light.png",
+      "./assets/screenshot-dark.png"
+    ]
+  }
+}

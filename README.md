@@ -1,6 +1,6 @@
 # Cardbush Plugins
 
-通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit / 火山 v5.0 音乐、腾讯云 COS、千川、video_editer 剪辑、视频生成去真人化处理、MiniMax 音乐创作、飞书机器人，抖音视频下载、Agent Chatroom 聊天室、Logic Memory 经验学习与检索，以及分部位衣服设计插件。
+通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit / 火山 v5.0 音乐、腾讯云 COS、千川、video_editer 剪辑、视频生成去真人化处理、MiniMax 音乐创作、飞书机器人，抖音视频下载、Agent Chatroom 聊天室、Logic Memory 经验学习与检索、分部位衣服设计，以及企业与个人资料库插件。
 
 目录和市场索引参照 [OpenAI 插件仓库](https://github.com/openai/plugins) 与 [OpenAI 插件打包文档](https://developers.openai.com/plugins/build/plugins)。这是独立维护的插件市场。
 
@@ -33,6 +33,7 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 | `agentchatroom` | 0.1.1 | 本地或远程聊天室、聊天码加入、人类网页邀请、消息查询与指定参与者等待 | [聊天室配置](plugins/agentchatroom/README.md) |
 | `logic-memory` | 0.1.0 | 独立可选的 learn / consult 经验工具、BM25 检索、幂等反馈与旧数据导入 | [经验插件配置](plugins/logic-memory/README.md) |
 | `garment-designer` | 0.2.0 | 分部位矢量衣服设计、确认后整体生图及对照分析，支持 PDF、PPTX、HTML 设计方案导出；7 个 MCP 工具和交互面板 | [衣服设计使用说明](plugins/garment-designer/README.md) |
+| `knowledge-library` | 0.1.0 | 企业与个人资料导入、按部门／场景检索、原文出处、版本及归档管理；7 个 MCP 工具和交互面板，当前为 demo | [资料库使用说明](plugins/knowledge-library/README.md) |
 
 市场添加成功后，也可按需用 CLI 安装：
 
@@ -48,6 +49,7 @@ codex plugin add douyin-video-download@cardbush-plugins
 codex plugin add agentchatroom@cardbush-plugins
 codex plugin add logic-memory@cardbush-plugins
 codex plugin add garment-designer@cardbush-plugins
+codex plugin add knowledge-library@cardbush-plugins
 ```
 
 安装或更新后，新建 Codex 任务以载入新的技能和工具。若已有 `@personal` 下的同名插件，请在插件管理页面选用一个来源，避免重复启用同一插件。
@@ -151,6 +153,12 @@ FFmpeg 需支持 libx264/libass；已声明的 `imageio-ffmpeg` 提供二进制�
 设计阶段不调用图片生成。用户确认具体版本后，宿主复用已有 Seedream（`volcengine-plugins`）或其他生图能力生成整体效果，再由宿主视觉模型对照原设计分析偏差并继续改款。插件不提供生产纸样或合体仿真，也不内置模型凭据。
 
 通过 `garment-presentation` Skill 可将已保存的设计版本整理为讲解方案，导出矢量 PDF、含 SVG 与可编辑文字的 PPTX、离线 HTML 和讲稿。已通过 17 项自动化测试、交互面板和导出回归，以及 CardBush ZIP 安装验证。真实付费生图的款式还原质量尚未验收，详见[插件说明](plugins/garment-designer/README.md)及[验证记录](plugins/garment-designer/TESTING.md)。
+
+### 资料库
+
+需要 Node.js 22.13 或更新版本，客户端启动环境需能找到 `node`。插件自带可直接运行的 MCP 服务、文档解析器和管理面板，无需现场 `npm install`。在本机或云 Agent 上按领域、部门和场景建库，导入 PDF、DOCX、Markdown、TXT、HTML、CSV，通过中文全文检索与领域同义词返回少量原文和稳定出处。
+
+数据默认保存在插件运行账户的 `~/.cardbush-knowledge/`，独立于安装目录。支持增量版本、归档恢复、只读连接和可信连接的库范围配置；普通检索不会自动弹出面板。当前为单个可信租户的 demo，不含 OCR、向量检索或企业身份认证。初始化方式、云端数据目录及能力边界见[资料库说明](plugins/knowledge-library/README.md)。
 
 ## 更新市场
 
@@ -281,6 +289,21 @@ plugins/
     scripts/
     test/
     third-party/
+  knowledge-library/
+    .codex-plugin/plugin.json
+    .mcp.json
+    plugin.json
+    mcp.json
+    package.json
+    package-lock.json
+    runtime/
+    src/
+    ui/
+    skills/knowledge-library/
+    scripts/
+    test/
+    assets/
+    THIRD_PARTY_NOTICES.txt
 ```
 
 市场条目的 `source.path` 相对于仓库根目录，保持为 `./plugins/<插件名>`。每个插件保留原始包内版本、源码和现有资源；发布整理将兼容清单的默认提示统一为数组，并补充仓库链接。原始 ZIP 不需要作为市场入口上传。

@@ -1,0 +1,88 @@
+// Real packaged MCP + sandboxed MCP App; synthetic isolated data only.
+const { app, BrowserWindow, ipcMain } = require('electron');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const root = path.resolve(__dirname, '..');
+const data = path.join(root, '.test-data', 'ui-' + Date.now());
+app.setPath('userData', path.join(data, 'profile'));
+app.on('window-all-closed', () => {});
+const trace = message => require('node:fs').appendFileSync(path.join(root,'.test-data','ui-trace.log'), message+'\n');
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+let win, client;
+app.whenReady().then(async () => {
+  try {
+    await fs.mkdir(data, { recursive:true });
+    trace('ready');
+    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
+    const { sampleLibraries, sampleDocuments } = await import('../src/samples.mjs');
+    client = new Client({name:'knowledge-ui-test',version:'1.0.0'});
+    await client.connect(new StdioClientTransport({command:process.env.KNOWLEDGE_TEST_NODE,args:[path.join(root,'runtime/server.mjs')],env:{...process.env,KNOWLEDGE_DATA_DIR:path.join(data,'knowledge')},stderr:'pipe'}));
+    trace('connected');
+    const call = async(name,args) => { const result = await client.callTool({name,arguments:args}); assert.ok(!result.isError,JSON.stringify(result)); return result; };
+    for (const library of sampleLibraries) await call('knowledge_library',library);
+    for (const {library_id,...document} of sampleDocuments) await call('knowledge_import',{library_id,documents:[document]});
+    const initial = await call('knowledge_open',{library_id:'demo-people'});
+    trace('seeded');
+    const errors = [], requests = [];
+    ipcMain.handle('knowledge-ui-test',async (event,{method,params}) => {
+      if(method==='ui/initialize') return {protocolVersion:'2026-01-26',hostInfo:{name:'fixture',version:'1'},hostCapabilities:{serverTools:{}},hostContext:{theme:'light',styles:{variables:{'--color-background-primary':'#ffffff','--color-background-secondary':'#f7f7f6','--color-text-primary':'#242424','--color-text-secondary':'#72716c','--color-border-primary':'#e4e3df'}}}};
+      if(method==='tools/call') return client.callTool(params);
+      throw Error('Unexpected '+method);
+    });
+    const preload = path.join(data,'preload.cjs');
+    await fs.writeFile(preload,"const {contextBridge,ipcRenderer}=require('electron');contextBridge.exposeInMainWorld('testHost',{call:(method,params)=>ipcRenderer.invoke('knowledge-ui-test',{method,params})});");
+    const html = await fs.readFile(path.join(root,'runtime/library.html'),'utf8');
+    const fixture = path.join(data,'host.html');
+    await fs.writeFile(fixture,`<!doctype html><meta charset="utf-8"><style>body{margin:0}iframe{border:0;width:100%;height:950px;display:block}</style><iframe sandbox="allow-scripts"></iframe><script>
+      const frame=document.querySelector('iframe');
+      addEventListener('message',async event=>{if(event.source!==frame.contentWindow||event.data?.jsonrpc!=='2.0')return;const m=event.data;if(m.method==='ui/notifications/initialized'){frame.contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:${JSON.stringify(initial).replaceAll('<','\\u003c')}},'*');return;}if(!m.id)return;try{const result=await testHost.call(m.method,m.params);frame.contentWindow.postMessage({jsonrpc:'2.0',id:m.id,result},'*');}catch(error){frame.contentWindow.postMessage({jsonrpc:'2.0',id:m.id,error:{code:-32000,message:error.message}},'*');}});
+      frame.srcdoc=${JSON.stringify(html).replaceAll('<','\\u003c')};
+    </script>`);
+    win = new BrowserWindow({show:false,width:1100,height:820,webPreferences:{preload,contextIsolation:true,sandbox:true,backgroundThrottling:false}});
+    win.webContents.on('console-message',event=>{if(event.level==='error')errors.push(event.message);});
+    win.webContents.session.webRequest.onBeforeRequest((details,done)=>{const external=/^https?:/.test(details.url);if(external)requests.push(details.url);done({cancel:external});});
+    await win.loadFile(fixture);
+    trace('loaded');
+    let frame;
+    for(let i=0;i<100;i++){frame=win.webContents.mainFrame.frames.find(f=>f.url.startsWith('about:srcdoc'));if(frame)break;await pause(30);}
+    const run=code=>frame.executeJavaScript(code,true);
+    const paint=async()=>{await run('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');await pause(120);};
+    const until=async condition=>{for(let i=0;i<150;i++){if(await run(condition))return;await pause(30);}throw Error('UI timeout '+condition+'\n'+await run('document.body.innerText'));};
+    await until("document.querySelectorAll('.library').length===4 && !document.querySelector('#refresh').disabled");
+    await run("[...document.querySelectorAll('.library')].find(e=>e.textContent.includes('员工服务')).click()");
+    await until("!document.querySelector('#refresh').disabled");
+    await run("document.querySelector('#query').value='一线城市出差住宿能报销多少';document.querySelector('#search-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));undefined");
+    await until("!!document.querySelector('.result') && !document.querySelector('#refresh').disabled");
+    assert.match(await run("document.querySelector('.result').textContent"),/600/);
+    await run("document.querySelector('.result button').click()"); await until("!!document.querySelector('.result .source') && !document.querySelector('#refresh').disabled");
+    assert.match(await run("document.querySelector('.source').textContent"),/v1/);
+    await paint();
+    await fs.writeFile(path.join(root,'assets/screenshot-light.png'),(await win.webContents.capturePage()).toPNG());
+    await win.webContents.executeJavaScript("document.querySelector('iframe').contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/host-context-changed',params:{theme:'dark',styles:{variables:{'--color-background-primary':'#181818','--color-background-secondary':'#222222','--color-text-primary':'#ebebeb','--color-text-secondary':'#aaaaaa','--color-border-primary':'#3a3a38'}}}},'*');");
+    await until("getComputedStyle(document.documentElement).colorScheme==='dark'"); await paint();
+    await fs.writeFile(path.join(root,'assets/screenshot-dark.png'),(await win.webContents.capturePage()).toPNG());
+    await run("document.querySelector('#tab-docs').click();document.querySelector('#include-archived').click();"); await until("!document.querySelector('#refresh').disabled && document.querySelectorAll('.doc').length===3");
+    await run("[...document.querySelectorAll('.doc')].find(e=>e.textContent.includes('差旅报销')).querySelector('.doc-actions button:last-child').click()");
+    await until("document.querySelector('#doc-count').textContent.includes('1 份归档') && !document.querySelector('#refresh').disabled");
+    assert.equal((await call('knowledge_search',{library_ids:['demo-people'],query:'600'})).structuredContent.results.length,0);
+    await run("[...document.querySelectorAll('.doc')].find(e=>e.textContent.includes('差旅报销')).querySelector('.doc-actions button:last-child').click()");
+    await until("document.querySelector('#doc-count').textContent.includes('0 份归档') && !document.querySelector('#refresh').disabled");
+    await run("const transfer=new DataTransfer();transfer.items.add(new File(['# 新版规范\\n火鹤设备冷却时间为 18 分钟。'],'cooling.md',{type:'text/markdown'}));document.querySelector('#import-file').files=transfer.files;document.querySelector('#upload').click();undefined;");
+    await until("document.querySelector('#status').textContent.includes('新增 1') && !document.querySelector('#refresh').disabled");
+    assert.equal(await run("document.querySelector('#import-file').files.length"),0);
+    assert.match((await call('knowledge_search',{query:'火鹤设备'})).structuredContent.results[0].text,/18 分钟/);
+    await call('knowledge_import',{library_id:'demo-people',documents:[{source_key:'untrusted',title:'<img src=x onerror=alert(1)>',text:'仅作文字显示。'}]});
+    await run("document.querySelector('#refresh').click()"); await until("document.querySelectorAll('.doc').length===5 && !document.querySelector('#refresh').disabled");
+    assert.equal(await run("document.querySelector('#documents img')"),null);
+    win.setSize(500,820); await pause(120);
+    assert.equal(await run('document.documentElement.scrollWidth<=window.innerWidth+1'),true);
+    await run("document.querySelector('#tab-search').click();document.querySelector('#query').value='一线城市住宿能报销多少';document.querySelector('#search-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));undefined;");
+    await until("!!document.querySelector('.result') && !document.querySelector('#refresh').disabled");await paint();
+    await fs.writeFile(path.join(root,'assets/screenshot-narrow.png'),(await win.webContents.capturePage()).toPNG());
+    assert.deepEqual(errors,[]); assert.deepEqual(requests,[]);
+    await fs.writeFile(path.join(root,'.test-data','ui-result.json'),JSON.stringify({passed:true,at:new Date().toISOString()}));
+    console.log('Knowledge MCP App UI passed: real search/read, archive/restore, file upload/reset, escaped external text, light/dark/narrow, no outbound requests.');
+  } finally { if(win)win.destroy();if(client)await client.close(); }
+}).then(()=>app.exit(0)).catch(error=>{trace(error.stack||String(error));console.error(error);app.exit(1);});

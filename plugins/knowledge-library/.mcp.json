@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "knowledge-library": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/runtime/server.mjs"
+      ],
+      "env_vars": [
+        "KNOWLEDGE_DATA_DIR",
+        "KNOWLEDGE_ALLOWED_LIBRARIES",
+        "KNOWLEDGE_READ_ONLY",
+        "KNOWLEDGE_IMPORT_ROOTS"
+      ],
+      "startup_timeout_sec": 30,
+      "tool_timeout_sec": 120
+    }
+  }
+}

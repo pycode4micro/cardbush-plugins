@@ -42,6 +42,8 @@
 
 插件已包含 [`reference-video-production`](skills/reference-video-production/SKILL.md)，负责编排：素材理解 → 真人图片遮罩 / 视频去真人化 → 按目标模型限制用 FFmpeg 切片 → COS 上传获取 URL → Seedance 视频参考生成 → 成片交付。
 
+使用 Blender 配合视频生成时，优先生成首尾帧图片或外观参考图（已有合适图片可复用），人物默认适度风格化、避免完全真人化。Blender 只负责空间、整体走位和运镜，人物不建模肢体动作；图片、预演和文字分别确定外观、镜头及自然表演。参考组合按当前模型能力选择，不混用不兼容的首尾帧与视频参考模式。
+
 在支持 Skill 的客户端直接描述需求，或显式调用 `$reference-video-production`。例如：“按参考视频替换商品与指定人物，保留节奏，中文有声；先检查当前模型限制，再处理素材、切片、上传并生成完整视频。”同时提供本地素材路径、人物/音色引用及字幕要求。Claude Code 通过插件根目录的 `skills/` 自动发现技能，调用入口以客户端显示为准；参见 [Claude 插件规范](https://code.claude.com/docs/en/plugins-reference#skills)。单独添加 MCP 连接不会自动加载 Skill，需要支持插件/Skill 的客户端导入此目录。
 
 需要按任务另外准备：

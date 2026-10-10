@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "video-face-stylizer",
-  "version": "0.2.3",
-  "description": "本地视频整头/脸部石膏处理，可调检测、局部放大、时序补漏，自动准备锁定依赖。",
+  "version": "0.3.0",
+  "description": "整次任务独立选择完整 CPU 或 GPU 流程，支持头部白模、局部检测和时序补漏，不混用设备或静默回退。",
   "author": {
     "name": "Local developer"
   },
@@ -21,8 +21,8 @@
     "com.openai": {
       "interface": {
         "displayName": "视频生成去真人化处理",
-        "shortDescription": "整头石膏遮挡、小脸补漏与 CPU/GPU 处理",
-        "longDescription": "默认覆盖头发和脸部，支持局部放大检测、独立头部分割、短时光流和带时间点的手动遮挡区域。可选仅脸部模式，保留原视频与音频；异步任务提供覆盖统计和复查时间段。依赖随安装脚本自动配置。",
+        "shortDescription": "整头石膏遮挡，完整 CPU / GPU 两种流程",
+        "longDescription": "Agent 可为整次任务选择完整 CPU 或 GPU 流程。GPU 使用 Intel OpenVINO 推理、OpenGL 像素处理与 QSV 硬件编解码；任一环节不支持即明确失败，不暗中回退 CPU。支持整头/仅脸部、小脸检测、时序补漏和人工区域，保留源视频与音频，提供覆盖统计。",
         "developerName": "Local developer",
         "category": "Productivity",
         "capabilities": [

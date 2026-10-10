@@ -18,7 +18,7 @@ from .models import DEFAULT_MODEL, ImageRequest, LocalOptions
 from .video_client import SeedanceClient, prepare_video, video_capabilities, video_preview
 from .video_models import DEFAULT_VIDEO_MODEL, VideoLocalOptions, VideoRequest
 from .task_io import TaskError
-from .media_review import PixelRegion, ReviewSample, preflight, erasure_plan, review, publish_copy
+from .media_review import PixelRegion, ReviewSample, MediaRequirements, preflight, erasure_plan, review, publish_copy
 from .music import MusicClient, music_capabilities as get_music_capabilities, music_preview, music_request
 from .music_models import SongRequest, BGMRequest, BillingMode
 from .image_jobs import ImageJobs, account_scope
@@ -207,9 +207,9 @@ def create_server(port: int = 8765) -> FastMCP:
         return await SeedanceClient().get_tasks(task_ids)
 
     @server.tool(icons=icons, annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True))
-    async def seedance_download_task(task_id: str, dest: str, output: Literal['video', 'last_frame'] = 'video', max_bytes: int = 2147483648, retries: int = 2) -> dict:
-        """Query an existing succeeded task and save its exact signed URL to a new absolute dest file; never transcribe/re-encode the query or send API credentials to CDN. Return SHA256/size, bounded GET retries only. No overwrite, processing or generation."""
-        return await SeedanceClient().download_task(task_id, dest, output, max_bytes, retries)
+    async def seedance_download_task(task_id: str, dest: str, output: Literal['video', 'last_frame'] = 'video', max_bytes: int = 2147483648, retries: int = 2, requirements: MediaRequirements | None = None) -> dict:
+        """Save a succeeded task to a new absolute dest unchanged. Returns SHA256/size. Pass requirements for hard duration/dimensions/audio checks; validation failure preserves the file and receipt. Without requirements, validation is not_checked. No overwrite, transcoding or generation; bounded GET retries only."""
+        return await SeedanceClient().download_task(task_id, dest, output, max_bytes, retries, requirements)
 
     @server.tool(icons=icons, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
     def video_enhance_capabilities() -> dict:
@@ -273,9 +273,9 @@ def create_server(port: int = 8765) -> FastMCP:
         return await SubtitleEraseClient().download_task(task_id, dest, max_bytes=max_bytes, retries=retries)
 
     @server.tool(icons=icons, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
-    def video_media_preflight(file_paths: list[str]) -> dict:
-        """LOCAL source verification: decode a frame, report dimensions/fps/duration/bytes/hash, rank supplied candidates and identify the exact Python/FFmpeg/dependency environment. No network or charges."""
-        return preflight(file_paths)
+    def video_media_preflight(file_paths: list[str], requirements: MediaRequirements | None = None) -> dict:
+        """LOCAL video checks: decode a frame and report dimensions/fps/duration/bytes/hash. Pass requirements for hard max_duration_seconds, width/height and require_audio checks; failed checks are explicit. No trimming, network or charges. Metadata checks do not certify visual quality."""
+        return preflight(file_paths, requirements)
 
     @server.tool(icons=icons, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
     def video_subtitle_erase_plan(source_path: str, regions: list[PixelRegion], padding_pixels: int = 4, mode: Literal['Subtitle', 'Text'] = 'Subtitle') -> dict:

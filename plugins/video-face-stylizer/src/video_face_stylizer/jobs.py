@@ -52,6 +52,38 @@ def get_job(job_id:str,output_directory:str)->dict:
         record={**record,'state':'interrupted','error':'Worker did not start within 120 seconds.'}
     return record
 
+def reserved_job(request:VideoRequest,mode:str,reservation:Path,target:Path)->dict:
+    """Return the existing owner instead of launching a duplicate render.
+
+    Never steal a lock: a worker may be starting or publishing. An interrupted
+    job can be explicitly retried with a new filename, retaining its evidence.
+    """
+    receipt={'state':'output_reserved','new_job_started':False,'reused':False,
+             'planned_output_path':str(target),'output_directory':request.output_directory,
+             'requested_mode':mode,'next_poll_seconds':1}
+    try:
+        lock=json.loads(reservation.read_text(encoding='utf-8'))
+        if Path(lock['output']).resolve()!=target.resolve():raise ValueError('Mismatched reservation')
+        job_id=lock['job_id']
+        if not re.fullmatch(r'[a-f0-9]{32}',job_id):raise ValueError('Invalid reservation owner')
+        receipt['job_id']=job_id
+        record=get_job(job_id,request.output_directory)
+        saved=json.loads((job_directory(job_id,request.output_directory)/'request.json').read_text(encoding='utf-8'))
+        same=saved.get('mode')==mode and saved.get('request')==request.model_dump()
+        receipt={**record,**{k:v for k,v in receipt.items() if k not in {'state','next_poll_seconds'}},
+                 'request_matches':same,'reused':same and record['state'] not in TERMINAL}
+        if record['state'] in TERMINAL:
+            receipt['next_step']='The reserved job has ended. Inspect its result/error; use a new output_filename for an explicit new render.'
+        elif same:
+            receipt['next_step']='This request already has a job. Query get_video_job with this job_id and output_directory; no second worker was launched.'
+        else:
+            receipt['next_step']='This filename belongs to a different request or mode. Inspect the existing job or choose another output_filename; the requested render did not start.'
+        return receipt
+    except (OSError,ValueError,KeyError,TypeError):
+        receipt['next_step']='The output is reserved and its owner is still starting or unavailable. Retry lookup shortly; do not delete or overwrite the reservation.'
+        return receipt
+
+
 def start_job(request:VideoRequest,mode:str)->dict:
     if mode not in {'cpu','gpu'}:raise ValueError('Mode must be cpu or gpu.')
     out=Path(request.output_directory)
@@ -61,14 +93,18 @@ def start_job(request:VideoRequest,mode:str)->dict:
     name=request.output_filename or f'plaster_{stem}_{mode}_{job_id[:8]}.mp4'
     target=out/name
     if target.resolve()==Path(request.input_path).resolve():raise ValueError('Input video cannot be overwritten.')
-    if target.exists() or target.with_suffix('.benchmark.json').exists():raise ValueError('Output or benchmark already exists. Choose a new output_filename.')
     # Cooperative lock also prevents two MCP sessions from reserving the same name.
     locks=out/JOB_FOLDER/'reservations';locks.mkdir(parents=True,exist_ok=True)
     import hashlib
     reservation=locks/(hashlib.sha256(name.casefold().encode()).hexdigest()+'.json')
-    with reservation.open('x',encoding='utf-8') as f:json.dump({'job_id':job_id,'output':str(target)},f)
-    directory=out/JOB_FOLDER/job_id
     try:
+        with reservation.open('x',encoding='utf-8') as f:json.dump({'job_id':job_id,'output':str(target)},f)
+    except FileExistsError:
+        return reserved_job(request,mode,reservation,target)
+    directory=out/JOB_FOLDER/job_id
+    data=None
+    try:
+        if target.exists() or target.with_suffix('.benchmark.json').exists():raise ValueError('Output or benchmark already exists. Choose a new output_filename.')
         directory.mkdir()
         data={'format':'video-face-stylizer-job-v1','job_id':job_id,'state':'queued',
               'mode':mode,'created_at':time.time(),'updated_at':time.time(),
@@ -92,7 +128,7 @@ def start_job(request:VideoRequest,mode:str)->dict:
         return data
     except Exception:
         if reservation.exists():reservation.unlink()
-        if directory.is_dir() and (directory/'status.json').exists():
+        if data is not None and directory.is_dir() and (directory/'status.json').exists():
             write_json(directory/'status.json',{**data,'state':'failed','error':'Failed to launch worker.'})
         raise
 

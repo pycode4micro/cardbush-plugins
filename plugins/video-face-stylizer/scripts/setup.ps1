@@ -47,7 +47,8 @@ $marker = @{ runtimeHash=(Get-RuntimeFingerprint $pluginRoot); root=$pluginRoot 
 $marker | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $pluginRoot '.runtime-ready.json') -Encoding UTF8
 if (-not $NoPackage) {
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $readyZip = Join-Path (Split-Path -Parent $pluginRoot) "video-face-stylizer-0.2.3-local-$stamp.zip"
+    $pluginVersion = (Get-Content -LiteralPath (Join-Path $pluginRoot 'plugin.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
+    $readyZip = Join-Path (Split-Path -Parent $pluginRoot) "video-face-stylizer-$pluginVersion-local-$stamp.zip"
     Invoke-Checked $runtimePython @((Join-Path $PSScriptRoot 'package_plugin.py'), '--output', $readyZip, '--python', $runtimePython)
     [Console]::Error.WriteLine("Ready: $readyZip")
     [Console]::Error.WriteLine('Import this ZIP into CardBush. Keep the extracted folder and its .venv in place.')

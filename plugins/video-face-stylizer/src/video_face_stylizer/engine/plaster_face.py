@@ -32,10 +32,11 @@ def load_topology(model_dir):
     return np.array([f for f in faces if not any(set(f)<=ring for ring in apertures)],np.int32)
 
 class PlasterRenderer:
-    def __init__(self, width, height, model_dir):
+    def __init__(self, width, height, model_dir, context=None):
         self.w, self.h = width, height
         self.base_faces=load_topology(model_dir)
-        self.ctx=moderngl.create_standalone_context(require=330)
+        self.owns_context=context is None
+        self.ctx=context or moderngl.create_standalone_context(require=330)
         self.renderer=self.ctx.info['GL_RENDERER']
         self.program=self.ctx.program(vertex_shader='''
             #version 330
@@ -66,7 +67,8 @@ class PlasterRenderer:
         self.ibo=self.ctx.buffer(reserve=50000*3*4)
         self.vao=self.ctx.vertex_array(self.program,[(self.vbo,'3f 3f 1f','in_position','in_normal','in_shade')],self.ibo)
         self.msaa=self.ctx.framebuffer(self.ctx.renderbuffer((width,height),4,samples=4),self.ctx.depth_renderbuffer((width,height),samples=4))
-        self.output=self.ctx.simple_framebuffer((width,height),components=4)
+        self.texture=self.ctx.texture((width,height),4)
+        self.output=self.ctx.framebuffer([self.texture])
         self.ctx.enable(moderngl.DEPTH_TEST)
 
     def mesh(self, lm):
@@ -130,18 +132,26 @@ class PlasterRenderer:
         normals=unit(normals)
         return np.column_stack([verts,normals,np.array(shade,np.float32)]).astype(np.float32),faces
 
-    def render(self,lm):
+    def render_texture(self,lm):
+        self.ctx.enable(moderngl.DEPTH_TEST)
         vertices,faces=self.mesh(lm)
         self.vbo.write(vertices.tobytes()); self.ibo.write(faces.tobytes())
         self.msaa.use(); self.msaa.clear(0,0,0,0,depth=1)
         self.vao.render(moderngl.TRIANGLES,vertices=faces.size)
         self.ctx.copy_framebuffer(self.output,self.msaa)
+        return self.texture
+
+    def render(self,lm):
+        self.render_texture(lm)
         rgba=np.frombuffer(self.output.read(components=4,alignment=1),np.uint8).reshape(self.h,self.w,4)
         return np.flipud(rgba).copy()
 
     def close(self):
         self.vao.release(); self.vbo.release(); self.ibo.release()
-        self.msaa.release(); self.output.release(); self.program.release(); self.ctx.release()
+        for attachment in self.msaa.color_attachments:attachment.release()
+        self.msaa.depth_attachment.release()
+        self.msaa.release(); self.output.release(); self.texture.release(); self.program.release()
+        if self.owns_context:self.ctx.release()
 
 class CPUPlasterRenderer(PlasterRenderer):
     """Software z-buffer and interpolated-normal shader; no OpenGL context.
@@ -179,7 +189,8 @@ class CPUPlasterRenderer(PlasterRenderer):
         pass
 
 class FacePipeline:
-    def __init__(self,w,h,model_dir,renderer='gpu',options=None):
+    def __init__(self,w,h,model_dir,renderer='cpu',options=None):
+        if renderer!='cpu':raise ValueError('FacePipeline is CPU-only. Use the independent GPUPipeline for GPU execution.')
         self.w,self.h=w,h
         self.options=options or ProcessingOptions()
         self.model_dir=model_dir
@@ -200,7 +211,7 @@ class FacePipeline:
         self.person_detector=v.ObjectDetector.create_from_options(v.ObjectDetectorOptions(
             base_options=mp.tasks.BaseOptions(model_asset_buffer=(model_dir/'efficientdet_lite0.tflite').read_bytes(),delegate=mp.tasks.BaseOptions.Delegate.CPU),
             category_allowlist=['person'],score_threshold=self.options.person_detection_confidence,max_results=10)) if self.options.person_filter else None
-        self.renderer=(CPUPlasterRenderer if renderer=='cpu' else PlasterRenderer)(w,h,model_dir)
+        self.renderer=CPUPlasterRenderer(w,h,model_dir)
         self.detected=0
         self.coverage_counts={'person_frames':0,'no_person_frames':0,'full_frame_faces':0,'crop_faces':0,'segmentation_crop_frames':0,'segmentation_fallback_frames':0,
                               'temporal_fallback_frames':0,'manual_mask_frames':0,'covered_frames':0,'uncovered_frames':0,
@@ -413,6 +424,10 @@ class FacePipeline:
         if self.crop_tracker is not None:self.crop_tracker.close()
 
 def run(args):
+    if args.mode=='gpu':
+        from video_face_stylizer.engine.gpu_pipeline import run_gpu
+        return run_gpu(args)
+    if args.mode!='cpu':raise ValueError('Mode must be cpu or gpu.')
     start=time.perf_counter()
     source=Path(args.input).resolve(); target=Path(args.output).resolve()
     if source==target: raise ValueError('Input and output paths must differ')
@@ -435,7 +450,7 @@ def run(args):
         cap.release()
         raise ValueError('Requested time range contains no frames.')
     options=ProcessingOptions.model_validate(json.loads(args.settings))
-    pipeline=FacePipeline(w,h,Path(args.models),args.renderer,options)
+    pipeline=FacePipeline(w,h,Path(args.models),'cpu',options)
     ffmpeg=ffmpeg_executable()
     cmd=[ffmpeg,'-hide_banner','-loglevel','error','-y','-f','rawvideo','-pix_fmt','bgr24',
          '-s',f'{w}x{h}','-r',str(fps),'-i','pipe:0','-ss',str(args.start),'-i',str(source),
@@ -476,7 +491,9 @@ def run(args):
            'wall_seconds':elapsed,'processing_fps':processed/elapsed,
            'normalized_30s_wall_seconds':elapsed*30/(processed/fps),
            'stage_seconds':pipeline.timings,'renderer':pipeline.renderer.renderer,
-           'renderer_mode':args.renderer,'inference_delegate':'CPU / XNNPACK',
+           'renderer_mode':'cpu','execution_mode':'cpu','inference_delegate':'CPU / XNNPACK',
+           'pipeline_devices':{stage:'cpu' for stage in ['decode','preprocess','inference','mask','temporal','render','composite','encode']},
+           'fallback_used':False,
            'decoder_hardware_acceleration':decoder_acceleration,
            'opencv_opencl_enabled':cv2.ocl.useOpenCL(),'encoder':'libx264 (CPU)',
            'timing_includes':'model initialization, decoding, tracking, segmentation, rendering, H264 encoding and audio mux; excludes setup/download',
@@ -495,7 +512,7 @@ def main():
     p.add_argument('--start',type=float,default=0)
     p.add_argument('--max-height',type=int,default=0)
     p.add_argument('--previews',default='')
-    p.add_argument('--renderer',choices=['gpu','cpu'],default='gpu')
+    p.add_argument('--mode',choices=['gpu','cpu'],default='cpu',help='Execution device for the entire video pipeline; no mixed mode or fallback.')
     p.add_argument('--settings',default='{}',help='JSON ProcessingOptions (coverage, detection thresholds, head_regions, etc.).')
     args=p.parse_args()
     if args.seconds<0 or args.start<0: p.error('Time values must not be negative')

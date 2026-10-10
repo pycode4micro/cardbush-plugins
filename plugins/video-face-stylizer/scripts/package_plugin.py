@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
 from video_face_stylizer.processes import hidden_process_options
 
-EXCLUDE={'.venv','.tools','.python','__pycache__','.pytest_cache','.git','build','dist','validation'}
+EXCLUDE={'.venv','.tools','.python','.gpu-cache','__pycache__','.pytest_cache','.git','build','dist','validation'}
 
 def source_files(root):
     for folder,directories,files in os.walk(root,followlinks=False):

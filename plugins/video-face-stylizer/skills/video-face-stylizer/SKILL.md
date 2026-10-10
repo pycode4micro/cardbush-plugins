@@ -13,11 +13,11 @@ description: 将本地视频中的头部覆为石膏白模，支持 CPU/GPU、�
 
 ## 调用
 
-1. video_face_capabilities 检查环境；用户指定 CPU 时 check_gpu=false。遵守明确的 CPU/GPU 选择，未指定可优先使用检查通过的 GPU，否则 CPU。GPU 仅用于三维网格渲染，推理与编码仍在 CPU。
-2. 调用一次 render_video_cpu 或 render_video_gpu。input_path 和 output_directory 使用绝对路径。max_height=0 保留尺寸；start_seconds/duration_seconds 可限定处理片段。
+1. video_face_capabilities 检查完整流程；用户指定 CPU 时 check_gpu=false。遵守明确的 CPU/GPU 选择，未指定设备时按 recommended_mode 优先使用通过全流程检查的 GPU，否则选择 CPU。GPU 入口使用 QSV 硬件编解码/缩放、OpenVINO GPU 人物/人脸/关键点/分割、OpenGL 掩膜/时序/渲染/合成；CPU 入口的这些阶段全部使用 CPU。GPU 后端当前支持 Intel GPU、OpenGL 4.3 和 QSV，NVIDIA/AMD 尚未实现。不能仅凭有 GPU/OpenGL 就声称支持。CPU 仍负责调度、传输、少量坐标和封装，不属于视频流程回退。
+2. 调用一次 render_video_cpu 或 render_video_gpu，为整次任务固定模式，不逐阶段混用。input_path 和 output_directory 使用绝对路径。max_height=0 保留尺寸；start_seconds/duration_seconds 可限定处理片段。GPU 阶段或源视频硬件编码不支持时任务失败，不得暗中转 CPU；先报告具体原因，需要改变用户明确指定的模式时再确认。GPU 保留原音频包，首次模型编译有开销；不能在未测试素材上承诺固定加速倍数。
 3. 保存 job_id 和 output_directory，用 get_video_job 查询同一任务，wait_seconds=10 或 20。不要重复提交来查询进度，不在旧任务仍运行时重复处理同一片段。
 4. **交付前抽查（强制）**：成功后查看 coverage 与 review_intervals，抽看每个镜头的首/中/末帧、转场前后和复查区间。重点检查帽子、头巾、侧背头部及耳朵是否残留原纹理，遮挡是否误盖宠物、手部、商品、道具或字幕。先定位有问题的时间段并补跑、复核，再交付或送入下游。抽查不等于逐帧完整验证；用户明确不复查时说明未复查，不声称通过。
-5. 只有 succeeded 才交付 output_path，并说明实际时长、耗时和已验证范围。失败时根据具体原因处理，不无条件重复提交或暗中更换模式。用户要求停止时取消并确认终态。
+5. 只有 succeeded 才交付 output_path，并说明实际时长、耗时和已验证范围。benchmark.execution_mode、pipeline_devices 应与所选模式一致，fallback_used=false；worker 会拒绝设备不一致的产物。失败时根据具体原因处理，不无条件重复提交或暗中更换模式。用户要求停止时取消并确认终态。
 
 ## 小脸、侧背与补漏
 

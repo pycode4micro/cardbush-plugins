@@ -54,11 +54,40 @@ def test_concurrent_filename_reservation(request_data,monkeypatch):
     monkeypatch.setattr(jobs.subprocess,'Popen',lambda *a,**kw:launches.append(a))
     request=VideoRequest(**request_data,output_filename='reserved.mp4')
     first=jobs.start_job(request,'cpu')
-    with pytest.raises(FileExistsError):jobs.start_job(request,'gpu')
+    conflict=jobs.start_job(request,'gpu')
+    assert conflict['job_id']==first['job_id']
+    assert conflict['request_matches'] is False and conflict['new_job_started'] is False
+    assert conflict['mode']=='cpu' and conflict['requested_mode']=='gpu'
+    reused=jobs.start_job(request,'cpu')
+    assert reused['job_id']==first['job_id'] and reused['reused'] is True
+    assert reused['next_poll_seconds']==first['next_poll_seconds']
     assert len(launches)==1
     assert jobs.get_job(first['job_id'],first['output_directory'])['state']=='queued'
     assert jobs.cancel_job(first['job_id'],first['output_directory'])['cancellation_requested']
     assert (jobs.job_directory(first['job_id'],first['output_directory'])/'cancel.request').is_file()
+
+def test_stopped_owner_returns_recoverable_receipt_without_rerender(request_data,monkeypatch):
+    launches=[]
+    monkeypatch.setattr(jobs.subprocess,'Popen',lambda *a,**kw:launches.append(a))
+    request=VideoRequest(**request_data,output_filename='orphan.mp4')
+    first=jobs.start_job(request,'cpu')
+    path=jobs.job_directory(first['job_id'],first['output_directory'])/'status.json'
+    status=json.loads(path.read_text());status['created_at']=0;jobs.write_json(path,status)
+    result=jobs.start_job(request,'cpu')
+    assert result['state']=='interrupted' and result['job_id']==first['job_id']
+    assert result['new_job_started'] is False and len(launches)==1
+    assert 'new output_filename' in result['next_step']
+
+
+def test_reservation_startup_race_does_not_launch_or_remove_owner(request_data,monkeypatch):
+    import hashlib
+    out=Path(request_data['output_directory']);locks=out/jobs.JOB_FOLDER/'reservations';locks.mkdir(parents=True)
+    path=locks/(hashlib.sha256(b'starting.mp4').hexdigest()+'.json');path.write_text('{')
+    monkeypatch.setattr(jobs.subprocess,'Popen',lambda *a,**kw:pytest.fail('Must not launch'))
+    result=jobs.start_job(VideoRequest(**request_data,output_filename='starting.mp4'),'cpu')
+    assert result['state']=='output_reserved' and result['new_job_started'] is False
+    assert path.read_text()=='{'
+
 
 def test_stale_queued_task_is_interrupted(request_data,monkeypatch):
     monkeypatch.setattr(jobs.subprocess,'Popen',lambda *a,**kw:None)

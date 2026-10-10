@@ -1,5 +1,12 @@
 # volcengine-plugins
 
+视频生成前会检查提示词中明确的图片/视频/音频编号，引用不存在的“视频2”会在
+付费请求发出前被拒绝。时长描述（如“视频15秒”）不当作素材编号。
+`seedance_download_task` 和 `video_media_preflight` 支持可选 `requirements`，
+例如 `{"max_duration_seconds":15,"width":720,"height":1280,"require_audio":true}`。
+实际 15.10 秒会明确校验失败；文件仍原样保留，不自动裁剪或重新生成。
+未提供验收要求时不宣称成片合格；元数据检查也不能代替内容和画质检查。
+
 长任务优先使用后台生图入口与统一批量等待；插件自行控制轮询频率，复用宿主现有后台只读工具，CardBush 无需修改。[后台任务、重复提交保护与重启边界](docs/background-generation.md)。参考视频 Skill 已明确要求在实际生成提示词中绑定音频编号、角色与音色，不能只附带音频。
 
 ## 0.7.0：v5.0 歌曲与纯音乐

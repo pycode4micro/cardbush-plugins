@@ -31,6 +31,14 @@ uv run --frozen --script <此插件绝对路径>/scripts/launch.py
 
 ## 内置能力
 
+### 素材查询参数
+
+`qianchuan_get_materials` 的 `params` 现在提供完整的结构化定义，必填项包括
+`advertiser_id`、`marketing_goal`、`marketing_scene`、`filtering` 和 `fields`。
+`filtering` 必须包含 `material_type`、`start_time`、`end_time`；时间不放在顶层。
+插件在联网前检查字段、枚举和日期范围，避免反复试错请求。
+此接口查询账户素材及指标；只查已上传视频时使用 `qianchuan_get_videos`。
+
 ### 报表不要猜主题
 
 查询“昨天/指定日期所有账户消耗”优先调用 `qianchuan_start_spend_report`，

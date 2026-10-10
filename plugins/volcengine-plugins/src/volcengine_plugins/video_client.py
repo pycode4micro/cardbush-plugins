@@ -183,6 +183,7 @@ def prepare_video(request: VideoRequest, local: VideoLocalOptions, default_model
             raise ValueError("2.5 edit/extend requires adaptive ratio")
         if task_type == "edit" and request.duration not in (None, -1):
             raise ValueError("2.5 edit requires duration=-1 (or omitted official default)")
+    validate_reference_labels(texts, counts)
     if has_unknown:
         warnings.append(f"URL/asset media bytes are not fetched locally. Ark must validate format/dimensions/FPS, per-video duration and total video/audio durations <= {caps['max_duration']}s. Edit input videos must be 4..30s; other videos/audio >=2s. Asset permissions and human-reference policies still apply.")
     if profile == "2.5" and omni:
@@ -192,6 +193,24 @@ def prepare_video(request: VideoRequest, local: VideoLocalOptions, default_model
     if len(json.dumps(body, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")) > MAX_BODY_BYTES:
         raise ValueError("Encoded request exceeds 64 MiB; use URL/asset references")
     return body, warnings, media_map
+
+
+def validate_reference_labels(texts: list[str], counts: dict[str, int]) -> None:
+    """Validate explicit numbered media labels without rewriting creative text."""
+    if not any(counts.values()):
+        return
+    kinds={'图片':'image','视频':'video','音频':'audio','image':'image','video':'video','audio':'audio'}
+    # Chinese labels commonly follow another Chinese word without whitespace.
+    pattern=re.compile(r'((?:图片|视频|音频)|(?<![\w/.-])(?:image|video|audio))\s*#?\s*(\d+)',re.I)
+    duration=re.compile(r'(?:\.\d+)?\s*(?:毫秒|秒|帧|分钟|(?:seconds?|secs?|minutes?|mins?|fps|ms|s)\b)',re.I)
+    for text in texts:
+        for match in pattern.finditer(text):
+            if duration.match(text[match.end():]):
+                continue
+            kind=kinds[match[1].lower()]
+            number=match[2]
+            if len(number)>3 or not 1 <= int(number) <= counts[kind]:
+                raise ValueError(f'Prompt references {match[0]}, but content provides {counts[kind]} {kind} item(s). Correct the label or attach the missing reference before creating a paid task.')
 
 
 def video_preview(body):
@@ -331,9 +350,13 @@ class SeedanceClient:
         items = await asyncio.gather(*(one(i) for i in dict.fromkeys(task_ids)))
         return {'items': items, 'paid_request_sent': False, 'failed_queries': sum(not i['ok'] for i in items)}
 
-    async def download_task(self, task_id, dest, output='video', max_bytes=2*1024**3, retries=2):
+    async def download_task(self, task_id, dest, output='video', max_bytes=2*1024**3, retries=2, requirements=None):
         if output not in {'video', 'last_frame'}:
             raise ValueError('output must be video or last_frame')
+        from .media_review import MediaRequirements, check_requirements, media_info
+        if requirements is not None:
+            requirements=MediaRequirements.model_validate(requirements)
+            if output!='video':raise ValueError('Video requirements cannot validate a last-frame image')
         target = Path(dest).expanduser()
         if not target.is_absolute() or target.exists():
             raise ValueError('dest must be a new absolute file path')
@@ -343,4 +366,12 @@ class SeedanceClient:
         url = (task.get('content') or {}).get(output + '_url')
         if not isinstance(url, str) or not web_url(url):
             raise SeedreamError('Task has no valid requested output URL')
-        return {'task_id': task_id, 'output': output, **await download(url, dest, transport=self.transport, max_bytes=max_bytes, retries=retries)}
+        result={'task_id': task_id, 'output': output, **await download(url, dest, transport=self.transport, max_bytes=max_bytes, retries=retries)}
+        result['validation']={'status':'not_checked','passed':None,'note':'Download verifies bytes, not task requirements or visual/audio quality.'}
+        if requirements is not None:
+            try:
+                info=await asyncio.to_thread(media_info,dest)
+                result['validation']=check_requirements(info,requirements)
+            except ValueError as exc:
+                result['validation']={'status':'unverified','passed':False,'error':str(exc)}
+        return result

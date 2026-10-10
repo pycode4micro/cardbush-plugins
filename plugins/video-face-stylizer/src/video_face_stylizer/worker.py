@@ -12,6 +12,12 @@ def parse_event(line):
     except (ValueError,TypeError):return None
     return event if isinstance(event,dict) else None
 
+def validate_execution(benchmark,mode):
+    stages={'decode','preprocess','inference','mask','temporal','render','composite','encode'}
+    if (benchmark.get('execution_mode')!=mode or benchmark.get('fallback_used') is not False
+            or benchmark.get('pipeline_devices')!={stage:mode for stage in stages}):
+        raise RuntimeError('Engine did not honor the requested whole-pipeline execution mode.')
+
 def terminate_owned_process(proc):
     try:
         parent=psutil.Process(proc.pid)
@@ -62,7 +68,7 @@ def work(directory:Path):
         engine=Path(__file__).parent/'engine'/'plaster_face.py'
         temporary=directory/'rendering.mp4'
         cmd=[sys.executable,'-u',str(engine),request.input_path,str(temporary),
-             '--renderer',data['mode'],'--start',str(request.start_seconds),
+             '--mode',data['mode'],'--start',str(request.start_seconds),
              '--max-height',str(request.max_height),
              '--settings',json.dumps(request.model_dump(include=set(ProcessingOptions.model_fields)))]
         if request.duration_seconds is not None:cmd+=['--seconds',str(request.duration_seconds)]
@@ -101,6 +107,7 @@ def work(directory:Path):
             raise RuntimeError(f'Render process failed ({proc.returncode}): {detail}')
         if (directory/'cancel.request').exists():update(state='cancelled');return
         benchmark=json.loads(temporary.with_suffix('.benchmark.json').read_text(encoding='utf-8'))
+        validate_execution(benchmark,data['mode'])
         import cv2
         cap=cv2.VideoCapture(str(temporary),cv2.CAP_FFMPEG,[cv2.CAP_PROP_HW_ACCELERATION,cv2.VIDEO_ACCELERATION_NONE])
         readable=cap.isOpened();frames=int(cap.get(cv2.CAP_PROP_FRAME_COUNT));cap.release()

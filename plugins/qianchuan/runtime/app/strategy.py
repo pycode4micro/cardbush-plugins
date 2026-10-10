@@ -596,7 +596,9 @@ class QianchuanStrategyService:
         return self.call_tool("qianchuan_ad_material_delete_v1", request)
 
     def get_materials(self, params: dict[str, Any]) -> dict[str, Any]:
-        return self.call_tool("qianchuan_material_get_v1", ToolCallRequest(params=params))
+        from app.material_query import MaterialQuery
+        validated = MaterialQuery.model_validate(params).model_dump(exclude_none=True)
+        return self.call_tool("qianchuan_material_get_v1", ToolCallRequest(params=validated))
 
     def get_material_ads(self, params: dict[str, Any]) -> dict[str, Any]:
         return self.call_tool("qianchuan_material_ad_get_v1", ToolCallRequest(params=params))

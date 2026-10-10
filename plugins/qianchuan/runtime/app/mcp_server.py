@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager, contextmanager
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
@@ -92,6 +92,7 @@ from app.strategy import (
     WriteDisabledError,
 )
 from app.video_upload import VideoUploadValidationError, prepare_video_upload
+from app.material_query import MaterialQuery
 from app.image_upload import ImageUploadValidationError, prepare_image_upload
 
 
@@ -2137,10 +2138,11 @@ def qianchuan_update_uni_promotion_smart_control_task_status(
     )
 
 
-@mcp.tool()
-def qianchuan_get_materials(ctx: McpContext, params: dict[str, Any]) -> dict[str, Any]:
-    """Get Qianchuan material library items."""
-    return _read_call(ctx, lambda service: service.get_materials(params))
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False))
+def qianchuan_get_materials(ctx: McpContext, params: MaterialQuery) -> dict[str, Any]:
+    """Query account materials and metrics. Supply goal, scene, fields and filtering with material_type/start_time/end_time. To look up uploaded video files, use qianchuan_get_videos."""
+    validated = MaterialQuery.model_validate(params).model_dump(exclude_none=True)
+    return _read_call(ctx, lambda service: service.get_materials(validated))
 
 
 @mcp.tool()
@@ -2704,7 +2706,7 @@ def qianchuan_get_roi_decision(ctx: McpContext, decision_no: str) -> dict[str, A
 def qianchuan_upsert_account_policy(
     ctx: McpContext,
     advertiser_id: int,
-    account_role: str,
+    account_role: Literal["scale", "test", "retarget", "hold"],
     account_name: str | None = None,
     allowed_actions: list[str] | None = None,
     product_scope: dict[str, Any] | None = None,

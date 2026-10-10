@@ -2,6 +2,7 @@
 .tools/
 .python/
 .runtime-ready.json
+.gpu-cache/
 validation/
 __pycache__/
 *.pyc

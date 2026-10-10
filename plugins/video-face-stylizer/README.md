@@ -1,4 +1,21 @@
-# 视频生成去真人化处理 0.2.3
+# 视频生成去真人化处理 0.3.0
+
+0.3.0 将 CPU、GPU 分成两套完整的视频流程，删除原来只有三维渲染走 GPU 的混合模式。Agent 通过能力检查选择整次任务的运行方式；GPU 任一阶段不支持时明确失败，不切换到 CPU。
+
+| 视频处理阶段 | CPU 模式 | GPU 模式 |
+| --- | --- | --- |
+| 解码、缩放、颜色转换 | 软件解码、OpenCV | Intel QSV 硬件解码、VPP 缩放、OpenGL 颜色转换 |
+| 人物、人脸、关键点、头部分割 | MediaPipe CPU | 同一批包内模型，OpenVINO GPU |
+| 掩膜、人工区域、时序补漏 | OpenCV / NumPy | OpenGL 计算着色器与纹理 |
+| 三维绘制、合成 | Numba / NumPy | OpenGL |
+| 视频编码 | libx264 | h264_qsv |
+| 音频 | AAC 编码 | 原音频包直接复制 |
+
+GPU 模式仍需要 CPU 做进程调度、传输帧、少量框/关键点坐标计算和封装，这些不是软件视频处理回退。当前 GPU 后端支持 **Intel GPU + OpenVINO GPU + OpenGL 4.3 + QSV**，已在 UHD Graphics 730 核显验证；NVIDIA/AMD 后端尚未实现，不会把 OpenGL 可用误报为完整 GPU 可用。源视频编码/配置必须由硬件解码器支持；不支持时明确报错。原音频无法直接封装进 MP4 时也会明确报错。
+
+GPU 颜色转换读取 SDR BT.601/709 的输入范围和矩阵，由 OpenGL 着色器完成 NV12/RGB 转换；输出为明确标记的 BT.709 有限范围 H.264，内部 RGB 使用完整范围，避免硬件默认设置造成偏灰或偏色。能力检查也验证编解码往返后的颜色。当前不支持 HDR/广色域输入，会明确报错。
+
+未指定设备时，Agent 先调用 `video_face_capabilities`，优先选择通过全流程检查的 GPU；用户明确指定的设备优先。检查实际运行所有模型、GPU 像素处理和硬件编解码，首次模型编译可能较慢，后续使用 `.gpu-cache`。短片的初始化开销可能抵消加速收益，速度应看实际 benchmark，不承诺任何 GPU 都更快。GPU 作业的 `pipeline_devices` 明确列出每阶段设备，交付前校验全部一致。
 
 0.2.3 增加交付前逐镜头抽查、帽子/侧背头部的人工区域补漏指引，以及带归一化网格和实际椭圆轮廓的取坐标脚本。覆盖统计新增 `no_mask_frames` 和 `fallback_only_frames`，区分无掩膜与无网格但已有回退遮挡的帧；保留旧字段含义和检测默认值。
 
@@ -20,7 +37,7 @@
 
 ## 安装与依赖
 
-适用于 Windows x64 和本地 STDIO MCP 宿主。CPU 模式无需独显；GPU 模式需要 OpenGL 3.3 驱动。视频处理在本地完成，无需 API 密钥。
+适用于 Windows x64 和本地 STDIO MCP 宿主。CPU 模式无需 GPU；GPU 模式需要上表列出的完整 Intel GPU 能力。视频处理在本地完成，无需 API 密钥。
 
 **CardBush：直接导入这个源码 ZIP。** 配置通过 `${PLUGIN_ROOT}/scripts/start.ps1` 启动。首次连接会自动准备 Python 3.12 和插件目录中的 `.venv`，安装锁文件里的完整依赖，校验包内模型，并验证真实模型推理、CPU 渲染编译和 FFmpeg。无需自行补装 Python 包或修改 site-packages。后续连接使用已准备的环境。
 
@@ -28,15 +45,20 @@
 
 也可先解压到长期保留目录，双击 `setup.cmd`。脚本会生成绑定该目录解释器的本机 ZIP；导入本机 ZIP 后必须保留原目录。不要把这种本机包复制到其他电脑。需要指定解释器时使用 `scripts/setup.ps1 -Python 'C:\Python312\python.exe'`。
 
-依赖在 `pyproject.toml` 声明，`uv.lock` 锁定所有直接和间接依赖及下载校验信息；`requirements.lock` 是带哈希的导出副本。Python 包含 MediaPipe、OpenCV、NumPy、Numba、ModernGL、MCP、Pydantic、psutil 和 imageio-ffmpeg；FFmpeg 随其 wheel 提供，四个模型/网格资产随插件提供，其中新增 EfficientDet-Lite0 人物检测模型，无需另装推理库。没有系统 Python 时由 uv 自动下载，不依赖 Windows Store 的 python 别名。安装脚本使用 uv 0.12.10；下载插件私有 uv 时校验官方 SHA256。
+依赖在 `pyproject.toml` 声明，`uv.lock` 锁定所有直接和间接依赖及下载校验信息；`requirements.lock` 是带哈希的导出副本。Python 包含 MediaPipe、OpenVINO、OpenCV、NumPy、Numba、ModernGL、MCP、Pydantic、psutil 和 imageio-ffmpeg；FFmpeg 随其 wheel 提供，四个模型/网格资产随插件提供，无需另下载 GPU 模型。没有系统 Python 时由 uv 自动下载，不依赖 Windows Store 的 python 别名。安装脚本使用 uv 0.12.10；下载插件私有 uv 时校验官方 SHA256。
 
 ## 工具与任务
 
+重复使用同一个输出文件名时，工具返回占用它的原任务 ID、状态和请求是否一致，
+不会再启动第二个 worker。使用 `get_video_job` 接续查询；不同模式或参数会明确标记
+`request_matches=false`。原 worker 已中断时，保留任务证据并返回中断原因；确需重做
+应指定新的输出文件名。启动期间尚未写全的锁会返回 `output_reserved`，不会抢占锁。
+
 | 工具 | 用途 |
 | --- | --- |
-| video_face_capabilities | 检查依赖、模型、默认参数与 GPU |
-| render_video_cpu | CPU 推理、渲染、合成和编码 |
-| render_video_gpu | CPU 推理、合成和编码，OpenGL 渲染三维脸部 |
+| video_face_capabilities | 检查完整 GPU 流程、默认参数，返回 recommended_mode，最长 75 秒 |
+| render_video_cpu | 完整 CPU 视频流程 |
+| render_video_gpu | 完整 GPU 视频流程，任何 GPU 阶段失败均不回退 |
 | get_video_job | 查询同一个任务，可等待 0–20 秒 |
 | cancel_video_job | 取消指定任务，随后查询至终态 |
 
@@ -126,7 +148,7 @@
 
 ## 数据与开发
 
-输入视频不修改。记录、日志、临时视频及 CPU 编译缓存位于输出目录的 `.video-face-stylizer-jobs`；删除后无法查询旧任务。宿主终止进程后任务可显示 interrupted，不自动重跑。启动环境标记为插件内的 `.runtime-ready.json`，移动源码目录或更换锁文件后会重新准备。
+输入视频不修改。记录、日志、临时视频及 CPU 编译缓存位于输出目录的 `.video-face-stylizer-jobs`；删除后无法查询旧任务。GPU 编译缓存位于插件内 `.gpu-cache`，不随 ZIP 分发。宿主终止进程后任务可显示 interrupted，不自动重跑。启动环境标记为插件内的 `.runtime-ready.json`，移动源码目录或更换锁文件后会重新准备。
 
 模型来源和 SHA256 见 `src/video_face_stylizer/engine/model_sources.json`，第三方许可见 models/MEDIAPIPE_LICENSE.txt。本插件代码采用 MIT 许可。
 

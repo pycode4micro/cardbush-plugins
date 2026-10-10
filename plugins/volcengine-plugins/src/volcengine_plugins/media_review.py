@@ -71,13 +71,42 @@ def media_info(value: str) -> dict:
             "metadata_precision_seconds": 0.01, "validation": "metadata_and_first_decoded_frame"}
 
 
-def preflight(file_paths: list[str]) -> dict:
+class MediaRequirements(NativeModel):
+    max_duration_seconds: float | None = Field(default=None, gt=0, allow_inf_nan=False, description="Hard maximum, e.g. 15 means 15.10 seconds fails. No automatic trimming.")
+    width: int | None = Field(default=None, gt=0, strict=True)
+    height: int | None = Field(default=None, gt=0, strict=True)
+    require_audio: bool = False
+
+
+def check_requirements(info: dict, requirements: MediaRequirements) -> dict:
+    checks=[]
+    if requirements.max_duration_seconds is not None:
+        checks.append({'field':'duration_seconds','actual':info['duration_seconds'],
+                       'maximum':requirements.max_duration_seconds,'passed':info['duration_seconds']<=requirements.max_duration_seconds})
+    for key in ('width','height'):
+        expected=getattr(requirements,key)
+        if expected is not None:checks.append({'field':key,'actual':info[key],'expected':expected,'passed':info[key]==expected})
+    if requirements.require_audio:
+        codec=info.get('audio_codec')
+        checks.append({'field':'audio_codec','actual':codec,'expected':'present','passed':codec not in (None,'','none')})
+    passed=all(check['passed'] for check in checks) if checks else None
+    return {'status':'passed' if passed is True else 'failed' if passed is False else 'not_checked','passed':passed,
+            'checks':checks,'metadata_precision_seconds':info.get('metadata_precision_seconds'),
+            'semantic_quality_checked':False,'note':'Checks cover measured metadata only; wording, identity, product consistency and visual/audio quality require separate review.'}
+
+
+def preflight(file_paths: list[str], requirements: MediaRequirements | None = None) -> dict:
     if not 1 <= len(file_paths) <= 12:
         raise ValueError("Provide 1..12 local video paths")
+    if requirements is not None:
+        requirements=MediaRequirements.model_validate(requirements)
     files = [media_info(path) for path in file_paths]
+    if requirements is not None:
+        for info in files:info['validation']=check_requirements(info,requirements)
     ranked = sorted(range(len(files)), key=lambda i: (files[i]["width"] * files[i]["height"],
                                                      files[i]["average_total_bitrate_mbps"]), reverse=True)
     return {"files": files, "candidate_order": ranked,
+            "requirements_passed": all(info['validation']['passed'] is True for info in files) if requirements is not None else None,
             "environment": {"python": sys.executable, "ffmpeg": ffmpeg_bin(),
                             "packages": {name: importlib.metadata.version(name) for name in
                                          ("numpy", "Pillow", "imageio-ffmpeg")}},

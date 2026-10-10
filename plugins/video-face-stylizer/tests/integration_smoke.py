@@ -55,6 +55,9 @@ async def main(root,plugin=None):
                         status=await call('get_video_job',{'job_id':job['job_id'],'output_directory':str(root),'wait_seconds':10})
                         if status['state'] in {'succeeded','failed','cancelled','interrupted'}:break
                     assert status['state']=='succeeded',status
+                    assert status['benchmark']['execution_mode']==mode
+                    assert status['benchmark']['fallback_used'] is False
+                    assert set(status['benchmark']['pipeline_devices'].values())=={mode}
                     assert status['benchmark']['frames_processed']==10
                     assert status['coverage']['manual_mask_frames']==5,status['coverage']
                     assert status['coverage']['uncovered_frames']==5,status['coverage']
@@ -77,6 +80,21 @@ async def main(root,plugin=None):
                     cap.release()
                     assert images[0][50,65].max()<100 and images[3][50,65].min()>140 and images[-1][50,65].max()<100
                     report['renders'].append({'mode':mode,'frames':len(images),'coverage':status['coverage'],'path':str(output)})
+                if caps['gpu']['available']:
+                    unsupported=root/'software codec.avi'
+                    convert=subprocess.run([ffmpeg_executable(),'-v','error','-i',str(source),'-an','-c:v','mpeg4',str(unsupported)],
+                                           capture_output=True,timeout=30,**hidden_process_options())
+                    assert convert.returncode==0,convert.stderr
+                    job=await call('render_video_gpu',{'request':{'input_path':str(unsupported),'output_directory':str(root),
+                                                                'duration_seconds':.5,'output_filename':'must-not-fallback.mp4'}})
+                    deadline=time.monotonic()+60
+                    while time.monotonic()<deadline:
+                        status=await call('get_video_job',{'job_id':job['job_id'],'output_directory':str(root),'wait_seconds':10})
+                        if status['state'] in {'succeeded','failed','cancelled','interrupted'}:break
+                    assert status['state']=='failed' and 'no configured GPU decoder' in status['error'],status
+                    assert not (root/'must-not-fallback.mp4').exists()
+                    assert not (root/'must-not-fallback.benchmark.json').exists()
+                    report['unsupported_gpu_codec_failed_without_fallback']=True
     assert hashlib.sha256(source.read_bytes()).hexdigest()==digest
     report['passed']=True
     (root/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')

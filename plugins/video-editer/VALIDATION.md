@@ -1,4 +1,49 @@
-# Delivery validation — 2026-09-15
+# Validation
+
+## 0.3.4 integration — 2026-10-17
+
+The merged release was checked on Windows with Python 3.12 and FFmpeg 7.1.
+Full discovery ran 115 tests: 112 passed initially, and the remaining three
+passed after focused repairs and reruns. The repairs retained corrupt-video
+diagnostics, allowed the newly declared psutil dependency in the standalone
+import check, and made a byte-only hook fixture request structural validation
+instead of attempting to decode its placeholder audio.
+
+Coverage includes:
+
+- Shared media/render FIFO and asynchronous retry using saved revisions;
+  changed-source rejection, cancellation, reconnection and checkpoint recovery.
+- Cross-process single-heavy-task locking across data directories; CPU budgets,
+  memory admission/cancellation, worker memory limits and bounded GPU fallback.
+  Vendor-selection cases use synthetic probes/mocks; they do not certify every
+  vendor's hardware on this machine.
+- Hook account boundaries, reference provenance, one external submission claim,
+  unknown-task recovery, review-before-insertion and shifting body events once.
+  Generation state fixtures make no paid model calls.
+- The existing 57-cut loudness/frame-coverage regression, PCM sound assembly,
+  source gain/fades, sound-only repair and cadence detection remain covered.
+- A new real-audio regression checks a 1.25x independent hook track: its late
+  speech-tone window remains audible, its 431 Hz pitch is preserved, and source
+  ducking retains the previously configured master gain.
+
+An actual MCP stdio handshake exposed 87 tools. All 74 previous tool names and
+their input parameter names remain present; `render_retry` intentionally now
+returns a queued attempt. The plugin and workflow skill frontmatter validate.
+No user projects or real generation runs were used as fixtures.
+
+The allowlisted standalone ZIP was relocated to a path containing spaces,
+installed in a clean virtual environment, and exercised through real MCP stdio
+with external networking blocked in the server. All 45 invoked tool types
+completed their expected checks. H.264 QSV passed the real probe and full
+synthetic renders with CPU fallback forbidden. Heavy concurrency remained 1.
+An injected failed render retried through the queue in 0.093 seconds of submit
+time, waited behind a media import, and succeeded afterward. Reference previews,
+indexed frame evidence and candidate previews also completed. The verified
+bundle's executable sources match this release; subsequent edits only updated
+this validation record. Other GPU vendors still require runtime verification
+on their respective hosts.
+
+## Delivery validation — 2026-09-15
 
 Run from the plugin directory with its dependencies installed:
 

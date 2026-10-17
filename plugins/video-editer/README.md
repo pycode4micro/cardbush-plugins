@@ -4,6 +4,28 @@ A standalone, model-free MCP plugin with its own Python/FFmpeg execution core
 and bundled graphics, for Codex and other MCP-compatible agents. The caller
 decides what to edit; the plugin exposes deterministic atomic execution tools.
 
+## 0.3.4: shared task queue, resource controls and generated hooks
+
+- Media preparation and rendering share a durable FIFO. Failed renders retry
+  through that queue using the saved revision; submission returns a job ID,
+  and only `succeeded.result` is a completed output.
+- Heavy work has one shared slot, including compatible synchronous tools.
+  Portable defaults bound CPU threads, lower worker priority, reserve memory
+  and wait when the host is busy. GPU H.264 encoding is preferred after a real
+  encoder probe, with an explicit bounded CPU fallback or a strict GPU mode.
+- Generated opening hooks use account profiles, reference slices, durable
+  external task records and explicit review before insertion. The calling
+  agent uses its authorized generation provider; this plugin makes no model
+  calls. Preserve the accepted body edit and verify identity, clothing, speech
+  and the join. Original speed is supported; an explicitly requested 1.25x
+  hook retimes picture and separate audio together while preserving pitch.
+- The audio, frame-coverage and cadence controls below remain available.
+  Source-bound events retain precision when clips are trimmed, sped up or
+  shifted by a prepended hook.
+
+See [resource controls](skills/video-editer/resources.md) and
+[generated hooks](skills/video-editer/generated-hooks.md) for the workflow.
+
 ## 0.2.0: audio and frame-accurate delivery
 
 - Main clips now expose gain, mute and independent 25 ms default fades (set to
@@ -32,7 +54,7 @@ Python package in the interpreter used by MCP, then reconnect/open a new task.
 
 ## Install anywhere
 
-Requirements: Python 3.11+, `mcp`, `imageio-ffmpeg`, Pillow and NumPy. FFmpeg needs libx264
+Requirements: Python 3.11+, `mcp`, `imageio-ffmpeg`, Pillow, NumPy and psutil. FFmpeg needs libx264
 and libass; imageio-ffmpeg supplies a binary fallback. Chinese text requires an
 installed CJK font (Microsoft YaHei on Windows, or Noto Sans CJK SC on Linux).
 Proprietary system fonts are not redistributed.
@@ -62,6 +84,9 @@ Optional host environment settings:
 
 - `VIDEO_EDITER_DATA_DIR`: defaults to `<user-home>/.video_editer`. Projects,
   imports and render outputs live here, outside the installed plugin/cache.
+- `VIDEO_EDITER_RESOURCE_DIR`: defaults to `<user-home>/.video_editer_runtime`.
+  Policy, encoder probes and the heavy-work lock are shared across data
+  directories that use this resource directory.
 - `FFMPEG_BIN` / `FFPROBE_BIN`: executable overrides. Without ffprobe,
   inspection falls back to FFmpeg.
 - `VIDEO_EDITER_FONT`: installed font family, e.g. `Noto Sans CJK SC`.
@@ -83,6 +108,13 @@ automatically migrated, modified or removed.
 - `video_editer/canvas.py` / `animation.py`: explicit canvas and transform contracts.
 - `video_editer/visuals.py`: procedural callout typography and evolving reveal masks.
 - `video_editer/render_queue.py` / `processes.py`: detached FIFO worker and cancellation.
+- `video_editer/task_queue.py`: shared media/render dispatch and queue inspection.
+- `video_editer/resources.py` / `encoders.py`: resource admission, low-priority
+  execution, hardware encoder probes and bounded fallback.
+- `video_editer/hooks.py`: account profiles, reference plans, durable external
+  generation records, review and hook insertion.
+- `video_editer/audio.py` / `quality.py`: float PCM sound assembly, loudness,
+  true peak, decoded frame coverage and sampled motion cadence.
 - `video_editer/media_jobs.py` / `media_ops.py`: background video registration,
   content identity, local audiovisual windows, actual-PTS frames and technical scans.
 - `video_editer/media_store.py` / `segments.py`: SQLite evidence/index/candidate
@@ -101,16 +133,15 @@ Existing projects remain in the same `VIDEO_EDITER_DATA_DIR`.
 
 ## Atomic tool contract
 
-The 70 MCP tools cover project creation, material import/inspection/frame
+The MCP tools cover project creation, material import/inspection/frame
 extraction, timeline get/snapshot/diff/validate/restore, track creation,
 clip add/update/insert/split/remove/reorder, transition list/apply,
 callout list/add/update/remove, overlay add/keyframe/remove, subtitle
 add/update/remove, audio bed/track add/remove/source gain, preview/final
 rendering and technical output/quality inspection, plus source/output time maps,
 event bind/unbind, individually timed points, audio peaks and render status/retry.
-The seven new entrypoints are `canvas_configure`, `clip_camera_set`,
-`overlay_transform_set`, `render_submit`, `render_queue_list`, `render_cancel`
-and `render_queue_start`.
+Additional entrypoints cover canvas/camera/overlay motion, queued execution,
+resource policy, generated hooks and explicit audio/delivery inspection.
 
 Timeline mutations return an incrementing `revision` and `undo_snapshot`.
 Restore creates a new revision and is itself undoable. Read-only tools do not
@@ -277,9 +308,9 @@ Moving-overlay envelopes and callout/caption bounds are conservative; a warning
 is not proof of product occlusion and intentionally layered artwork may overlap.
 
 `quality_inspect` checks black/freeze frames, decoding and audio-stream presence.
-It also includes sample-peak headroom warnings from `audio_inspect`. Peak near
-full scale is a clipping risk, not proof of audible distortion; this is not a
-true-peak meter. These checks do not prove speech completeness, factuality,
+It includes audio measurements from `audio_inspect`, including integrated LUFS,
+sample peak and measured true peak. Peak near full scale is a clipping risk,
+not proof of audible distortion. These checks do not prove speech completeness, factuality,
 semantic synchronization or aesthetics.
 
 ## Failed render recovery
@@ -288,40 +319,60 @@ Each render saves `input.json`, `timeline.json` and `state.json` before executio
 `render_job_status` reports the stage, error or result; a released worker lock
 identifies an interrupted attempt. Errors include the job ID.
 
-`render_retry` creates a NEW job from the failed job's saved revision, not the
+`render_retry` queues a NEW job from the failed job's saved revision, not the
 latest project timeline. Completed base/graphics/caption/audio stages are reused
 only when their file checksums and runtime fingerprint match. Changed/missing
 source media or tampered input snapshots reject retry; corrupted checkpoints
 are re-rendered. Earlier attempts and outputs remain untouched.
 
 If the agent has edited the timeline to fix an editorial error, call a new
-`render_final`/`render_preview` instead of retrying an old revision. Recovery is
+`render_submit` instead of retrying an old revision. Recovery is
 stage-level: a failure inside the base FFmpeg render repeats that base stage,
 not just the unfinished source clip.
 
 ## Background rendering and cancellation
 
-- `render_submit(project_id, preview=false)` validates and snapshots immediately,
-  then starts a detached local worker and returns `job_id`/revision without
-  waiting for the video. Later edits do not modify queued plans.
-- Background jobs use FIFO order and one worker per data directory. Synchronous
-  `render_final`/`render_preview` remain compatible and run outside this queue.
+- `render_submit(project_id, preview=false)` saves an immutable snapshot and
+  returns `job_id`/revision before input hashing and encoding. The worker checks
+  source bytes and validates the plan. Later edits do not modify queued plans.
+- Media and render jobs share FIFO order per data directory and one heavy-work
+  slot across processes using the same resource directory. Compatible
+  synchronous render/import/analysis tools also acquire that resource slot.
 - `render_queue_list` and `render_job_status` report queued/running/terminal
   states and current stage. Progress is stage-level, not a precise percentage.
+- `task_queue_list` shows combined media/render order and resource wait reasons.
+  A resource wait remains queued and does not require resubmission.
 - `render_cancel` targets an exact job. Queued jobs become cancelled; running
   jobs check cancellation between stages/frames and during subprocess execution.
   Only owned child processes are terminated. Confirm `cancelled` with status;
   a job that already finished is not undone. All artifacts remain on disk.
-- A detached worker survives an MCP client exit, but not an OS shutdown. After
-  host restart use `render_queue_start` to drain queued jobs. Interrupted, failed
-  and cancelled attempts are not retried automatically; `render_retry` creates
-  a new synchronous attempt from the saved snapshot. Cancel queued work first.
+- MCP startup/reconnection automatically resumes queued work; either queue-start
+  tool can also drain it. Some hosts terminate child workers on disconnect, so
+  offline execution is not guaranteed. No independent OS service is installed.
+  Interrupted, failed and cancelled jobs require an explicit retry.
+  `render_retry` returns a new queued attempt from the saved snapshot; poll its
+  new job ID instead of treating submission as completion.
 - Source hashes and runtime fingerprints are checked for queued work. Changed
   media/code/fonts fail closed; submit a new job after reviewing those changes.
 
 Project writes use nonblocking cross-process locks; a competing write returns
 a busy error for the caller to retry. Rendering captures an immutable project
 snapshot under a short lock and checks source-file hashes before delivery.
+
+## GPU and resource policy
+
+Use `resource_status` for a read-only policy/status check, `resource_probe` for
+a tiny real encoder test, and `resource_configure` for subsequent work. Defaults
+keep heavy concurrency at 1, use at most four CPU threads, and apply memory and
+system-CPU admission checks. Workers run at low priority and are stopped if
+their sampled memory exceeds the configured budget.
+
+Automatic H.264 selection probes NVENC, QSV, AMF and VideoToolbox when present.
+It records a reason if bounded CPU encoding is needed. `gpu_required` or
+`allow_cpu_fallback=false` rejects that fallback. Filters, decoding and graphics
+may still use CPU; this is not an entirely GPU pipeline or a GPU-utilization
+quota. Shared resource directories coordinate one host, not multiple machines.
+See [policy defaults and limitations](skills/video-editer/resources.md).
 
 ## Long-source evidence (P0/P1)
 
@@ -333,7 +384,7 @@ annotation/candidate contracts and observation requirements.
   and explicit no-copy `reference`. A streaming SHA-256 identifies source bytes.
   Images/audio retain `media_import`; old video imports can be fingerprinted.
 - `media_prepare`, `media_job_status/list/cancel/retry`, `media_queue_start`
-  provide persistent media work independently of the rendering queue. Completed
+  provide persistent media work through the shared media/render FIFO. Completed
   evidence is cacheable; partial operations restart, not byte-resume.
 - `media_window_list`, `media_storyboard_page`, `media_segment_preview`,
   `media_frames_at` provide overlapping window directories, paginated images,
@@ -355,8 +406,9 @@ metadata is only a fast change hint. Processing and final rendering check bytes.
 Search is literal Unicode substring plus exact tags, not semantic retrieval or
 embedding search. The plugin verifies structural evidence consistency, not
 whether an Agent really listened or whether its supplied claims are true.
-Generated-effect ingestion, a cross-project creative library and editable
-structure templates remain P2/P3, not part of this release.
+Generated opening-hook orchestration is available through the dedicated hook
+tools. A cross-project creative library and editable structure templates remain
+outside this release.
 
 ## Tests and distribution
 

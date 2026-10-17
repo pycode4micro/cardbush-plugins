@@ -37,7 +37,11 @@ def inspect(project, timeline):
         end = float(event.get('end', start))
         if kind == 'audio':
             probe = engine.ffprobe(Path(asset['path']))
-            available = float(probe.get('duration') or 0)-float(event.get('source_start', 0))
+            speed = event.get('playback_speed', 1.0)
+            if isinstance(speed, bool) or speed not in (1.0, 1.25):
+                issue('audio_speed', 'error', [event_id], 'Audio playback speed must be 1.0 or 1.25')
+                continue
+            available = (float(probe.get('duration') or 0)-float(event.get('source_start', 0))) / speed
             duration = float(event.get('duration', 0))
             if available <= 0 or (duration > 0 and duration > available+.04):
                 issue('audio_source_bounds', 'error', [event_id], 'Audio source selection exceeds available media')

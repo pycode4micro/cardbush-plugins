@@ -86,7 +86,7 @@ def encode_frames(output, frames, size, pixel_format='rgba'):
                '-video_size', f'{size[0]}x{size[1]}', '-framerate', '25', '-i', 'pipe:0',
                '-an', '-c:v', 'ffv1', '-pix_fmt', 'gray' if pixel_format == 'gray' else 'bgra', str(output)]
     with log.open('wb') as stderr:
-        child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=stderr,
+        child = processes.popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=stderr,
                                  creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         try:
             for frame in frames:
@@ -210,7 +210,7 @@ def decoded_frames(item, size):
          '-vf',f'fps=25,scale={w}:{h}', '-an','-f','rawvideo','-pix_fmt','rgba','pipe:1']
     log=Path(item['_log'])
     with log.open('wb') as err:
-        child=subprocess.Popen(cmd,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=err,
+        child=processes.popen(cmd,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=err,
                                creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         def frame():
             processes.check()

@@ -2,7 +2,6 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
-import json
 from pathlib import Path
 import re
 import shutil
@@ -16,6 +15,7 @@ def digest(path):
     result = hashlib.sha256()
     with Path(path).open('rb') as stream:
         for block in iter(lambda: stream.read(1024*1024), b''):
+            processes.check()
             result.update(block)
     return result.hexdigest()
 
@@ -34,7 +34,7 @@ def folder(project_id, job_id):
     return path
 
 
-def media_manifest(project):
+def media_manifest(project, defer=False):
     timeline = project['mcp_timeline']
     used = {c['asset_id'] for c in timeline['tracks']['main']}
     used.update(e['asset_id'] for _, e in timing.entries(timeline) if e.get('asset_id'))
@@ -44,18 +44,30 @@ def media_manifest(project):
     manifest = {}
     for asset_id in sorted(used):
         item = assets[asset_id]
-        checksum = digest(item['path'])
-        if item.get('identity') and item['identity']['sha256'] != checksum:
+        checksum = item.get('identity', {}).get('sha256') if defer else digest(item['path'])
+        if not defer and item.get('identity') and item['identity']['sha256'] != checksum:
             raise ValueError(f'Source changed since indexing: {asset_id}; register a new asset and review its evidence')
-        manifest[asset_id] = {'path': item['path'], 'sha256': checksum}
+        manifest[asset_id] = {'path': item['path'], 'sha256': checksum, 'stat': media_stat(item['path'])}
     return manifest
 
 
-def verify_media(manifest):
+def media_stat(path):
+    value = Path(path).stat()
+    return {'size': value.st_size, 'mtime_ns': value.st_mtime_ns, 'ctime_ns': value.st_ctime_ns}
+
+
+def verify_media(manifest, strong=True):
+    verified = {}
     for asset_id, item in manifest.items():
         path = Path(item['path'])
-        if not path.is_file() or digest(path) != item['sha256']:
+        if not path.is_file() or (item.get('stat') and media_stat(path) != item['stat']):
             raise ValueError(f'Media changed or missing since the saved render: {asset_id}; start a new render explicitly')
+        before = media_stat(path)
+        checksum = digest(path) if strong else item.get('sha256')
+        if media_stat(path) != before or (strong and item.get('sha256') and checksum != item['sha256']):
+            raise ValueError(f'Media changed or missing since the saved render: {asset_id}; start a new render explicitly')
+        verified[asset_id] = {**item, 'sha256': checksum, 'stat': before}
+    return verified
 
 
 def runtime_fingerprint():
@@ -83,7 +95,7 @@ def runtime_fingerprint():
 
 
 class Attempt:
-    def __init__(self, project_id, project, preview, prior=None):
+    def __init__(self, project_id, project, preview, prior=None, *, defer_media=False, manifest=None):
         self.prior = prior
         revision = project['mcp_timeline']['revision']
         self.job_id = f"{'preview' if preview else 'final'}-r{revision}-{uuid.uuid4().hex[:12]}"
@@ -94,7 +106,7 @@ class Attempt:
         self.state = {'job_id': self.job_id, 'project_id': project_id, 'revision': revision,
                       'preview': preview, 'status': 'queued', 'created_at': now(), 'stages': {},
                       'retry_of': prior.name if prior else None, 'runtime': runtime_fingerprint()}
-        self.manifest = media_manifest(project)
+        self.manifest = manifest if manifest is not None else media_manifest(project, defer=defer_media)
         snapshot = {'project': project, 'preview': preview, 'media': self.manifest}
         engine.write_json(self.root / 'input.json', snapshot)
         self.state['input_sha256'] = digest(self.root / 'input.json')
@@ -103,7 +115,15 @@ class Attempt:
 
     def save(self):
         self.state['updated_at'] = now()
+        existing = engine.read_json(self.root / 'state.json', {})
+        if existing.get('resource_events'): self.state['resource_events'] = existing['resource_events']
         engine.write_json(self.root / 'state.json', self.state)
+
+    def bind_media(self):
+        self.manifest = verify_media(self.manifest)
+        engine.write_json(self.root/'verified_media.json', self.manifest)
+        self.state['verified_media_sha256'] = digest(self.root/'verified_media.json')
+        self.save()
 
     @classmethod
     def load(cls, project_id, job_id):
@@ -117,6 +137,10 @@ class Attempt:
         obj=cls.__new__(cls)
         obj.root,obj.state,obj.job_id=root,state,job_id
         obj.project,obj.preview,obj.manifest=snapshot['project'],snapshot['preview'],snapshot['media']
+        if state.get('verified_media_sha256'):
+            if digest(root/'verified_media.json') != state['verified_media_sha256']:
+                raise ValueError('Verified media manifest checksum mismatch')
+            obj.manifest = engine.read_json(root/'verified_media.json')
         obj.prior=folder(project_id,state['retry_of']) if state.get('retry_of') else None
         return obj
 
@@ -189,7 +213,7 @@ def status(project_id, job_id):
     return value
 
 
-def retry_input(project_id, job_id):
+def retry_input(project_id, job_id, strong=True):
     path = folder(project_id, job_id)
     with file_lock(path / 'running.lock'):
         state = engine.read_json(path / 'state.json')
@@ -200,5 +224,9 @@ def retry_input(project_id, job_id):
         if digest(path / 'input.json') != state['input_sha256']:
             raise ValueError('Saved render input checksum mismatch')
         snapshot = engine.read_json(path / 'input.json')
-        verify_media(snapshot['media'])
+        if state.get('verified_media_sha256'):
+            if digest(path/'verified_media.json') != state['verified_media_sha256']:
+                raise ValueError('Verified media manifest checksum mismatch')
+            snapshot['media'] = engine.read_json(path/'verified_media.json')
+        verify_media(snapshot['media'], strong=strong)
         return snapshot, path

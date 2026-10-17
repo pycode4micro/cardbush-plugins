@@ -13,7 +13,7 @@ import tempfile
 import json
 import os
 import shutil
-import sys
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Any, Literal
@@ -23,6 +23,7 @@ from .contracts import check_overlay, finite, position_expression, timeline_chan
 
 from . import engine, timing, preflight, jobs, canvas, visuals, animation, processes
 from . import media_ops, media_jobs, media_store, segments, audio as audio_engine, quality
+from . import resources, encoders, hooks
 from .locking import project_write, file_lock
 
 
@@ -218,6 +219,8 @@ def _validate(project: dict[str, Any]) -> list[str]:
             values = [float(audio.get(k, 0)) for k in ("start", "duration", "volume", "fade_in", "fade_out", "source_start")]
             if not finite(*values) or any(value < 0 for value in values):
                 errors.append(f"audio track {index} has invalid gain/timing")
+            if isinstance(audio.get('playback_speed', 1.0), bool) or audio.get('playback_speed', 1.0) not in SPEEDS:
+                errors.append(f"audio track {index} has unsupported playback speed")
         except (KeyError, TypeError, ValueError):
             errors.append(f"audio track {index} invalid")
     try:
@@ -282,7 +285,6 @@ def _apply_captions(source: Path, output: Path, captions: list[dict[str, Any]]) 
 def _apply_graphics(source: Path, output: Path, graphics: list[dict[str, Any]]) -> Path:
     if not graphics:
         return source
-    import subprocess
     probe = engine.ffprobe(source)
     canvas_w, canvas_h = int(probe["width"]), int(probe["height"])
     for graphic in graphics:
@@ -320,7 +322,6 @@ def _apply_graphics(source: Path, output: Path, graphics: list[dict[str, Any]]) 
 def _mix_audio_tracks(source: Path, output: Path, tracks: list[dict[str, Any]], source_volume: float = 1.0) -> Path:
     if not tracks and source_volume == 1.0:
         return source
-    import subprocess
     metadata = output_inspect(str(source))
     if not metadata["valid"]:
         raise ValueError("Cannot mix audio onto invalid video")
@@ -340,11 +341,17 @@ def _mix_audio_tracks(source: Path, output: Path, tracks: list[dict[str, Any]], 
         fade_in = max(0.0, float(entry.get("fade_in", 0)))
         fade_out = max(0.0, float(entry.get("fade_out", 0)))
         source_start = float(entry.get("source_start", 0))
-        available = float(engine.ffprobe(Path(entry["path"])).get("duration", 0)) - source_start
+        speed = float(entry.get('playback_speed', 1.0))
+        if speed not in SPEEDS:
+            raise ValueError('Unsupported audio playback speed')
+        available = (float(engine.ffprobe(Path(entry["path"])).get("duration", 0)) - source_start) / speed
         duration = min(float(entry.get("duration", 0) or available), available, duration_video - start)
         if duration <= 0:
             raise ValueError("Audio entry does not intersect available source/output duration")
-        pieces = [f"[{index}:a]atrim=start={source_start:.6f}:duration={duration:.6f}", "asetpts=PTS-STARTPTS", f"volume={volume:.6f}"]
+        pieces = [f"[{index}:a]atrim=start={source_start:.6f}:duration={duration*speed:.6f}", "asetpts=PTS-STARTPTS"]
+        if speed != 1.0:
+            pieces.append(f"atempo={speed:.6f}")
+        pieces.append(f"volume={volume:.6f}")
         if fade_in:
             pieces.append(f"afade=t=in:st=0:d={fade_in:.3f}")
         if fade_out:
@@ -376,6 +383,7 @@ def project_create(title: str, prompt: str = "") -> dict[str, Any]:
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+@resources.heavy_operation
 @project_write
 def media_import(project_id: str, source_path: str, base_dir: str | None = None, deduplicate: bool = True) -> dict[str, Any]:
     """Copy one local video/image/audio file into a project and inspect video metadata."""
@@ -413,6 +421,7 @@ def media_import(project_id: str, source_path: str, base_dir: str | None = None,
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
+@resources.heavy_operation
 def media_inspect(project_id: str, asset_id: str | None = None) -> dict[str, Any]:
     """Return deterministic media metadata; no semantic or model analysis is performed."""
     project = _read(project_id)
@@ -426,6 +435,7 @@ def media_inspect(project_id: str, asset_id: str | None = None) -> dict[str, Any
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+@resources.heavy_operation
 @project_write
 def media_extract_frames(project_id: str, asset_id: str, frame_count: int = 8) -> dict[str, Any]:
     """Extract evenly distributed review frames from one video; no vision or model analysis is used."""
@@ -437,13 +447,12 @@ def media_extract_frames(project_id: str, asset_id: str, frame_count: int = 8) -
         raise ValueError("Frame extraction requires a video asset")
     duration = _duration(asset)
     output = _folder(project_id) / "mcp_frames" / asset_id / uuid.uuid4().hex[:12]
-    import subprocess
     frames: list[str] = []
     for index in range(frame_count):
         timestamp = max(0.0, duration - 0.1) * index / max(1, frame_count - 1)
         frame = output / f"frame-{index + 1:02d}-{timestamp:.2f}.jpg"
         frame.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run([engine.ffmpeg_bin(), "-nostdin", "-y", "-ss", f"{timestamp:.3f}", "-i", str(asset["path"]), "-frames:v", "1", "-q:v", "3", str(frame)], capture_output=True, check=True, timeout=60)
+        processes.run([engine.ffmpeg_bin(), "-nostdin", "-y", "-ss", f"{timestamp:.3f}", "-i", str(asset["path"]), "-frames:v", "1", "-q:v", "3", str(frame)], capture_output=True, check=True, timeout=60)
         if not frame.is_file() or frame.stat().st_size == 0:
             raise ValueError(f"No decodable frame at {timestamp:.3f}s")
         frames.append(str(frame))
@@ -463,8 +472,8 @@ def media_register(project_id: str, source_path: str, mode: Literal['managed_cop
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
-def media_prepare(project_id: str, asset_id: str, operation: Literal['fingerprint','verify','preview','frames','scan'], options: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Background media work. fingerprint upgrades legacy VIDEO imports; verify rejects changed bytes. preview/scan: start,end <=600s; frames: 1-48 timestamps. Optional even max_edge=640 for preview/frames. Scan only detects black/silence, not meaning."""
+def media_prepare(project_id: str, asset_id: str, operation: Literal['fingerprint','verify','preview','reference','frames','scan'], options: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Background media work. fingerprint upgrades legacy VIDEO imports; verify rejects changed bytes. preview/reference/scan: start,end <=600s; frames: 1-48 timestamps. Even max_edge=640,160..1920. reference exports higher-quality 25fps video, include_audio=false by default; no upload/anonymization. Scan only detects black/silence, not meaning. All operations/retries share the heavy queue."""
     _asset(_read(project_id),asset_id)
     if options is not None and not isinstance(options,dict): raise ValueError('options must be an object')
     options=copy.deepcopy({} if options is None else options)
@@ -502,7 +511,7 @@ def media_job_retry(project_id: str, job_id: str) -> dict[str, Any]:
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def media_queue_start() -> dict[str, Any]:
-    """Restart the independent media FIFO after host restart; drains queued jobs only."""
+    """Restart the shared media/render FIFO after host restart; drains queued jobs only."""
     return media_jobs.start()
 
 
@@ -597,6 +606,113 @@ def candidate_preview(project_id: str, candidate_id: str, version: int | None = 
             'job':media_segment_preview(project_id,c['asset_id'],start,end)}
 
 
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def hook_account_put(account_id: str, expected_version: int, profile: dict[str, Any]) -> dict[str, Any]:
+    """Version an account's reusable generation identity/style. profile requires display_name, identity_description, identity_mode(authorized_person/synthetic/product_only), voice_policy. Optional asset_group_id, reference_assets[{uri:asset://...,kind,status,verification_reference}], style. expected_version=0 creates. No upload/model calls."""
+    return hooks.account_put(account_id, expected_version, profile)
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+def hook_account_get(account_id: str | None = None, version: int | None = None) -> dict[str, Any]:
+    """List reusable hook accounts or read a pinned identity profile. No automatic account selection."""
+    return hooks.account_get(account_id, version)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+@project_write
+def hook_plan_create(project_id: str, account_id: str, account_version: int, plan: dict[str, Any]) -> dict[str, Any]:
+    """Pin an agent-authored hook plan and actual source hashes. plan requires product_key,product_description,opening_idea,seam_description,prompt,keep_seconds,source_references[{asset_id,start,end,purpose}]. Save before preparing reference slices. No generation or timeline edits."""
+    project = _read(project_id)
+    result = hooks.plan_create(project_id, project, account_id, account_version, plan)
+    _write(project_id, project)
+    return result
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+def hook_get(project_id: str, hook_id: str | None = None) -> dict[str, Any]:
+    """Read durable hook plan, redacted request, original external task ID and review state; omit ID for summary list."""
+    project = _read(project_id)
+    if hook_id:
+        return hooks.get(project, hook_id)
+    return {'items': [{'hook_id': h['hook_id'], 'account_id': h['account']['account_id'],
+                       'product_key': h['plan']['product_key'], 'state': h['state']}
+                      for h in project.get('mcp_hooks', {}).values()]}
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+@project_write
+def hook_request_prepare(project_id: str, hook_id: str, provider: str, request: dict[str, Any], bindings: list[dict[str, Any]], preview_receipt: str) -> dict[str, Any]:
+    """Pin fingerprint of the exact FREE provider-validated request. Every content media index needs a binding: source=account or slice. Slice: source_index,evidence_id,uploaded_sha256; real Seedance slices also provider_asset{uri,status:Active,account_id,asset_group_id,verification_reference}. Must contain actual exported reference_video. Stores redacted request only; no external call."""
+    project = _read(project_id)
+    result = hooks.prepare(project_id, hooks.get(project, hook_id), provider, request, bindings, preview_receipt)
+    _write(project_id, project)
+    return result
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+@project_write
+def hook_generation_begin(project_id: str, hook_id: str, request_sha256: str, authorization_reference: str) -> dict[str, Any]:
+    """Durably claim one externally submitted paid task. Only may_submit=true permits the host's one create call; repeated claims return false, including after failure/unknown/reconnection. Records the existing user authorization; does not request new consent, call a provider, or hold a local heavy slot."""
+    project = _read(project_id)
+    result = hooks.begin(project_id, hooks.get(project, hook_id), request_sha256, authorization_reference)
+    _write(project_id, project)
+    return result
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+@project_write
+def hook_generation_record(project_id: str, hook_id: str, attempt_id: str, state: Literal['unknown','queued','running','succeeded','failed','cancelled','expired'], task_id: str | None = None, receipt: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Persist the ORIGINAL provider task ID and observed status; redact returned URLs/secrets. Unknown submission is never a retry trigger. Poll errors retain queued/running state. No network or paid retry occurs."""
+    project = _read(project_id)
+    result = hooks.record(hooks.get(project, hook_id), attempt_id, state, task_id, receipt or {})
+    _write(project_id, project)
+    return result
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+@project_write
+def hook_output_review(project_id: str, hook_id: str, asset_id: str, source_start: float, source_end: float, checks: dict[str, str], note: str, evidence_refs: list[str]) -> dict[str, Any]:
+    """Record host visual/AV review after successful queued import. checks: person,garment,motion,seam,claims,audio=pass/fail/not_applicable; concrete evidence_refs required. Pins reviewed bytes and retained range. This tool does NOT recognize identity or judge the video itself."""
+    project = _read(project_id)
+    result = hooks.review(project_id, hooks.get(project, hook_id), asset_id, source_start, source_end, checks, note, evidence_refs)
+    _write(project_id, project)
+    return result
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+@project_write
+def hook_attach(project_id: str, hook_id: str, expected_revision: int, audio_policy: Literal['silent','inherit'], playback_speed: Literal[1.0,1.25] = 1.0) -> dict[str, Any]:
+    """Atomically prepend the accepted generated hook and ripple ALL captions, graphics, keyframes, point cards, audio events and source-bound events. Hard cut at seam, shared 25fps clock. CAS revision + undo. Silent requires audio-free hook or globally muted source; inherit keeps existing source volume. Convert legacy continuous bed to timed audio first. No render starts here."""
+    project = _read(project_id)
+    hook = hooks.get(project, hook_id)
+    timeline = _timeline(project)
+    if any(c.get('hook_id') == hook_id for c in timeline['tracks']['main']):
+        return {'already_attached': True, 'project_id': project_id, 'revision': timeline['revision'], 'hook_id': hook_id}
+    if timeline['revision'] != expected_revision:
+        raise ValueError(f"Timeline revision conflict: current={timeline['revision']}")
+    hooks.check_sources(project_id, hook)
+    if not hook['reviews'] or not hook['reviews'][-1]['accepted']:
+        raise ValueError('Review and accept the actual generated output before attaching it')
+    review = hook['reviews'][-1]
+    asset = media_ops.asset(project_id, review['asset_id'])
+    if asset['identity']['sha256'] != review['source_sha256']:
+        raise ValueError('Reviewed output bytes changed')
+    if audio_policy == 'silent' and asset['probe'].get('has_audio') and timeline.get('audio_config', {}).get('source_volume', 1) != 0:
+        raise ValueError('Silent hook requested but imported hook contains audio; queue a silent derivative or explicitly choose inherit')
+    if audio_policy not in ('silent', 'inherit'):
+        raise ValueError('Explicit hook audio policy is required')
+    undo = _snapshot(project, 'before hook_attach')
+    updated, clip, shift = hooks.prepend(timeline, review['asset_id'], review['source_start'], review['source_end'], hook_id, playback_speed)
+    project['mcp_timeline'] = updated
+    errors = _validate(project)
+    if errors:
+        raise ValueError('Invalid hook attachment: ' + '; '.join(errors))
+    detail = {'hook_id': hook_id, 'clip_id': clip['id'], 'review_id': review['review_id'],
+              'shift_seconds': shift, 'audio_policy': audio_policy, 'playback_speed': playback_speed}
+    hook['attachment'] = detail
+    return {**_commit(project_id, project, 'hook_attach', detail, undo), **detail}
+
+
 @mcp.tool(annotations={"readOnlyHint": True})
 def timeline_get(project_id: str) -> dict[str, Any]:
     """Read the complete versioned timeline and its edit history."""
@@ -639,7 +755,7 @@ def timeline_validate(project_id: str, check_audio: bool = True, rms_delta_db: f
     audio_report = {'checked': False, 'reason': 'structural errors' if errors else 'disabled by caller'}
     if check_audio and not errors:
         try:
-            with tempfile.TemporaryDirectory(prefix='video-editer-audio-check-') as temporary:
+            with resources.heavy_slot(), tempfile.TemporaryDirectory(prefix='video-editer-audio-check-') as temporary:
                 path = Path(temporary) / 'prediction.wav'
                 settings = audio_engine.render(project, timeline, path)
                 measured = audio_engine.measure(path)
@@ -1021,8 +1137,8 @@ def subtitle_update(project_id: str, subtitle_id: str, text: str | None = None, 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 @project_write
-def audio_track_add(project_id: str, asset_id: str, start: float = 0.0, duration: float = 0.0, volume: float = 1.0, fade_in: float = 0.0, fade_out: float = 0.0, track_id: str = "audio", source_start: float = 0.0) -> dict[str, Any]:
-    """Add an explicit music/effect/audio source with gain and fades; no music is generated."""
+def audio_track_add(project_id: str, asset_id: str, start: float = 0.0, duration: float = 0.0, volume: float = 1.0, fade_in: float = 0.0, fade_out: float = 0.0, track_id: str = "audio", source_start: float = 0.0, playback_speed: Literal[1.0,1.25] = 1.0) -> dict[str, Any]:
+    """Add explicit audio with gain/fades and pitch-preserving tempo. duration/fades use output seconds; source_start uses source seconds. No music is generated."""
     project = _read(project_id)
     timeline = _timeline(project)
     asset = _asset(project, asset_id)
@@ -1032,10 +1148,12 @@ def audio_track_add(project_id: str, asset_id: str, start: float = 0.0, duration
         raise ValueError("track_id must refer to an audio track")
     if not finite(start, duration, volume, fade_in, fade_out, source_start) or min(start, duration, volume, fade_in, fade_out, source_start) < 0:
         raise ValueError("Audio timing and gain must be non-negative")
-    if source_start >= _duration(asset) or (duration > 0 and source_start + duration > _duration(asset) + 0.05):
+    if isinstance(playback_speed, bool) or playback_speed not in SPEEDS:
+        raise ValueError('Audio playback_speed must be 1.0 or 1.25')
+    if source_start >= _duration(asset) or (duration > 0 and source_start + duration * playback_speed > _duration(asset) + 0.05):
         raise ValueError("Audio selection exceeds source bounds")
     undo = _snapshot(project, "before audio_track_add")
-    item = {"id": f"audio_{uuid.uuid4().hex[:10]}", "asset_id": asset_id, "start": round(start, 3), "duration": round(duration, 3), "volume": volume, "fade_in": fade_in, "fade_out": fade_out, "source_start": source_start}
+    item = {"id": f"audio_{uuid.uuid4().hex[:10]}", "asset_id": asset_id, "start": round(start, 3), "duration": round(duration, 3), "volume": volume, "fade_in": fade_in, "fade_out": fade_out, "source_start": source_start, "playback_speed": playback_speed}
     timeline["tracks"][track_id].append(item)
     result = _commit(project_id, project, "audio_track_add", {"audio_id": item["id"], "track_id": track_id}, undo)
     return {**result, "audio": item}
@@ -1049,7 +1167,7 @@ def audio_duck_source(project_id: str, volume: float = 0.35) -> dict[str, Any]:
         raise ValueError("volume must be between 0 and 1")
     project = _read(project_id)
     undo = _snapshot(project, "before audio_duck_source")
-    _timeline(project)["audio_config"] = {"source_volume": volume}
+    _timeline(project).setdefault("audio_config", {})["source_volume"] = volume
     return _commit(project_id, project, "audio_duck_source", {"source_volume": volume}, undo)
 
 
@@ -1084,6 +1202,7 @@ def timeline_restore(project_id: str, undo_snapshot: str) -> dict[str, Any]:
     return _commit(project_id, project, "timeline_restore", {"restored": undo_snapshot}, prior)
 
 
+@resources.heavy_operation
 def _render(project_id: str, preview: bool, retry_job: str | None = None) -> dict[str, Any]:
     if retry_job:
         snapshot, prior = jobs.retry_input(project_id, retry_job)
@@ -1098,11 +1217,12 @@ def _render(project_id: str, preview: bool, retry_job: str | None = None) -> dic
     project = copy.deepcopy(project)
     project["mcp_timeline"] = timing.resolve(_timeline(project))
     timeline = project["mcp_timeline"]
-    diagnostics = preflight.inspect(project, timeline)
+    preflight.inspect(project, timeline)
     attempt = jobs.Attempt(project_id, project, preview, prior)
     return _execute_attempt(attempt)
 
 
+@resources.heavy_operation
 def _execute_attempt(attempt):
     project,preview=attempt.project,attempt.preview
     project_id=project['id']
@@ -1110,7 +1230,7 @@ def _execute_attempt(attempt):
     diagnostics=preflight.inspect(project,timeline)
     try:
         with attempt.running(), processes.cancellation(attempt.root/'cancel.json'):
-            jobs.verify_media(attempt.manifest)
+            attempt.bind_media()
             def base():
                 value = engine.render_project(project_id, _plan(project), render_job=attempt.job_id,
                                               project_snapshot=project, job_prepared=True)
@@ -1177,6 +1297,7 @@ def audio_configure(project_id: str, gain_db: float = 0.0, target_lufs: float | 
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+@resources.heavy_operation
 def render_audio_only(project_id: str) -> dict[str, Any]:
     """Render the current timeline audio to a new float WAV with meters; no video decoding/rendering beyond source audio and metadata."""
     with file_lock(_folder(project_id) / 'writer.lock'):
@@ -1192,6 +1313,7 @@ def render_audio_only(project_id: str) -> dict[str, Any]:
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+@resources.heavy_operation
 def audio_replace(video_path: str, audio_path: str, dest: str) -> dict[str, Any]:
     """Replace/remux an audio track into a new mp4/mov/mkv, copying video packets unchanged. Pad short audio with silence or trim long audio to decoded video coverage. Never overwrite an existing file."""
     video, sound, output = (Path(p).expanduser() for p in (video_path, audio_path, dest))
@@ -1221,6 +1343,7 @@ def audio_replace(video_path: str, audio_path: str, dest: str) -> dict[str, Any]
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
+@resources.heavy_operation
 def media_cadence_inspect(media_path: str, sample_seconds: float = 30.0) -> dict[str, Any]:
     """Measure nominal frame coverage and consecutive near-duplicate cadence. Static scenes can resemble repeated animation frames; no automatic interpolation."""
     path = Path(media_path).expanduser().resolve()
@@ -1236,6 +1359,7 @@ def render_final(project_id: str) -> dict[str, Any]:
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
+@resources.heavy_operation
 def quality_inspect(video_path: str, black_seconds_threshold: float = 0.35, freeze_seconds_threshold: float = 1.5) -> dict[str, Any]:
     """Run deterministic black-frame, freeze-frame, audio-stream and metadata checks on an export."""
     path = Path(video_path).expanduser().resolve()
@@ -1244,13 +1368,12 @@ def quality_inspect(video_path: str, black_seconds_threshold: float = 0.35, free
     if not finite(black_seconds_threshold, freeze_seconds_threshold) or min(black_seconds_threshold, freeze_seconds_threshold) <= 0:
         raise ValueError("Detection thresholds must be finite and positive")
     import re
-    import subprocess
-    black = subprocess.run([engine.ffmpeg_bin(), "-nostdin", "-hide_banner", "-i", str(path), "-vf", f"blackdetect=d={black_seconds_threshold}:pix_th=0.10", "-an", "-f", "null", "-"], capture_output=True, text=True, timeout=120)
-    freeze = subprocess.run([engine.ffmpeg_bin(), "-nostdin", "-hide_banner", "-i", str(path), "-vf", f"freezedetect=n=0.003:d={freeze_seconds_threshold}", "-an", "-f", "null", "-"], capture_output=True, text=True, timeout=120)
+    black = processes.run([engine.ffmpeg_bin(), "-nostdin", "-hide_banner", "-i", str(path), "-vf", f"blackdetect=d={black_seconds_threshold}:pix_th=0.10", "-an", "-f", "null", "-"], capture_output=True, text=True, timeout=120)
+    freeze = processes.run([engine.ffmpeg_bin(), "-nostdin", "-hide_banner", "-i", str(path), "-vf", f"freezedetect=n=0.003:d={freeze_seconds_threshold}", "-an", "-f", "null", "-"], capture_output=True, text=True, timeout=120)
     black_hits = re.findall(r"black_start:([\d.]+) black_end:([\d.]+) black_duration:([\d.]+)", black.stderr)
     freeze_hits = re.findall(r"freeze_start: ([\d.]+)|freeze_end: ([\d.]+)|freeze_duration: ([\d.]+)", freeze.stderr)
     probe = engine.ffprobe(path)
-    raw = subprocess.run([engine.ffmpeg_bin(), "-nostdin", "-hide_banner", "-i", str(path)], capture_output=True, text=True, timeout=30).stderr
+    raw = processes.run([engine.ffmpeg_bin(), "-nostdin", "-hide_banner", "-i", str(path)], capture_output=True, text=True, timeout=30).stderr
     warnings: list[str] = []
     if black.returncode or freeze.returncode:
         warnings.append("decode/detection failed")
@@ -1282,7 +1405,6 @@ def output_inspect(video_path: str) -> dict[str, Any]:
     if not path.is_file():
         raise ValueError(f"Output does not exist: {path}")
     probe = engine.ffprobe(path)
-    import subprocess
     result = processes.run([engine.ffmpeg_bin(), "-nostdin", "-hide_banner", "-i", str(path)], capture_output=True, text=True, timeout=30)
     return {"path": str(path), "probe": probe, "has_audio": "Audio:" in result.stderr, "valid": bool(probe.get("duration", 0) > 0 and probe.get("width") and probe.get("height"))}
 
@@ -1347,11 +1469,15 @@ def render_job_status(project_id: str, job_id: str) -> dict[str, Any]:
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def render_retry(project_id: str, job_id: str) -> dict[str, Any]:
-    """Retry a failed/interrupted job in a NEW attempt using its saved revision, not the latest timeline. Reuse completed stages only when checksums and runtime match. Reject changed source media."""
-    return _render(project_id, preview=False, retry_job=job_id)
+    """Queue a failed/interrupted/cancelled job in a NEW background attempt using its saved revision. Reuse completed stages only when checksums and runtime match. Reject changed source media."""
+    from . import render_queue
+    snapshot, prior = jobs.retry_input(project_id, job_id, strong=False)
+    return render_queue.submit(jobs.Attempt(project_id, snapshot['project'], snapshot['preview'], prior,
+                                           defer_media=True, manifest=snapshot['media']))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
+@resources.heavy_operation
 def audio_inspect(media_path: str) -> dict[str, Any]:
     """Measure decoded integrated LUFS, oversampled true peak, sample peak and RMS. No file modifications."""
     path = Path(media_path).expanduser().resolve()
@@ -1417,7 +1543,7 @@ def render_submit(project_id: str, preview: bool = False) -> dict[str, Any]:
     errors=_validate(project)
     if errors: raise ValueError('Timeline validation failed: '+'; '.join(errors))
     project['mcp_timeline']=timing.resolve(_timeline(project))
-    return render_queue.submit(jobs.Attempt(project_id,project,preview))
+    return render_queue.submit(jobs.Attempt(project_id,project,preview,defer_media=True))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -1441,7 +1567,51 @@ def render_queue_start() -> dict[str, Any]:
     return render_queue.start()
 
 
+@mcp.tool(annotations={"readOnlyHint": True})
+def resource_status() -> dict[str, Any]:
+    """Read host-wide policy and cached GPU probe. No rendering or hardware probe is started."""
+    return {**resources.status(), 'last_encoder_probe': encoders.cached()}
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+def task_queue_list(offset: int = 0, limit: int = 20) -> dict[str, Any]:
+    """Read the unified media/render queue, including resource waits; never starts jobs."""
+    from . import task_queue
+    if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError('offset >= 0 and limit 1..100 are required')
+    records = task_queue.records()
+    result = []
+    for item in records[offset:offset+limit]:
+        state = (jobs if item['kind'] == 'render' else media_jobs).status(item['project_id'], item['job_id'])
+        result.append({**{k: state.get(k) for k in ('project_id', 'job_id', 'status', 'created_at', 'started_at',
+                       'finished_at', 'resource_wait', 'current_stage', 'progress', 'retry_of')}, 'kind': item['kind']})
+    return {'jobs': result, 'heavy_concurrency': 1, 'total': len(records),
+            'next_offset': offset+limit if offset+limit < len(records) else None}
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def resource_configure(settings: dict[str, Any]) -> dict[str, Any]:
+    """Persist portable resource policy for future heavy slots. Concurrency is fixed at one. Running jobs retain their policy. See resource_status for defaults; no work is started."""
+    resources.configure(settings)
+    return resource_status()
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def resource_probe() -> dict[str, Any]:
+    """Verify GPU encoders with four synthetic frames under the shared resource lock. No project/timeline/media is edited. Strict GPU mode fails if no encoder works."""
+    with resources.heavy_slot():
+        return encoders.select(engine.ffmpeg_bin(), refresh=True)
+
+
 def main() -> None:
+    from . import task_queue
+    import logging
+
+    try:
+        task_queue.resume_pending()
+    except Exception:
+        # Keep inspection/retry tools available even if recovery needs attention.
+        logging.getLogger(__name__).exception("Could not resume queued work at startup; use media_queue_start or render_queue_start")
     mcp.run(transport="stdio")
 
 

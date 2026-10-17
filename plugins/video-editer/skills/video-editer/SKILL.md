@@ -1,6 +1,6 @@
 ---
 name: video-editer
-description: Use video_editer MCP tools to inspect long videos through local audiovisual evidence, store agent-authored indexes and clip candidates, and execute explicit video timelines. The tools do not call a model or infer editorial intent.
+description: Inspect and edit videos using explicit timelines, local audiovisual evidence and a GPU-first single-heavy-task queue. Also orchestrate account-specific generated opening hooks using real reference slices, an external generation provider, durable task records and reviewed insertion. The execution tools do not call a model or infer editorial intent.
 ---
 
 # video_editer
@@ -10,19 +10,33 @@ It is standalone: do not start an editing platform or load another project's
 environment. Tool outputs refer to its own data directory. No model is called
 inside the plugin; the caller supplies clip boundaries, text and effects.
 
-1. For a new edit, call `project_create` and import authorized local materials
-   with `media_import` for short videos/images/audio, or background `media_register`
-   for long videos. For an existing project, reuse its ID. Inspect using
+When adding or generating an opening hook, read [Generated hooks](generated-hooks.md).
+Use the selected account's actual footage AND identity assets, preserve the
+accepted body edit, and attach only a reviewed output. External generation is
+asynchronous and requires the user's existing authorization; the local editor
+records it but never makes hidden paid calls.
+Plan and verify sound and whole-video duration separately from the hook;
+silent reference preparation must not silently mute requested generated speech.
+For dialogue hooks, separate offscreen and presenter voices and speaking turns.
+Requested 1.25x hooks must retime video and explicit audio together while preserving
+pitch; keep original-body speed and shift its events by the accelerated hook length.
+
+1. For a new edit or authorized handoff test, call `project_create` and import
+   authorized local videos with background `media_register`, including short
+   videos; use `media_import` for images/audio. Save source hashes and project/job
+   IDs, poll `media_job_status`, and use only `succeeded.result`. Retry failed,
+   cancelled or interrupted imports with `media_job_retry` and track its new ID.
+   Reuse successful imports of the same source hash within the selected project.
+   For a handoff-only test, stop after import verification. For an existing
+   project, reuse its ID. Inspect using
    `media_inspect` and `timeline_get` before changing its timeline.
    Use `canvas_configure` for a nondefault aspect ratio or explicit cover crop;
    it never chooses a subject-aware crop. Defaults are vertical and contained.
 2. Make one explicit change per `clip_*`, `transition_apply`, `callout_*`,
    `overlay_*`, `subtitle_*`, or `audio_*` call.
 3. Call `timeline_validate` before rendering.
-   For quick cuts, audio problems, frame timing or generated footage, read
-   [Audio and delivery checks](audio-and-delivery.md). Review audio and source
-   reuse warnings even when `valid` is true.
-4. Use `render_preview` before `render_final` whenever output quality needs review.
+4. Submit `render_submit(preview=true)` for review, then submit the final render.
+   Poll `render_job_status`; only a succeeded job's `result` is a usable output.
 5. Use returned `undo_snapshot` values to recover from an unwanted mutation.
 
 The plugin is an execution layer, not a director. It must not choose clips,
@@ -30,6 +44,11 @@ write sales copy, select transitions, or create media without an explicit
 instruction from the calling agent or user.
 
 ## Safe tool use
+
+For audio levels, fades, frame coverage, cadence, or soundtrack-only repair, read
+[Audio and delivery](audio-and-delivery.md). Retain the explicit gain/fade and
+frame-alignment controls; audio checks measure LUFS/true peak and can be expensive.
+
 
 For long-source exploration, index/coverage, or candidate workflows, read
 [Long media evidence](long-media.md). Those tools preserve source
@@ -79,10 +98,9 @@ not make a whole video understood simply by generating thumbnails or proxies.
   Detach with `event_unbind` before editing their timestamps. Removing a bound
   range is rejected, not silently clipped. A split rebinds right-side events;
   spanning events require an explicit detach or split decision.
-- Read the time map's integer frame indices, timecodes, actual overlap and
-  `tail_padding`. The shared 25fps clock defaults to `cover`; explicit
-  `nearest`/`floor` can trim fractional tails. Do not sum raw source durations
-  to place later events.
+- Read the time map's actual overlap and `tail_padding`: the executor uses a
+  shared 25fps clock, preserving selected source ranges with less than one frame
+  of end padding. Do not sum raw source durations to place later events.
 - `timeline_validate` reports fatal errors and conservative overlap/headroom
   warnings with event IDs. Resolve errors before rendering; inspect warnings
   in preview rather than assuming every geometric overlap is wrong. No local
@@ -94,12 +112,16 @@ not make a whole video understood simply by generating thumbnails or proxies.
   completed stages. If you changed the edit, start a new render instead.
   Changed source files reject retry. Busy writer errors are retryable after the
   other write finishes.
-- For long renders use `render_submit`; it returns an immutable job/revision
-  while a detached worker runs. `render_queue_list`/`render_job_status` are
-  read-only. Later timeline edits do not change queued snapshots. FIFO has one
-  background worker per data directory; synchronous render tools bypass it.
+- Use `render_submit` for rendering; it saves an immutable job/revision and
+  returns before input hashing and encoding. Later edits do not change queued
+  snapshots. Media work and renders share one FIFO per data directory and one
+  heavy-operation slot across data directories using the same resource directory.
+  Legacy synchronous render/import helpers also acquire that resource slot.
+  `task_queue_list` reports combined job order and resource-wait reasons.
+  Read [Resource controls](resources.md) for GPU selection, limits and waiting.
 - Use `render_cancel` only when the task calls for stopping that exact job.
   Confirm terminal cancellation with status; completed outputs are not undone.
-  Artifacts and checkpoints are retained. After a host restart,
-  `render_queue_start` drains queued work but does not retry terminal/interrupted
-  jobs. `render_retry` is synchronous and uses the saved revision, not new edits.
+  Artifacts and checkpoints are retained. MCP startup/reconnection resumes queued
+  work automatically; `render_queue_start` also drains it. Neither retries terminal/interrupted
+  jobs. `render_retry` queues a new attempt using the saved revision, not new edits;
+  poll its new job ID. Never treat submission as a completed render.

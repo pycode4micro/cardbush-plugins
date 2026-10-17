@@ -47,6 +47,10 @@ just because a render is requested; preserve the user's intended sound level.
 Source sound, replacement bed and extra tracks have separate controls. An
 additive mix can exceed headroom; changing clip gain cannot fix a loud separate
 music track. Keep all settings and track choices in the project snapshot.
+An explicit extra track accepts `playback_speed=1.0` or `1.25`; its `duration`
+is output time and `source_start` is source time. For a sped-up hook, supply the
+same speed for picture and separate sound. Audio tempo changes preserve pitch.
+Do not accelerate the accepted body edit unless requested.
 
 The time map uses integer 25 fps frame indices. `end_frame_exclusive` and
 `end_timecode` exclude the next frame. Use its actual output times for music
@@ -58,7 +62,8 @@ stays below one frame per clip; it must not conceal seconds of missing footage.
 
 1. `timeline_validate` defaults to audio checks. It renders only planned audio
    to temporary float PCM, applies clip/bed/extra-track/master settings and
-   measures predicted LUFS/true peak. This costs local CPU but no paid service.
+   measures predicted LUFS/true peak under the shared heavy-work slot. This
+   costs local CPU but no paid service.
    `check_audio=false` is only a structural check and reports audio unchecked.
 2. Review `source_range_overlap`, `source_time_reversal`, `audio_level_jump`
    (default RMS difference >8 dB across 100 ms windows) and
@@ -68,14 +73,17 @@ stays below one frame per clip; it must not conceal seconds of missing footage.
 3. Adjust clip gain/fades or separate-track levels within the requested edit.
    Do not fix repeated action by freezing frames or stretch speech to hide a
    missing tail. Separate source cadence from accidental timeline replay.
-4. Deliver `render_final`'s measured `audio` and `video_stream` fields along with
-   the immutable path/revision. Hard cuts encode each clip once and concatenate
+4. Submit `render_submit`, poll `render_job_status`, and deliver only a
+   `succeeded.result`, including its measured `audio` and `video_stream` fields
+   and immutable path/revision. Hard cuts encode each clip once and concatenate
    packets; the soundtrack is assembled in float PCM and encoded to AAC once.
    A mismatched decoded frame count fails delivery instead of declaring success.
 5. For sound-only repair use `render_audio_only(project_id)` then
    `audio_replace(video_path, audio_path, dest)` with a new absolute destination.
    The latter copies video packets, pads short audio with silence and trims long
    audio to video coverage. Existing files are never overwritten.
+   These compatible synchronous repair tools acquire the same heavy-work slot;
+   they do not return an asynchronous job ID.
 
 When claiming a fix, report measurements and sampled scope. These regressions
 do not establish the cause of every third-party file's gain or motion defects.

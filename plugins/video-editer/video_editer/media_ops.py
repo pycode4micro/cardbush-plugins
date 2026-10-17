@@ -6,7 +6,6 @@ from pathlib import Path
 import re
 import shutil
 import time
-import uuid
 from . import engine, processes, media_store as store
 from .locking import file_lock
 
@@ -178,17 +177,21 @@ def prepare(project_id, request, directory, progress):
     check_space(directory,32*1024*1024)
     common={'cache_key':key,'operation':operation,'time_origin':info['time_origin'],'source_container_start':info['container_start'],
             'files':[],'agent_reviewed':False,'cache_hit':False,'options':options}
-    if operation=='preview':
+    if operation in ('preview', 'reference'):
         start,end=store.bounds(options['start'],options['end'],info['duration'])
         edge=options['max_edge']; output=directory/'preview.mp4'
         vf=f"scale=w='min({edge},iw)':h='min({edge},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1"
-        progress('encoding_preview',0,end-start)
+        progress('encoding_'+operation,0,end-start)
+        keep_audio = operation == 'preview' or options['include_audio']
+        audio_args = ['-map','0:a:0?','-c:a','aac','-b:a','128k'] if keep_audio else ['-an']
         processes.run([engine.ffmpeg_bin(),'-nostdin','-n','-ss',f'{start:.9f}','-i',str(source),
-                       '-t',f'{end-start:.9f}','-map','0:v:0','-map','0:a:0?','-vf',vf,
-                       '-r','25','-c:v','libx264','-preset','ultrafast','-crf','29','-pix_fmt','yuv420p',
-                       '-c:a','aac','-b:a','96k','-movflags','+faststart',str(output)],capture_output=True,check=True,timeout=max(180,30*(end-start)))
+                       '-t',f'{end-start:.9f}','-map','0:v:0','-vf',vf,
+                       '-r','25','-c:v','libx264','-preset','medium' if operation=='reference' else 'ultrafast',
+                       '-crf','20' if operation=='reference' else '29','-pix_fmt','yuv420p',
+                       *audio_args,'-movflags','+faststart',str(output)],capture_output=True,check=True,timeout=max(180,30*(end-start)))
         actual=metadata(output)
-        if info['has_audio'] and not actual['has_audio']: raise ValueError('Preview lost the source audio stream')
+        if keep_audio and info['has_audio'] and not actual['has_audio']: raise ValueError('Export lost the requested source audio stream')
+        if not keep_audio and actual['has_audio']: raise ValueError('Silent reference export unexpectedly contains audio')
         if abs(actual['duration']-(end-start))>.15: raise ValueError('Preview duration mismatch; inspect source timestamps')
         common.update(source_start=start,source_end=end,path=str(output),probe=actual,
                       source_mapping={'scale':1.0,'offset':start,'output_frame_grid_seconds':.04,
@@ -238,8 +241,8 @@ def validate_options(project_id, asset_id, operation, options):
         if options: raise ValueError('Fingerprint/verify takes no options')
         return
     a=asset(project_id,asset_id); duration=a['probe']['duration']
-    if operation in ('preview','scan'):
-        allowed={'start','end','max_edge'} if operation=='preview' else {'start','end'}
+    if operation in ('preview','reference','scan'):
+        allowed={'start','end','max_edge','include_audio'} if operation=='reference' else {'start','end','max_edge'} if operation=='preview' else {'start','end'}
         if set(options)-allowed or not {'start','end'}<=options.keys(): raise ValueError('Unexpected or missing range options')
         start,end=store.bounds(options['start'],options['end'],duration)
         if end-start>600: raise ValueError('One evidence window may be at most 600s; use paginated windows')
@@ -250,7 +253,11 @@ def validate_options(project_id, asset_id, operation, options):
             store.number(stamp,'timestamp',high=duration)
             if stamp>=duration: raise ValueError('Frame timestamp must precede source end')
     else: raise ValueError('Unknown operation')
-    if operation in ('preview','frames'):
+    if operation=='reference':
+        if not isinstance(options.get('include_audio', False), bool):
+            raise ValueError('include_audio must be an explicit boolean')
+        options.setdefault('include_audio', False)
+    if operation in ('preview','reference','frames'):
         edge=options.get('max_edge',640)
         if not isinstance(edge,int) or isinstance(edge,bool) or edge%2 or not 160<=edge<=1920:
             raise ValueError('max_edge must be even, 160..1920')

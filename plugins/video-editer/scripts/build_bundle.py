@@ -19,6 +19,7 @@ def main():
         'assets/logo-market.png', 'assets/icon.png',
         'skills/video-editer/long-media.md',
         'skills/video-editer/audio-and-delivery.md', 'VALIDATION.md',
+        'skills/video-editer/resources.md', 'skills/video-editer/generated-hooks.md',
     )]
     for folder, pattern in [('video_editer', '*.py'), ('video_editer/assets', '*.png'),
                             ('tests', 'test_*.py'), ('scripts', '*.py')]:
@@ -28,7 +29,7 @@ def main():
         raise ValueError('A required bundle file is missing')
     checksums = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    target = args.output_dir / f"video_editer-{manifest['version']}-standalone.zip"
+    target = args.output_dir / f"{manifest['name']}-{manifest['version']}-standalone.zip"
     # Never silently overwrite a previously handed-off bundle.
     with zipfile.ZipFile(target, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as bundle:
         for path in files:

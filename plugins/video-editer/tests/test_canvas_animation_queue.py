@@ -197,8 +197,10 @@ class AdvancedTests(unittest.TestCase):
         self.assertEqual(cancelled['status'],'cancelled')
         self.assertEqual(before,(path/'input.json').read_bytes())
         self.assertFalse(s.render_cancel(self.pid,job)['cancel_accepted'])
-        result=s.render_retry(self.pid,job)
-        self.assertEqual(result['status'],'succeeded')
+        queued=s.render_retry(self.pid,job)
+        self.assertIn(queued['status'],('queued','running'))
+        result=self.wait_job(queued['job_id'])
+        self.assertEqual(result['status'],'succeeded',result)
         self.assertNotEqual(result['job_id'],job)
 
     def test_running_cancel_stops_worker_job(self):

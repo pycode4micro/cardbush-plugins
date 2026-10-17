@@ -90,7 +90,11 @@ def resolve(timeline):
         def output(value):
             if not math.isfinite(float(value)) or not begin-1e-9 <= float(value) <= finish+1e-9:
                 raise ValueError(f"Event {event['id']} has a key/point outside its source anchor")
-            return row['start']+(float(value)-row['source_start'])/row['speed']
+            # Source -> timeline round trips can place an end key a few ULPs
+            # past its event. Normalize the same accepted boundary tolerance
+            # for events, keys and points before downstream strict validation.
+            value = max(begin, min(finish, float(value)))
+            return round(row['start']+(value-row['source_start'])/row['speed'], 9)
         event['start'], event['end'] = output(begin), output(finish)
         if kind == 'audio':
             event['duration'] = event['end']-event['start']

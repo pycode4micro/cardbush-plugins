@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch
 import numpy as np
 
-from video_editer import engine, jobs, timing
+from video_editer import engine, jobs, timing, render_queue, task_queue, resources
 from video_editer import mcp_server as s
 from video_editer.locking import file_lock
 
@@ -195,6 +195,16 @@ class TimingRecoveryTests(unittest.TestCase):
         ffmpeg('-i', result['path'], '-vf', 'fps=2,scale=162:288,tile=4x2', '-frames:v', '1', self.root / 'explicit-points-contact.png')
         (self.root / 'points-result.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
 
+    def retry_queued(self, job):
+        with patch.object(render_queue, 'start_worker', return_value={}):
+            queued = s.render_retry(self.pid, job)
+        self.assertEqual(queued['status'], 'queued')
+        with patch.object(resources, 'worker_setup'):
+            task_queue.worker()
+        state = s.render_job_status(self.pid, queued['job_id'])
+        self.assertEqual(state['status'], 'succeeded', state)
+        return state['result']
+
     def failed_job(self):
         s.clip_update(self.pid, self.clip, end=2)
         s.subtitle_add(self.pid, 'saved snapshot', .2, 1.5)
@@ -212,7 +222,7 @@ class TimingRecoveryTests(unittest.TestCase):
         old_hash = jobs.digest(old / status['stages']['base']['path'])
         s.clip_update(self.pid, self.clip, end=1.8)
         with patch.object(engine, 'render_project', side_effect=AssertionError('Reuse completed base')):
-            result = s.render_retry(self.pid, job)
+            result = self.retry_queued(job)
         self.assertEqual(result['revision'], status['revision'])
         self.assertIn('base', result['reused_stages'])
         self.assertIn('graphics', result['reused_stages'])
@@ -228,7 +238,7 @@ class TimingRecoveryTests(unittest.TestCase):
         base = jobs.folder(self.pid, job) / state['stages']['base']['path']
         base.write_bytes(b'corrupt test checkpoint')
         with patch.object(engine, 'render_project', wraps=engine.render_project) as called:
-            result = s.render_retry(self.pid, job)
+            result = self.retry_queued(job)
         self.assertEqual(called.call_count, 1)
         self.assertNotIn('base', result['reused_stages'])
 
@@ -249,7 +259,7 @@ class TimingRecoveryTests(unittest.TestCase):
         before = state_file.read_bytes()
         self.assertEqual(s.render_job_status(self.pid, job)['status'], 'interrupted')
         self.assertEqual(before, state_file.read_bytes())
-        self.assertEqual(s.render_retry(self.pid, job)['status'], 'succeeded')
+        self.assertTrue(Path(self.retry_queued(job)['path']).is_file())
 
     def test_cross_process_write_lock_prevents_lost_update(self):
         project_file = engine.project_dir(self.pid) / 'project.json'

@@ -25,7 +25,7 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 | `volcengine-plugins` | 0.7.0 | Seedream 图片、Seedance 视频、v5.0 歌曲/BGM、MediaKit 超分与去字幕；34 个 MCP 工具 | [生成服务配置](plugins/volcengine-plugins/README.md) |
 | `tencent-cos-upload` | 0.2.0 | COS 上传、下载及经确认的单对象删除或重命名 | [COS 配置](plugins/tencent-cos-upload/README.md) |
 | `qianchuan` | 1.0.0 | 自带运行代码的千川素材、报表及受控投放工具 | [千川配置](plugins/qianchuan/README.md) |
-| `video-editer`（video_editer） | 0.2.0 | 74 项无模型剪辑工具：长视频证据浏览、Agent 索引与候选、时间线、花字、转场及渲染 | [剪辑插件配置](plugins/video-editer/README.md) |
+| `video-editer`（video_editer） | 0.3.4 | 87 项无模型剪辑工具：统一异步队列、GPU 优先与资源控制、生成钩子编排、花字及音视频验收 | [剪辑插件配置](plugins/video-editer/README.md) |
 | `video-face-stylizer` | 0.3.0 | 独立的完整 CPU / Intel GPU 视频白模流程、Agent 设备选择、补漏与覆盖统计 | [去真人化处理配置](plugins/video-face-stylizer/README.md) |
 | `minimax-music` | 1.0.0 | 主题曲、纯音乐 BGM、歌词创作与改写、参考翻唱；11 项工具、动画配乐技能和 Music 3 自部署连接 | [音乐插件配置](plugins/minimax-music/README.md) |
 | `feishu-bot` | 1.0.0 | 独立飞书机器人、电子表格、多维表格及账号分表；默认只读，环境变量和启动参数控制修改能力 | [飞书插件配置](plugins/feishu-bot/README.md) |
@@ -102,7 +102,11 @@ python -m pip install ./plugins/video-editer
 
 FFmpeg 需支持 libx264/libass；已声明的 `imageio-ffmpeg` 提供二进制回退。中文花字需要本机安装微软雅黑或 Noto Sans CJK 等中文字体，字体不随仓库分发。可通过 `VIDEO_EDITER_DATA_DIR` 指定独立数据目录，默认在用户目录下的 `.video_editer`；原片、数据库、预览及成片不会写入市场仓库。
 
-已包含 85 项离线回归测试，覆盖合法/非法输入、实际音视频执行、源时间锚定、后台队列和长素材证据链；另有可选的 2 小时、200MB 以上合成素材基准。合成基准不代表真实商品视频的语义召回率。外部生成特效接入、跨项目创作库和结构模板尚未实现，详见[插件说明](plugins/video-editer/README.md)及[长素材使用指引](plugins/video-editer/skills/video-editer/long-media.md)。
+素材任务与渲染共用异步队列，失败重试也入队；默认重任务总并发为 1，限制 CPU 线程、降低工作进程优先级，并按内存与系统负载等待。自动探测 NVENC、QSV、AMF、VideoToolbox，优先 GPU 编码，失败时记录 CPU 回退原因，也可要求必须使用 GPU。通过 `VIDEO_EDITER_RESOURCE_DIR` 可让同一主机上的不同数据目录共用资源限制。
+
+生成钩子支持账号资料、真实切片参考、外部异步任务记录、审阅和接回原片；生成由宿主调用已获授权的外部插件，剪辑插件本身不调用模型。原速或明确指定的 1.25 倍速均可处理，后者同步调整画面及独立音轨、保持音调。原有音量、LUFS/真峰值、帧覆盖和掉帧检查一并保留。
+
+离线回归覆盖实际音视频执行、异步队列、资源等待与失败恢复、钩子状态和长素材证据链；详见[验证记录](plugins/video-editer/VALIDATION.md)。另有可选的 2 小时、200MB 以上合成素材基准，不能代表真实商品视频的语义召回率。完整用法见[插件说明](plugins/video-editer/README.md)、[钩子流程](plugins/video-editer/skills/video-editer/generated-hooks.md)及[长素材使用指引](plugins/video-editer/skills/video-editer/long-media.md)。
 
 ### 视频生成去真人化处理
 

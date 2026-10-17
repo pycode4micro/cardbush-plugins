@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 from .timing import point_rows
-from . import canvas, processes, visuals
+from . import canvas, processes, visuals, resources
 
 ASSETS = Path(__file__).resolve().parent / "assets"
 DATA = Path(os.environ.get("VIDEO_EDITER_DATA_DIR", str(Path.home() / ".video_editer"))).expanduser().resolve()
@@ -31,9 +31,16 @@ def project_dir(project_id: str) -> Path:
 
 
 def read_json(path: Path, default: Any = None) -> Any:
-    if not path.is_file():
-        return default
-    return json.loads(path.read_text(encoding="utf-8"))
+    for attempt in range(40):
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return default
+        except PermissionError:
+            # Windows may briefly deny readers during another process's atomic replace.
+            if attempt == 39:
+                raise
+            time.sleep(.025)
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -74,6 +81,7 @@ def validate_transition_timing(clips: list[dict[str, Any]]) -> None:
             raise ValueError(f"clip {index + 1} is too short for its requested transition overlap; extend it or choose another transition")
 
 
+@resources.heavy_operation
 def render_project(project_id: str, plan: dict[str, Any], *, render_job: str | None = None, project_snapshot: dict[str, Any] | None = None, job_prepared: bool = False) -> dict[str, Any]:
     """Render only the caller's explicit clips, speeds and effects; never plan."""
     folder = project_dir(project_id)
@@ -514,7 +522,6 @@ def _apply_point_list_plates(source: Path, output: Path, events: list[dict[str, 
     input_index = 1
     for event_index, event in enumerate(point_events, start=1):
         plate_x = round(w-532*scale) if event.get("position") == "product_right" else round(32*scale)
-        entry_x = 1080 if event.get("position") == "product_right" else -520
         for row, point in enumerate(point_rows(event), start=1):
             offset, end = float(point["start"]), float(point["end"])
             y = round((640+(232 if "points" in event else 202)*(row-1))*h/1920)

@@ -42,7 +42,7 @@ class StandaloneTests(unittest.TestCase):
 
     def test_no_external_platform_or_model_imports(self):
         package = Path(engine.__file__).parent
-        allowed = sys.stdlib_module_names | {'video_editer', 'mcp', 'PIL', 'numpy', 'imageio_ffmpeg'}
+        allowed = sys.stdlib_module_names | {'video_editer', 'mcp', 'PIL', 'numpy', 'imageio_ffmpeg', 'psutil'}
         for source in package.glob('*.py'):
             text = source.read_text(encoding='utf-8')
             tree = ast.parse(text)

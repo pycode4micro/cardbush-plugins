@@ -90,6 +90,28 @@ class DeliveryAudioTests(unittest.TestCase):
         self.assertIn('audio_level_jump', {i['code'] for i in quiet['issues']})
         self.assertTrue(quiet['audio']['checked'])
 
+    def test_explicit_sped_up_audio_keeps_tail_pitch_and_master_settings(self):
+        self.add(end=3)
+        voice = self.root / 'voice-tail.wav'
+        ffmpeg('-f', 'lavfi', '-i', 'sine=frequency=431:sample_rate=48000:duration=3',
+               '-af', "volume='if(lt(t,2.5),0,1)':eval=frame", '-c:a', 'pcm_f32le', voice)
+        asset = s.media_import(self.pid, str(voice))['asset']['id']
+        s.audio_configure(self.pid, gain_db=-3, limiter=False)
+        s.audio_duck_source(self.pid, 0)
+        s.audio_track_add(self.pid, asset, start=.12, duration=2.4, playback_speed=1.25)
+        result = s.render_audio_only(self.pid)
+        self.assertEqual(result['audio']['applied_master_gain_db'], -3)
+        samples = np.frombuffer(ffmpeg('-i', result['path'], '-ac', 1, '-ar', 48000,
+                                      '-f', 'f32le', '-'), dtype='<f4')
+        rms = lambda a: float(np.sqrt(np.mean(a.astype(float)**2)))
+        self.assertLess(rms(samples[:int(1.9*48000)]), .0001)
+        audible = samples[int(2.25*48000):int(2.43*48000)]
+        self.assertGreater(rms(audible), .02)
+        frequencies = np.fft.rfftfreq(len(audible), 1/48000)
+        peak = frequencies[np.argmax(np.abs(np.fft.rfft(audible*np.hanning(len(audible)))))]
+        self.assertAlmostEqual(peak, 431, delta=8)
+        self.assertLess(rms(samples[int(2.75*48000):]), .0001)
+
     def test_labels_dedup_frame_policies_and_overlap(self):
         duplicate=s.media_import(self.pid, self.source.name, base_dir=str(self.root))
         self.assertTrue(duplicate['deduplicated'])

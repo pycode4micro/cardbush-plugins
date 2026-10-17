@@ -140,9 +140,18 @@ def render(project, timeline, output):
         filters = [f"[0:a]volume={settings['source_volume']}[a0]"]
         for i, entry in enumerate(tracks, 1):
             command += ['-i', assets[entry['asset_id']]['path']]
-            available = float(engine.ffprobe(Path(assets[entry['asset_id']]['path']))['duration'])-float(entry.get('source_start', 0))
-            duration = min(float(entry.get('duration') or available), total-entry['start'])
-            chain = [f"[{i}:a]atrim=start={entry.get('source_start', 0)}:duration={duration}", 'asetpts=PTS-STARTPTS', f"volume={entry.get('volume', 1)}"]
+            speed = entry.get('playback_speed', 1.0)
+            if isinstance(speed, bool) or speed not in (1.0, 1.25):
+                raise ValueError('Audio playback_speed must be 1.0 or 1.25')
+            source_start = float(entry.get('source_start', 0))
+            available = (float(engine.ffprobe(Path(assets[entry['asset_id']]['path']))['duration'])-source_start)/speed
+            duration = min(float(entry.get('duration') or available), available, total-entry['start'])
+            if duration <= 0:
+                raise ValueError('Audio entry does not intersect available source/output duration')
+            chain = [f"[{i}:a]atrim=start={source_start}:duration={duration*speed}", 'asetpts=PTS-STARTPTS']
+            if speed != 1.0:
+                chain.append(f'atempo={speed}')
+            chain.append(f"volume={entry.get('volume', 1)}")
             for direction in ('in', 'out'):
                 fade = min(float(entry.get(f'fade_{direction}', 0)), duration)
                 if fade:

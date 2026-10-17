@@ -1,10 +1,15 @@
 """Cancellable local child processes. Never terminate an unrelated PID."""
+
 from contextlib import contextmanager
 import contextvars
 import subprocess
 import time
+from pathlib import Path
+import uuid
+import psutil
+from . import resources, encoders
 
-_cancel = contextvars.ContextVar('render_cancel', default=None)
+_cancel = contextvars.ContextVar("render_cancel", default=None)
 
 
 class RenderCancelled(RuntimeError):
@@ -14,7 +19,10 @@ class RenderCancelled(RuntimeError):
 def check():
     path = _cancel.get()
     if path is not None and path.exists():
-        raise RenderCancelled('Render cancelled by caller; existing artifacts are retained')
+        raise RenderCancelled(
+            "Render cancelled by caller; existing artifacts are retained"
+        )
+    resources.check_memory()
 
 
 @contextmanager
@@ -37,33 +45,97 @@ def stop(child):
             child.wait(timeout=3)
 
 
-def run(args, *, capture_output=False, check=False, timeout=None, **kwargs):
-    # Keep standard subprocess semantics when no render cancellation is active.
-    if _cancel.get() is None:
-        return subprocess.run(args, capture_output=capture_output, check=check, timeout=timeout, **kwargs)
-    globals()['check']()
+def popen(args, **kwargs):
+    """For streaming FFV1 frame writers; caller owns cancellation and cleanup."""
+    child = subprocess.Popen(
+        resources.limit_ffmpeg(args), **resources.child_options(kwargs)
+    )
+    try:
+        resources.low_priority(
+            psutil.Process(child.pid), resources.current_policy()["cpu_threads"]
+        )
+    except psutil.Error:
+        pass
+    return child
+
+
+def _run_once(args, *, capture_output=False, timeout=None, **kwargs):
+    globals()["check"]()
     if capture_output:
         kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    payload = kwargs.pop('input', None)
+    payload = kwargs.pop("input", None)
     if payload is not None:
-        kwargs['stdin'] = subprocess.PIPE
-    kwargs.setdefault('creationflags', subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0)
-    child = subprocess.Popen(args, **kwargs)
+        kwargs["stdin"] = subprocess.PIPE
+    child = popen(args, **kwargs)
     started = time.monotonic()
     first = True
     try:
         while True:
-            globals()['check']()
-            if timeout is not None and time.monotonic()-started > timeout:
+            resources.check_memory(child)
+            globals()["check"]()
+            if timeout is not None and time.monotonic() - started > timeout:
                 raise subprocess.TimeoutExpired(args, timeout)
             try:
-                out, err = child.communicate(input=payload if first else None, timeout=.2)
+                out, err = child.communicate(
+                    input=payload if first else None, timeout=0.2
+                )
                 break
             except subprocess.TimeoutExpired:
                 first = False
-        if check and child.returncode:
-            raise subprocess.CalledProcessError(child.returncode, args, out, err)
         return subprocess.CompletedProcess(args, child.returncode, out, err)
     except BaseException:
         stop(child)
         raise
+
+
+def run(args, *, capture_output=False, check=False, timeout=None, **kwargs):
+    with resources.heavy_slot():
+        original = list(map(str, args))
+        command, selected = encoders.prepare(original)
+        output = (
+            Path(original[-1])
+            if original and Path(original[-1]).suffix.lower() == ".mp4"
+            else None
+        )
+        existed = output.exists() if output else False
+        result = _run_once(
+            command, capture_output=capture_output, timeout=timeout, **kwargs
+        )
+        if (
+            result.returncode
+            and not existed
+            and output
+            and encoders.can_fallback(selected, result.stderr)
+        ):
+            # Keep the failed artifact and never overwrite a pre-existing user file.
+            if output.is_file():
+                output.rename(
+                    output.with_name(
+                        output.name + ".gpu-failed-" + uuid.uuid4().hex[:8]
+                    )
+                )
+            detail = (
+                result.stderr.decode("utf-8", "replace")
+                if isinstance(result.stderr, bytes)
+                else result.stderr
+            )
+            encoders.fallback(selected, detail)
+            command, selected = encoders.prepare(original)
+            result = _run_once(
+                command, capture_output=capture_output, timeout=timeout, **kwargs
+            )
+        if selected:
+            resources.record(
+                {
+                    "event": "encoding",
+                    "encoder": selected["encoder"],
+                    "gpu": selected["gpu"],
+                    "success": result.returncode == 0,
+                    "fallback_reason": selected.get("fallback_reason"),
+                }
+            )
+        if check and result.returncode:
+            raise subprocess.CalledProcessError(
+                result.returncode, command, result.stdout, result.stderr
+            )
+        return result

@@ -1,15 +1,9 @@
-"""Persistent single-worker media FIFO, independent from timeline/render jobs."""
-from contextlib import ExitStack
+"""Durable media jobs dispatched through the shared media/render FIFO."""
 import hashlib
-import json
-import os
-from pathlib import Path
 import subprocess
-import sys
-import threading
 import time
 import uuid
-from . import engine, media_ops, processes
+from . import engine, media_ops, processes, task_queue, resources
 from .locking import file_lock
 
 
@@ -49,13 +43,7 @@ def status(project_id,job_id):
 
 
 def start_worker():
-    env=dict(os.environ); env['VIDEO_EDITER_DATA_DIR']=str(engine.PROJECTS.parent)
-    flags={'creationflags':getattr(subprocess,'CREATE_NO_WINDOW',0)} if os.name=='nt' else {'start_new_session':True}
-    with (root()/'worker.log').open('ab') as log:
-        child=subprocess.Popen([sys.executable,'-c','from video_editer.media_jobs import worker; worker()'],
-                               cwd=str(Path(__file__).resolve().parent.parent),env=env,stdin=subprocess.DEVNULL,stdout=log,stderr=log,**flags)
-    threading.Thread(target=child.wait,daemon=True,name='media-worker-reaper').start()
-    return {'worker_pid':child.pid,'policy':'one background media job per data directory; render queue is separate'}
+    return task_queue.start_worker()
 
 
 def submit(project_id, request, retry_of=None, start=True):
@@ -66,7 +54,7 @@ def submit(project_id, request, retry_of=None, start=True):
            'operation':request['operation'],'created_at':time.time(),'retry_of':retry_of,
            'request_sha256':hashlib.sha256((directory/'request.json').read_bytes()).hexdigest(),
            'progress':{'stage':'queued','completed':0,'total':None}}
-    with file_lock(root()/'dispatch.lock'):
+    with file_lock(task_queue.root()/'dispatch.lock'):
         engine.write_json(directory/'state.json',state)
         if start:
             try: start_worker()
@@ -101,15 +89,19 @@ def retry(project_id,job_id):
 
 
 def start():
-    with file_lock(root()/'dispatch.lock'): return start_worker()
+    with file_lock(task_queue.root()/'dispatch.lock'): return start_worker()
 
 
+@resources.heavy_operation
 def execute(project_id,job_id):
     path=folder(project_id,job_id)
     with file_lock(path/'running.lock'):
         state=engine.read_json(path/'state.json')
         if state['status']!='queued': return
+        state['execution_resources']=resources.current_policy()
         def progress(stage,completed,total):
+            latest=engine.read_json(path/'state.json')
+            if latest.get('resource_events'): state['resource_events']=latest['resource_events']
             state['progress']={'stage':stage,'completed':completed,'total':total}
             engine.write_json(path/'state.json',state)
         try:
@@ -121,9 +113,13 @@ def execute(project_id,job_id):
                 else: result=media_ops.prepare(project_id,request,path,progress)
             # Cancellation after an atomic commit does not undo committed artifacts.
             engine.write_json(path/'result.json',result)
+            latest=engine.read_json(path/'state.json')
+            if latest.get('resource_events'): state['resource_events']=latest['resource_events']
             state.update(status='succeeded',finished_at=time.time()); progress('complete',1,1)
         except Exception as exc:
             message=str(exc)
+            latest=engine.read_json(path/'state.json')
+            if latest.get('resource_events'): state['resource_events']=latest['resource_events']
             if isinstance(exc,subprocess.CalledProcessError):
                 message+=' '+(exc.stderr or b'').decode('utf-8','replace')[-2000:]
             state.update(status='cancelled' if isinstance(exc,processes.RenderCancelled) else 'failed',
@@ -132,18 +128,4 @@ def execute(project_id,job_id):
 
 
 def worker():
-    with ExitStack() as stack:
-        try: stack.enter_context(file_lock(root()/'worker.lock'))
-        except ValueError: return
-        while True:
-            pending=[r for r in records() if r['status']=='queued']
-            if not pending:
-                try:
-                    with file_lock(root()/'dispatch.lock'):
-                        if not any(r['status']=='queued' for r in records()):
-                            stack.close(); return
-                except ValueError: time.sleep(.05)
-                continue
-            item=pending[0]
-            try: execute(item['project_id'],item['job_id'])
-            except ValueError: time.sleep(.05)
+    task_queue.worker()

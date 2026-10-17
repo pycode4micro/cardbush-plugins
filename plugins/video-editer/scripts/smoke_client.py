@@ -3,23 +3,25 @@ import asyncio
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
+import time
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from video_editer import engine
+from video_editer import engine, processes, resources
+from video_editer.locking import file_lock
 
 
 async def main():
     review = Path(sys.argv[1]).resolve()
     review.mkdir(parents=True, exist_ok=False)
+    os.environ['VIDEO_EDITER_RESOURCE_DIR'] = str(review / 'resource policy')
     source = review / 'synthetic.mp4'
     overlay = review / 'overlay.png'
-    subprocess.run([engine.ffmpeg_bin(), '-y', '-f', 'lavfi', '-i', 'testsrc2=s=320x480:r=25:d=3',
+    processes.run([engine.ffmpeg_bin(), '-y', '-f', 'lavfi', '-i', 'testsrc2=s=320x480:r=25:d=3',
                     '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=3',
                     '-c:v', 'libx264', '-c:a', 'aac', str(source)], check=True, capture_output=True, timeout=90)
-    subprocess.run([engine.ffmpeg_bin(), '-y', '-f', 'lavfi', '-i', 'color=c=lime:s=100x100',
+    processes.run([engine.ffmpeg_bin(), '-y', '-f', 'lavfi', '-i', 'color=c=lime:s=100x100',
                     '-frames:v', '1', str(overlay)], check=True, capture_output=True, timeout=60)
     env = dict(os.environ, VIDEO_EDITER_DATA_DIR=str(review / 'plugin data'))
     env.pop('PYTHONPATH', None)
@@ -57,6 +59,14 @@ main()
                     return result.structuredContent
                 return json.loads(next(item.text for item in result.content if item.type == 'text'))
 
+            initial_policy = await call('resource_status')
+            if initial_policy['policy'] != resources.DEFAULTS:
+                raise AssertionError('Smoke test must use isolated portable defaults')
+            gpu_probe = await call('resource_probe')
+            if gpu_probe['gpu']:
+                # A successful tiny probe is insufficient: the entire synthetic
+                # timeline must encode with hardware, with CPU fallback forbidden.
+                await call('resource_configure', settings={'encoder': 'gpu_required'})
             pid = (await call('project_create', title='Relocated standalone plugin'))['project_id']
             media = (await call('media_import', project_id=pid, source_path=str(source)))['asset']['id']
             image = (await call('media_import', project_id=pid, source_path=str(overlay)))['asset']['id']
@@ -101,7 +111,8 @@ main()
                 raise AssertionError('Explicit timing changed: ' + str(metadata))
             if not Path(result['path']).is_relative_to(review / 'plugin data'):
                 raise AssertionError('Output escaped standalone data directory')
-            required={'canvas_configure','clip_camera_set','overlay_transform_set','render_submit','render_queue_list','render_cancel','render_queue_start'}
+            required={'canvas_configure','clip_camera_set','overlay_transform_set','render_submit','render_queue_list','render_cancel','render_queue_start',
+                      'resource_status','resource_probe','resource_configure','task_queue_list','render_retry','media_job_retry'}
             if not required <= set(names):
                 raise AssertionError('Advanced tools missing: '+str(required-set(names)))
             advanced_pid=(await call('project_create',title='Advanced relocated rendering'))['project_id']
@@ -132,6 +143,46 @@ main()
             await call('render_queue_list',project_id=advanced_pid)
             terminal=await call('render_cancel',project_id=advanced_pid,job_id=queued['job_id'])
             if terminal['cancel_accepted']: raise AssertionError('Already succeeded job was cancelled')
+            # Fault injection is confined to this synthetic project's saved input.
+            # Hold the shared lock so the worker cannot race the test setup.
+            with file_lock(resources.root()/'heavy.lock'):
+                broken = await call('render_submit', project_id=advanced_pid, preview=True)
+                snapshot = Path(env['VIDEO_EDITER_DATA_DIR'])/'projects'/advanced_pid/'mcp_renders'/broken['job_id']/'input.json'
+                original_input = snapshot.read_bytes()
+                snapshot.write_bytes(b'{}')
+                for _ in range(80):
+                    waiting = await call('render_job_status', project_id=advanced_pid, job_id=broken['job_id'])
+                    if (waiting.get('resource_wait') or {}).get('reason') == 'heavy_slot_busy': break
+                    await asyncio.sleep(.1)
+                else: raise AssertionError('Worker did not report shared-resource wait')
+            for _ in range(100):
+                failed = await call('render_job_status', project_id=advanced_pid, job_id=broken['job_id'])
+                if failed['status'] == 'failed': break
+                await asyncio.sleep(.1)
+            else: raise AssertionError('Injected failed task did not become terminal')
+            snapshot.write_bytes(original_input)
+            with file_lock(resources.root()/'heavy.lock'):
+                ahead = await call('media_register', project_id=advanced_pid, source_path=str(source), mode='reference')
+                submitted_at = time.monotonic()
+                retried = await call('render_retry', project_id=advanced_pid, job_id=broken['job_id'])
+                retry_submit_seconds = time.monotonic() - submitted_at
+                if retried['status'] != 'queued' or retried['retry_of'] != broken['job_id']:
+                    raise AssertionError('Retry bypassed the queue')
+                combined = await call('task_queue_list', limit=100)
+                positions = {row['job_id']: i for i, row in enumerate(combined['jobs'])}
+                if positions[ahead['job_id']] >= positions[retried['job_id']]:
+                    raise AssertionError('Mixed retry FIFO order changed')
+            for _ in range(400):
+                retried_state = await call('render_job_status', project_id=advanced_pid, job_id=retried['job_id'])
+                if retried_state['status'] in {'succeeded','failed','cancelled','interrupted'}: break
+                await asyncio.sleep(.25)
+            if retried_state['status'] != 'succeeded': raise AssertionError(retried_state)
+            ahead_state = await call('media_job_status', project_id=advanced_pid, job_id=ahead['job_id'])
+            from datetime import datetime
+            if ahead_state['status'] != 'succeeded' or ahead_state['finished_at'] > datetime.fromisoformat(retried_state['started_at']).timestamp():
+                raise AssertionError('Heavy media work overlapped retry rendering')
+            queue_report = {'failed': failed, 'retried': retried_state, 'media_ahead': ahead_state,
+                            'submit_seconds': retry_submit_seconds, 'combined_queue': combined}
             async def media_wait(project_id,job):
                 for _ in range(240):
                     current=await call('media_job_status',project_id=project_id,job_id=job['job_id'])
@@ -167,7 +218,9 @@ main()
     report = {'success': True, 'python': sys.executable, 'engine': engine.__file__,
               'assets': str(engine.ASSETS), 'tools': len(names), 'calls': calls,
               'external_network_blocked_in_stdio_server': True, 'invalid_data_rejected': True, 'render': result,
-              'advanced_background_render':advanced,'long_media_workflow':evidence_report}
+              'advanced_background_render':advanced,'long_media_workflow':evidence_report,
+              'resource_policy':initial_policy, 'gpu_probe':gpu_probe, 'gpu_strict_validation':gpu_probe['gpu'],
+              'async_retry_verification':queue_report}
     (review / 'verification.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(json.dumps(report, indent=2))
 

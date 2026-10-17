@@ -36,6 +36,17 @@ when the request only changes the hook, typography or decorative transitions.
 
 ## Plan before generation
 
+The current commerce workflow defaults to Seedance 2.0 Fast, explicitly
+`doubao-seedance-2-0-fast-260128`, profile `2.0-fast`, native 720p, 9:16 and
+`generate_audio=true`. Plan a 4-second generation for a 2–4 second retained
+hook, then verify the current model's limits and actual speech boundaries.
+Keep the selected presenter's image, real video and voice references. Omit
+`omni_reference_task_type` and `output_format`; they belong to 2.5 only.
+Do not automatically substitute another model. A later explicit user model
+choice overrides this default. A 1080x1920 edit canvas does not turn the hook
+into native 1080p. Preserve old task receipts with their actual model; a model
+change needs a fresh plan/preview for future submissions, not relabeled history.
+
 Compare 2–3 opening ideas against actual evidence. Prefer an immediate visual
 question, a demonstrated contrast or the most revealing detail. Make the first
 0.5s legible and connect the promise to a real demonstration in the body. Avoid

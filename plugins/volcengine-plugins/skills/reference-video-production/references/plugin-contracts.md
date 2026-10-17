@@ -33,6 +33,8 @@
 
 ## Seedance
 
+当前默认模型为 `doubao-seedance-2-0-fast-260128`（`2.0-fast`），原生生成默认 `720p`。保留真实视频、人物图片和音色的有序参考，按 Fast 的单段/总时长与数量限制核对。显式设置新任务的模型；不要直接复制旧 2.5 任务的参数或依赖旧的环境默认值。Fast 请求省略 `omni_reference_task_type`、`output_format`，即使输出需要 MP4 也不发送后者。默认模型变更不重写已经完成的任务记录。
+
 顺序：`seedance_capabilities` → 本地媒体核对 → `seedance_preview_request` → 经授权 `seedance_create_task` → `generation_wait_tasks`（旧版 get_task/get_tasks）→ `seedance_download_task`。
 
 | 新接口/返回字段 | 用法 |
@@ -54,7 +56,8 @@
 ```json
 {
   "request": {
-    "model": "<当前模型或端点>",
+    "model": "doubao-seedance-2-0-fast-260128",
+    "resolution": "720p",
     "content": [
       {"type": "text", "text": "<完整覆盖约定、镜头安排及逐字台词；明确指定角色全片音色固定为音频1，每段标注绑定，禁止替换/混用音色；台词以本提示词为准>"},
       {"type": "image_url", "image_url": {"url": "<已处理商品图或合法资产引用>"}, "role": "reference_image"},

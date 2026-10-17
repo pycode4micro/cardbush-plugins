@@ -4,6 +4,17 @@ A standalone, model-free MCP plugin with its own Python/FFmpeg execution core
 and bundled graphics, for Codex and other MCP-compatible agents. The caller
 decides what to edit; the plugin exposes deterministic atomic execution tools.
 
+## 0.3.8: Seedance 2.0 Fast hook default
+
+The bundled commerce workflow now explicitly selects
+`doubao-seedance-2-0-fast-260128` with native 720p, portrait ratio and audio.
+It plans four generated seconds for the existing 2–4 second retained hook,
+checks Fast-specific reference limits, and omits 2.5-only request fields.
+No automatic model fallback is allowed; later explicit user choices override
+the default. Native generation and the 1080x1920 edit canvas are tracked
+separately. Historical 2.5 receipts stay accurate. This changes the skills and
+planning template, not the model-free editing engine.
+
 ## 0.3.7: specific hooks with a source payoff
 
 Commerce hooks now start from a concrete wearing concern, visible difference

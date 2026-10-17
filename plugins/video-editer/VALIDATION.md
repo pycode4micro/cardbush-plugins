@@ -1,5 +1,20 @@
 # Validation
 
+## 0.3.8 Fast generation default — 2026-10-17
+
+The model-free editing engine is unchanged. The commerce skills and plan now
+explicitly select Seedance 2.0 Fast, 720p, portrait audio generation and a
+four-second starting duration, while omitting the two 2.5-only request fields.
+The connected generation service reports the same Fast default. An offline
+preview adapted from the Autumn reference request preserves all three ordered
+reference roles and native audio. The historical request remains unchanged.
+
+The generation plugin's video, reference-skill, configuration and real stdio
+checks pass: 111 tests. These include default-model routing with image/video/
+audio references, Fast parameter rejection and preservation of the explicit
+2.5 alias. No paid generation, remote-media access check or new video render was
+performed; the offline preview does not establish provider acceptance or quality.
+
 ## 0.3.7 specific hooks and source payoff — 2026-10-17
 
 Both bundled skills and the synchronized local orchestration copy pass

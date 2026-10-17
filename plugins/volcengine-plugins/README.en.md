@@ -1,5 +1,16 @@
 # volcengine-plugins
 
+## 0.7.1: Seedance 2.0 Fast by default
+
+New video requests default to `doubao-seedance-2-0-fast-260128`; an explicit
+request model or `SEEDANCE_MODEL` still takes precedence. Update older environment
+settings when migrating. Reference production defaults to native 720p and checks
+Fast's 4–15 second output range while preserving ordered image/video/voice
+references. Omit `omni_reference_task_type` and `output_format`. A larger edit
+canvas is separate from native resolution; no automatic model fallback or paid
+enhancement is performed. Explicit 2.5 aliases and historical receipts retain
+their actual model identity.
+
 Prefer background image jobs and unified bounded task waits. Polling stays inside the plugin; existing host background read tools allow concurrent work without CardBush changes. See [background jobs and recovery boundaries](docs/background-generation.md). Reference-video prompts must explicitly bind each voice reference to its character and dialogue, beyond attaching reference_audio.
 
 ## 0.7.0: v5.0 vocal songs and BGM
@@ -276,7 +287,7 @@ Usually only the API keys need to be configured:
 | `SEEDREAM_MODEL` | `doubao-seedream-5-0-pro-260628` |
 | `SEEDREAM_OUTPUT_DIR` | Current user's `Pictures/Seedream` |
 | `SEEDREAM_TIMEOUT_SECONDS` | 300 seconds |
-| `SEEDANCE_MODEL` | `doubao-seedance-2-5-260628` |
+| `SEEDANCE_MODEL` | `doubao-seedance-2-0-fast-260128` |
 | `SEEDANCE_TIMEOUT_SECONDS` | 60 seconds per HTTP request; range 1–300 |
 | `MEDIAKIT_BASE_URL` | `https://mediakit.cn-beijing.volces.com` |
 | `MEDIAKIT_TIMEOUT_SECONDS` | 120 seconds per HTTP request; range 1–300 |

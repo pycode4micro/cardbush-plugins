@@ -8,14 +8,14 @@ from pydantic import Field, StrictBool, StrictInt
 from .models import StrictModel
 
 Profile = Literal["2.0", "2.0-fast", "2.0-mini", "2.5"]
-DEFAULT_VIDEO_MODEL = "doubao-seedance-2-5-260628"
+DEFAULT_VIDEO_MODEL = "doubao-seedance-2-0-fast-260128"
 PROFILES = {
     "2.0": {"model": "doubao-seedance-2-0-260128", "resolutions": ["480p", "720p", "1080p", "4k"], "max_duration": 15, "images": 9, "videos": 3, "audios": 3, "total": 15},
     "2.0-fast": {"model": "doubao-seedance-2-0-fast-260128", "resolutions": ["480p", "720p"], "max_duration": 15, "images": 9, "videos": 3, "audios": 3, "total": 15},
     "2.0-mini": {"model": "doubao-seedance-2-0-mini-260615", "resolutions": ["480p", "720p"], "max_duration": 15, "images": 9, "videos": 3, "audios": 3, "total": 15},
-    "2.5": {"model": DEFAULT_VIDEO_MODEL, "resolutions": ["480p", "720p", "1080p"], "max_duration": 30, "images": 30, "videos": 10, "audios": 10, "total": 50},
+    "2.5": {"model": "doubao-seedance-2-5-260628", "resolutions": ["480p", "720p", "1080p"], "max_duration": 30, "images": 30, "videos": 10, "audios": 10, "total": 50},
 }
-ALIASES = {**{key: value["model"] for key, value in PROFILES.items()}, "2.5-pro": DEFAULT_VIDEO_MODEL}
+ALIASES = {**{key: value["model"] for key, value in PROFILES.items()}, "2.5-pro": PROFILES["2.5"]["model"]}
 
 
 class MediaURL(StrictModel):
@@ -53,7 +53,7 @@ class VideoTool(StrictModel):
 
 
 class VideoRequest(StrictModel):
-    model: str | None = Field(default=None, min_length=1, description="Official model ID or aliases 2.0, 2.0-fast, 2.0-mini, 2.5, 2.5-pro. ep-* IDs require explicit local.capability_profile. Defaults to SEEDANCE_MODEL or official 2.5.")
+    model: str | None = Field(default=None, min_length=1, description="Official model ID or aliases 2.0, 2.0-fast, 2.0-mini, 2.5, 2.5-pro. ep-* IDs require explicit local.capability_profile. Defaults to SEEDANCE_MODEL or official 2.0-fast. No automatic model fallback.")
     content: list[VideoContent] = Field(min_length=1, description="Ordered native multimodal content. First/last frames cannot mix with omni references. Media order and prompt are preserved.")
     resolution: Literal["480p", "720p", "1080p", "4k"] | None = None
     ratio: Literal["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"] | None = None

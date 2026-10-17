@@ -1,5 +1,9 @@
 # volcengine-plugins
 
+## 0.7.1：默认 Seedance 2.0 Fast
+
+视频生成默认改为 `doubao-seedance-2-0-fast-260128`。已有 `SEEDANCE_MODEL` 环境变量或请求中的显式模型仍优先；迁移旧环境时同步更新配置。参考视频 Skill 默认采用 720p、原生有声和所需的图片/视频/音色参考，按 4–15 秒范围规划；Fast 不接受 `omni_reference_task_type`、`output_format` 或原生 1080p。剪辑导出 1080p 与生成原生分辨率分别记录，不自动付费超分或回退模型。历史任务和各模型能力档保留真实身份，`2.5-pro` 仍仅指向 2.5。
+
 视频生成前会检查提示词中明确的图片/视频/音频编号，引用不存在的“视频2”会在
 付费请求发出前被拒绝。时长描述（如“视频15秒”）不当作素材编号。
 `seedance_download_task` 和 `video_media_preflight` 支持可选 `requirements`，
@@ -287,7 +291,7 @@ URL / asset ID 须换成账号可访问的真实素材。成功后取 `task.id`�
 | `SEEDREAM_MODEL` | `doubao-seedream-5-0-pro-260628` |
 | `SEEDREAM_OUTPUT_DIR` | 当前用户的 `Pictures/Seedream` |
 | `SEEDREAM_TIMEOUT_SECONDS` | 300秒 |
-| `SEEDANCE_MODEL` | `doubao-seedance-2-5-260628` |
+| `SEEDANCE_MODEL` | `doubao-seedance-2-0-fast-260128` |
 | `SEEDANCE_TIMEOUT_SECONDS` | 单次 HTTP 请求60秒，可设置1–300秒 |
 | `MEDIAKIT_BASE_URL` | `https://mediakit.cn-beijing.volces.com` |
 | `MEDIAKIT_TIMEOUT_SECONDS` | 单次 HTTP 请求120秒，可设置1–300秒 |

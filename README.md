@@ -22,10 +22,10 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 
 | 插件 | 包内基础版本 | 功能 | 安装说明 |
 | --- | --- | --- | --- |
-| `volcengine-plugins` | 0.7.0 | Seedream 图片、Seedance 视频、v5.0 歌曲/BGM、MediaKit 超分与去字幕；34 个 MCP 工具 | [生成服务配置](plugins/volcengine-plugins/README.md) |
+| `volcengine-plugins` | 0.7.1 | Seedream 图片、默认 Seedance 2.0 Fast 视频、v5.0 歌曲/BGM、MediaKit 超分与去字幕；34 个 MCP 工具 | [生成服务配置](plugins/volcengine-plugins/README.md) |
 | `tencent-cos-upload` | 0.2.0 | COS 上传、下载及经确认的单对象删除或重命名 | [COS 配置](plugins/tencent-cos-upload/README.md) |
 | `qianchuan` | 1.0.0 | 自带运行代码的千川素材、报表及受控投放工具 | [千川配置](plugins/qianchuan/README.md) |
-| `video-editer`（video_editer） | 0.3.7 | 87 项无模型剪辑工具；附百应编排 skill，默认约 45 秒，具体问题/反差钩子接真实演示、重点花字与低频转场，GPU 优先单重任务队列 | [剪辑插件配置](plugins/video-editer/README.md) |
+| `video-editer`（video_editer） | 0.3.8 | 87 项无模型剪辑工具；附百应编排 skill，默认约 45 秒、2.0 Fast 钩子接真实演示、重点花字与低频转场，GPU 优先单重任务队列 | [剪辑插件配置](plugins/video-editer/README.md) |
 | `video-face-stylizer` | 0.3.0 | 独立的完整 CPU / Intel GPU 视频白模流程、Agent 设备选择、补漏与覆盖统计 | [去真人化处理配置](plugins/video-face-stylizer/README.md) |
 | `minimax-music` | 1.0.0 | 主题曲、纯音乐 BGM、歌词创作与改写、参考翻唱；11 项工具、动画配乐技能和 Music 3 自部署连接 | [音乐插件配置](plugins/minimax-music/README.md) |
 | `feishu-bot` | 1.0.0 | 独立飞书机器人、电子表格、多维表格及账号分表；默认只读，环境变量和启动参数控制修改能力 | [飞书插件配置](plugins/feishu-bot/README.md) |
@@ -74,6 +74,7 @@ python -m pip install ./plugins/tencent-cos-upload
 凭据通过环境变量配置，Windows 桌面客户端可使用各插件支持的用户环境变量读取功能：
 
 - Seedream / Seedance：`ARK_API_KEY`。
+- 新视频默认 Seedance 2.0 Fast：`doubao-seedance-2-0-fast-260128`，原生最高 720p。旧环境若设置过 `SEEDANCE_MODEL`，迁移时同步改为该 ID；请求中的显式模型优先，不自动回退 2.5。
 - MediaKit 视频增强和字幕擦除：`MEDIAKIT_API_KEY`，独立于 Ark 密钥。
 - 火山 v5.0 歌曲和纯音乐：`VOLCENGINE_ACCESS_KEY_ID`、`VOLCENGINE_SECRET_ACCESS_KEY`，另开通 AI 音乐服务；可选 STS `VOLCENGINE_SESSION_TOKEN`。详见[音乐生成说明](plugins/volcengine-plugins/docs/music-generation.md)。
 - 腾讯云 COS：`TENCENT_COS_SECRET_ID`、`TENCENT_COS_SECRET_KEY`、`TENCENT_COS_BUCKET`、`TENCENT_COS_REGION`；临时凭据还需 `TENCENT_COS_TOKEN`。

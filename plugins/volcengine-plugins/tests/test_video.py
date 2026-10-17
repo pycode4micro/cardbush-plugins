@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from volcengine_plugins.client import SeedreamError
 from volcengine_plugins.video_client import MAX_BODY_BYTES, SeedanceClient, normalize_media, prepare_video, video_preview
-from volcengine_plugins.video_models import DEFAULT_VIDEO_MODEL, PROFILES, VideoLocalOptions, VideoRequest
+from volcengine_plugins.video_models import PROFILES, VideoLocalOptions, VideoRequest
 
 
 def text(s="生成视频，使用音频1的音色。"):
@@ -58,12 +58,27 @@ def test_duration_boundaries(model):
 def test_unknown_and_endpoint_profile():
     with pytest.raises(ValueError):
         prep("")
-    assert prep("2.5-pro")[0]["model"] == DEFAULT_VIDEO_MODEL
+    assert prep("2.5-pro")[0]["model"] == "doubao-seedance-2-5-260628"
     with pytest.raises(ValueError, match="requires local.capability_profile"):
         prep("ep-actual-id")
     assert prep("ep-actual-id", local=VideoLocalOptions(capability_profile="2.0-mini"))[0]["model"] == "ep-actual-id"
     with pytest.raises(ValueError, match="conflicts"):
         prep("2.0-fast", local=VideoLocalOptions(capability_profile="2.0"))
+
+
+def test_default_hook_keeps_references_audio_and_fast_constraints():
+    refs = [text(), media("image", "reference_image"), media("video"), media("audio")]
+    request = VideoRequest(content=refs, duration=4, resolution="720p", ratio="9:16", generate_audio=True)
+    body, _, mapping = prepare_video(request, VideoLocalOptions())
+    assert body["model"] == "doubao-seedance-2-0-fast-260128"
+    assert body["content"] == refs
+    assert body["generate_audio"] is True
+    assert [item["label"] for item in mapping] == ["图片1", "视频1", "音频1"]
+    for invalid in [{"resolution": "1080p"}, {"duration": 16},
+                    {"omni_reference_task_type": "reference"}, {"output_format": "mp4"}]:
+        with pytest.raises(ValueError):
+            prepare_video(VideoRequest.model_validate({**request.model_dump(exclude_none=True), **invalid}),
+                          VideoLocalOptions())
 
 
 @pytest.mark.parametrize("model", ["2.0", "2.0-fast", "2.0-mini"])
@@ -235,7 +250,7 @@ def test_http_native_create_get_no_rewrite_or_retry():
         assert req.headers["authorization"] == "Bearer fake-test-key"
         if req.method == "POST":
             body = json.loads(req.content)
-            assert body["model"] == DEFAULT_VIDEO_MODEL
+            assert body["model"] == "doubao-seedance-2-0-fast-260128"
             assert body["content"] == [text()]
             assert body["generate_audio"] is False
             assert "ratio" not in body

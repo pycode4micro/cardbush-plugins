@@ -83,13 +83,19 @@ conversational lines; heightened emotion should not become robotic syllables or
 shouting. State desired pitch/energy in generation, not through accidental audio
 resampling. Review turn-taking and the speaker distinction, not just transcript text.
 
+For product demonstration hooks, identify a specific viewer concern, visible
+difference or detail worth revealing, and record the exact source interval that
+answers it. The first body demonstration should start that payoff. Generic
+praise such as “这质感非常好” alone is no longer a default opening in this
+workflow; stronger delivery does not supply a missing reason to keep watching.
 For an emphatic single-presenter hook, omit the offscreen voice and extra reply.
-Separate literal spoken copy from performance directions: naturally lengthen
-one stressed syllable (for example the opening of “非常好”), then land the final
-word cleanly. Keep the actual video at 1.0x; do not stretch existing lip-synced
+Separate literal spoken copy from performance directions. Optional emphasis
+lands on the meaningful action or difference; natural syllable lengthening is
+not required. Keep the actual video at 1.0x; do not stretch existing lip-synced
 speech independently. Attach supporting evidence to sales, repeat-purchase or
-customer-experience claims; sample copy is not proof. Use a visible product
-evaluation instead when the needed business data or experience is unavailable.
+customer-experience claims; sample copy is not proof. When that evidence is
+unavailable, use a specific concern or difference the real footage can answer.
+Visible structure alone does not prove comfort, durability or universal fit.
 An optional nonverbal two-note sting lands after the question or at the first
 reveal, below dialogue. It does not require a decorative visual transition.
 Map typography and SFX to the reviewed output timing and avoid duplicating an

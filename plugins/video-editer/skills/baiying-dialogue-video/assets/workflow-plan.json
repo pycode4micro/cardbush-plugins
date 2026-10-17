@@ -3,7 +3,7 @@
   "record_type": "planning_template_not_api_request",
   "defaults_profile": {
     "id": "dialogue-commerce-2026-10-17",
-    "revision": "emphatic-hook-options",
+    "revision": "specific-hook-and-source-payoff",
     "scope": "live_commerce_product_demonstration_edits",
     "apply_when_user_has_no_new_override": true,
     "explicit_user_request_overrides_defaults": true,
@@ -65,11 +65,20 @@
     "hook_structure": "offscreen_question_presenter_reply_source_demonstration",
     "hook_options_reference": "../references/hook-options.md",
     "hook_angle": null,
-    "hook_angle_options": ["texture_quality", "delivery_acceptance", "head_turning", "repeat_purchase", "customer_recommendation", "asked_about_outfit", "winter_style_reversal"],
+    "hook_angle_options": ["wearing_concern", "detail_curiosity", "texture_quality", "delivery_acceptance", "head_turning", "repeat_purchase", "customer_recommendation", "asked_about_outfit", "winter_style_reversal"],
     "hook_selection_reason": null,
+    "hook_attention_reason": null,
+    "hook_payoff": {
+      "source_ref": null,
+      "source_start": null,
+      "source_end": null,
+      "visible_demonstration": null,
+      "body_entry_plan": null
+    },
     "hook_estimated_seconds": 3,
     "hook_retained_seconds_range": [2, 4],
-    "hook_copy_policy": "short_selected_mode_copy_then_show_evidence",
+    "hook_copy_policy": "specific_concern_or_difference_then_immediate_source_payoff",
+    "generic_quality_praise_as_standalone_hook": false,
     "hook_delivery": "energetic_natural_mode_specific_delivery",
     "hook_emphasis_policy": {
       "optional": true,
@@ -196,6 +205,7 @@
     "review_evidence": [],
     "editorial_review": {
       "hook_copy_and_retained_duration": "not_checked",
+      "hook_attention_reason_and_first_source_payoff": "not_checked",
       "hook_claim_evidence_and_scope": "not_checked",
       "hook_emphasis_naturalness_and_sfx_landing": "not_checked",
       "real_selling_point_coverage": "not_checked",

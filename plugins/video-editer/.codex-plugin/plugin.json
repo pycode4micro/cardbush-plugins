@@ -1,6 +1,6 @@
 {
   "name": "video-editer",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "Model-free, deterministic video timeline and rendering tools for agents.",
   "author": {
     "name": "Local developer"

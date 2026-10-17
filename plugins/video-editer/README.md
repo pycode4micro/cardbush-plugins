@@ -4,6 +4,17 @@ A standalone, model-free MCP plugin with its own Python/FFmpeg execution core
 and bundled graphics, for Codex and other MCP-compatible agents. The caller
 decides what to edit; the plugin exposes deterministic atomic execution tools.
 
+## 0.3.7: specific hooks with a source payoff
+
+Commerce hooks now start from a concrete wearing concern, visible difference
+or detail worth revealing, with a recorded source interval that answers it.
+The first body demonstration begins that payoff. The user's Autumn review
+rejected generic texture praise as an opening, so “这质感非常好” alone is no
+longer a default hook. Word emphasis remains optional performance guidance.
+Both bundled skills and the planning template use this rule; the execution
+tools, 2–4 second hook target, original speed and resource defaults are unchanged.
+This is a planning revision, not a newly generated or approved video.
+
 ## 0.3.6: selectable emphatic openings
 
 Alongside the default short dialogue, the bundled skills now offer a single

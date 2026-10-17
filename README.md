@@ -25,7 +25,7 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 | `volcengine-plugins` | 0.7.0 | Seedream 图片、Seedance 视频、v5.0 歌曲/BGM、MediaKit 超分与去字幕；34 个 MCP 工具 | [生成服务配置](plugins/volcengine-plugins/README.md) |
 | `tencent-cos-upload` | 0.2.0 | COS 上传、下载及经确认的单对象删除或重命名 | [COS 配置](plugins/tencent-cos-upload/README.md) |
 | `qianchuan` | 1.0.0 | 自带运行代码的千川素材、报表及受控投放工具 | [千川配置](plugins/qianchuan/README.md) |
-| `video-editer`（video_editer） | 0.3.6 | 87 项无模型剪辑工具；附百应编排 skill，默认约 45 秒，对话/强调口播钩子、真实细节、重点花字与低频转场，GPU 优先单重任务队列 | [剪辑插件配置](plugins/video-editer/README.md) |
+| `video-editer`（video_editer） | 0.3.7 | 87 项无模型剪辑工具；附百应编排 skill，默认约 45 秒，具体问题/反差钩子接真实演示、重点花字与低频转场，GPU 优先单重任务队列 | [剪辑插件配置](plugins/video-editer/README.md) |
 | `video-face-stylizer` | 0.3.0 | 独立的完整 CPU / Intel GPU 视频白模流程、Agent 设备选择、补漏与覆盖统计 | [去真人化处理配置](plugins/video-face-stylizer/README.md) |
 | `minimax-music` | 1.0.0 | 主题曲、纯音乐 BGM、歌词创作与改写、参考翻唱；11 项工具、动画配乐技能和 Music 3 自部署连接 | [音乐插件配置](plugins/minimax-music/README.md) |
 | `feishu-bot` | 1.0.0 | 独立飞书机器人、电子表格、多维表格及账号分表；默认只读，环境变量和启动参数控制修改能力 | [飞书插件配置](plugins/feishu-bot/README.md) |

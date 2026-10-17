@@ -1,5 +1,19 @@
 # Validation
 
+## 0.3.7 specific hooks and source payoff — 2026-10-17
+
+Both bundled skills and the synchronized local orchestration copy pass
+`skill-creator/scripts/quick_validate.py` with Python UTF-8 mode. All nine
+orchestration files match locally; 18 relative links within that skill resolve.
+The planning JSON parses, package versions agree, and paid generation remains
+disabled in the template. `git diff --check` reports no whitespace errors.
+
+This revision records the user's rejection of the Autumn texture-praise hook
+and adds a concrete attention reason plus a source-payoff record. It changes
+instructions, the plan and release metadata only. No execution code changed,
+no engine suite was rerun, and no replacement video was generated or reviewed.
+Schema and link checks do not establish the creative quality of a new hook.
+
 ## 0.3.6 emphatic hook options — 2026-10-17
 
 Both bundled skills and the local orchestration copy pass the skill validator.

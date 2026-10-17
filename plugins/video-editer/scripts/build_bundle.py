@@ -20,6 +20,14 @@ def main():
         'skills/video-editer/long-media.md',
         'skills/video-editer/audio-and-delivery.md', 'VALIDATION.md',
         'skills/video-editer/resources.md', 'skills/video-editer/generated-hooks.md',
+        'skills/baiying-dialogue-video/SKILL.md',
+        'skills/baiying-dialogue-video/agents/openai.yaml',
+        'skills/baiying-dialogue-video/assets/workflow-plan.json',
+        'skills/baiying-dialogue-video/references/components.md',
+        'skills/baiying-dialogue-video/references/demonstration-editing.md',
+        'skills/baiying-dialogue-video/references/editorial.md',
+        'skills/baiying-dialogue-video/references/tested-case.md',
+        'skills/baiying-dialogue-video/references/workflow.md',
     )]
     for folder, pattern in [('video_editer', '*.py'), ('video_editer/assets', '*.png'),
                             ('tests', 'test_*.py'), ('scripts', '*.py')]:

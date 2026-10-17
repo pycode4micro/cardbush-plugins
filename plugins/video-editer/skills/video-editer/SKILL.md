@@ -10,6 +10,19 @@ It is standalone: do not start an editing platform or load another project's
 environment. Tool outputs refer to its own data directory. No model is called
 inside the plugin; the caller supplies clip boundaries, text and effects.
 
+For live-commerce product cuts, use the bundled
+[editorial defaults](../baiying-dialogue-video/references/editorial.md) unless the
+user gives a newer direction: about 45 seconds (over 30, under 60), original
+speed, a 2–4 second offscreen question/presenter reply when a hook is needed,
+real feature/detail cuts and role-based typography. Decorative transitions
+default to one, at most two, only at major topic boundaries; none is fine when
+there is no useful boundary. The reference and
+[planning template](../baiying-dialogue-video/assets/workflow-plan.json) define
+spacing, duration, placement and review. These are caller planning defaults,
+not runtime limits or rules for unrelated video genres. Read the
+[Baiying workflow](../baiying-dialogue-video/SKILL.md) only when collecting or
+orchestrating that source; existing local footage does not require collection.
+
 When adding or generating an opening hook, read [Generated hooks](generated-hooks.md).
 Use the selected account's actual footage AND identity assets, preserve the
 accepted body edit, and attach only a reviewed output. External generation is
@@ -18,8 +31,9 @@ records it but never makes hidden paid calls.
 Plan and verify sound and whole-video duration separately from the hook;
 silent reference preparation must not silently mute requested generated speech.
 For dialogue hooks, separate offscreen and presenter voices and speaking turns.
-Requested 1.25x hooks must retime video and explicit audio together while preserving
-pitch; keep original-body speed and shift its events by the accelerated hook length.
+Keep hook and body at 1.0x by default. Only retime when explicitly requested;
+retime video and explicit audio together, preserve pitch, and shift body events
+by the actual hook length. Do not add an unsolicited decorative AI-opening label.
 
 1. For a new edit or authorized handoff test, call `project_create` and import
    authorized local videos with background `media_register`, including short

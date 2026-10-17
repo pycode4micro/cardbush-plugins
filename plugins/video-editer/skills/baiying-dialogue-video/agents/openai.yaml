@@ -1,0 +1,4 @@
+interface:
+  display_name: "百应切片与对话钩子成片"
+  short_description: "编排账号选品、素材验证、对话钩子、花字与 GPU 优先队列剪辑"
+  default_prompt: "用 $baiying-dialogue-video 按当前账号和商品要求规划流程，并执行到我指定的备料、交接或成片阶段。"

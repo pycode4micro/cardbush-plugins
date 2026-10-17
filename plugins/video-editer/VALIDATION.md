@@ -1,5 +1,32 @@
 # Validation
 
+## 0.3.5 editorial defaults and audio clock — 2026-10-17
+
+The execution and Baiying orchestration skills were validated with
+`skill-creator/scripts/quick_validate.py`, including the synchronized local
+orchestration copy. The shared rules and planning JSON cover the retained
+2–4 second dialogue hook, original speed, roughly 45-second source-based body,
+feature/detail coverage, typography roles and sparse decorative transitions.
+These are scoped caller defaults and do not add automatic editing or tool APIs.
+
+All eight orchestration files match the local copy byte for byte; 20 relative
+skill links resolve. Version and planning invariants pass. The allowlisted
+standalone ZIP includes both skills and all their references; its CRC and
+71 content checksums pass. This is a packaging check, not a repeated clean-room
+installation or full offline renderer test.
+
+Two targeted real-audio regressions passed on Windows/Python 3.12:
+
+- `test_audio_track_clock.AudioTrackClockTests.test_mixed_rates_keep_speech_windows_and_tail`:
+  32/44.1 kHz sources retain 0.5/1.8 second placement on the 48 kHz mix clock;
+  tone starts and ends are within 2 ms, and no unwanted late tail remains.
+- `test_delivery_audio.DeliveryAudioTests.test_explicit_sped_up_audio_keeps_tail_pitch_and_master_settings`:
+  explicit 1.25x sound retains the late tone, 431 Hz pitch and master gain.
+
+This release does not rerun the entire 0.3.4 suite or repeat paid generation.
+The prior real commerce delivery, its frame/audio checks and review limitations
+are recorded in the [tested case](skills/baiying-dialogue-video/references/tested-case.md).
+
 ## 0.3.4 integration — 2026-10-17
 
 The merged release was checked on Windows with Python 3.12 and FFmpeg 7.1.

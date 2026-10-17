@@ -52,6 +52,11 @@ is output time and `source_start` is source time. For a sped-up hook, supply the
 same speed for picture and separate sound. Audio tempo changes preserve pitch.
 Do not accelerate the accepted body edit unless requested.
 
+Separate tracks are normalized to 48 kHz before sample-based delay. Keep
+`start` and `source_start` in seconds; do not compensate manually for a 32/44.1
+kHz source by shifting the event. Recheck the actual mixed voice onset and tail
+after adding a generated hook, even when the source transcript is complete.
+
 The time map uses integer 25 fps frame indices. `end_frame_exclusive` and
 `end_timecode` exclude the next frame. Use its actual output times for music
 sync, including transition overlap, `tail_padding` and `trimmed_tail_seconds`.

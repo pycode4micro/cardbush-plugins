@@ -6,6 +6,12 @@ connected video provider. It does not infer a good hook, recognize people, or
 silently make paid API calls. Use existing user authorization for the requested
 generation, upload and edit; do not ask again merely because a new step starts.
 
+For this live-commerce style, inherit the
+[shared editorial defaults](../baiying-dialogue-video/references/editorial.md).
+Use a suitable existing opening when available. Generation fills a missing hook;
+real source footage demonstrates the product claims. Preserve the accepted body
+when the request only changes the hook, typography or decorative transitions.
+
 ## Account and material selection
 
 1. Resolve the requested presenter/account and product. Reuse a confirmed local
@@ -41,16 +47,21 @@ duration. Plan fields: `product_key`, `product_description`, `opening_idea`,
 `seam_description`, `prompt`, `keep_seconds`,
 `source_references=[{asset_id,start,end,purpose}]`.
 
-Typically keep 2–3 seconds; request a provider-supported length with trim room.
-Honor user choices and current capabilities rather than hardcoding durations.
+For the dialogue-commerce profile, retain 2–4 seconds: one short question and
+one direct reply, then immediately show the real demonstration. Request a
+provider-supported duration with trim room; generated duration and retained
+duration are separate. Shorten the copy before generation rather than speeding
+up delivery or truncating a final syllable to fit. Honor explicit user choices.
 Plan the whole delivered runtime separately from the hook. A short hook does
 not justify cutting an accepted body down to a technical demo. Preserve the
 complete explanation and action payoff; if the user asks for a longer cut,
 add useful source content instead of padding, freezes or repeated footage.
 Plan a compatible final pose, crop, camera direction and light for the seam.
 Put sales text in editable overlays after generation; don't depend on generated
-Chinese typography. Use original speech where possible; generating new speech
-requires its explicit script and the selected presenter's voice reference.
+Chinese typography. Do not add an unsolicited decorative "AI-generated opening"
+title; preserve existing or platform-required marks. Use original speech where
+possible; generating new speech requires its explicit script and the selected
+presenter's voice reference.
 
 Record an explicit audio plan: original voiceover, generated speech, or deliberate
 silence. For requested spoken generation, set `generate_audio=true`, bind this
@@ -70,7 +81,8 @@ conversational lines; heightened emotion should not become robotic syllables or
 shouting. State desired pitch/energy in generation, not through accidental audio
 resampling. Review turn-taking and the speaker distinction, not just transcript text.
 
-When the user requests 1.25x, generate at natural speed and perform exactly one
+Keep both the hook and body at original speed (1.0x) by default. When the user
+requests 1.25x, generate at natural speed and perform exactly one
 local synchronized retime. `keep_seconds` and the output review use ORIGINAL
 source seconds. Pass `playback_speed=1.25` to `hook_attach`; its ripple then uses
 the actual accelerated 25fps duration (7 source seconds become 5.6 output seconds).

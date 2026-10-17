@@ -4,6 +4,35 @@ A standalone, model-free MCP plugin with its own Python/FFmpeg execution core
 and bundled graphics, for Codex and other MCP-compatible agents. The caller
 decides what to edit; the plugin exposes deterministic atomic execution tools.
 
+## 0.3.5: reusable commerce editing defaults
+
+The plugin now bundles both the `video-editer` execution skill and the
+[`baiying-dialogue-video` orchestration skill](skills/baiying-dialogue-video/SKILL.md).
+For product demonstration cuts, the caller applies the
+[shared editorial rules](skills/baiying-dialogue-video/references/editorial.md)
+unless the user specifies a different direction:
+
+- About 45 seconds, over 30 and under 60; hook and body stay at original speed.
+- Retain a 2–4 second offscreen question and presenter reply, then show the real
+  evidence. Generate only a needed, authorized hook using matching references.
+- Cut to actual selling-point demonstrations and detail shots; typography
+  emphasizes one current point with consistent fonts and colours.
+- Use one decorative transition by default, at most two, at major topic changes.
+  If two are used, their centres are at least 15 seconds apart. Default length
+  is 0.32 seconds (0.24–0.48 allowed). Zero is valid; never fill an effect quota.
+- GPU-first execution, one shared heavy task and queued retries remain in place.
+
+These are scoped skill defaults, not automatic timeline operations or runtime
+caps. Copy the [planning template](skills/baiying-dialogue-video/assets/workflow-plan.json)
+and map it to current tool schemas. Existing local footage needs no Baiying
+collection; generated hooks require the available external provider and account
+assets. Page-turn artwork in the tested case was a custom overlay, not a new
+native transition. No new tool or built-in flower-text template API is claimed.
+
+Explicit audio tracks now normalize to the mixer's 48 kHz clock before
+sample-based delay, preserving timeline placement for 32/44.1 kHz source voices.
+See [validation](VALIDATION.md) for the checked release scope.
+
 ## 0.3.4: shared task queue, resource controls and generated hooks
 
 - Media preparation and rendering share a durable FIFO. Failed renders retry

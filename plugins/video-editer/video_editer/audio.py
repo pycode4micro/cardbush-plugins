@@ -148,7 +148,11 @@ def render(project, timeline, output):
             duration = min(float(entry.get('duration') or available), available, total-entry['start'])
             if duration <= 0:
                 raise ValueError('Audio entry does not intersect available source/output duration')
-            chain = [f"[{i}:a]atrim=start={source_start}:duration={duration*speed}", 'asetpts=PTS-STARTPTS']
+            # adelay's S suffix counts samples in this input stream's rate.
+            # Normalize before delaying so 32/44.1 kHz sources use our 48 kHz clock.
+            chain = [f"[{i}:a]atrim=start={source_start}:duration={duration*speed}",
+                     'asetpts=PTS-STARTPTS', f'aresample={RATE}',
+                     'aformat=sample_fmts=fltp:channel_layouts=stereo']
             if speed != 1.0:
                 chain.append(f'atempo={speed}')
             chain.append(f"volume={entry.get('volume', 1)}")

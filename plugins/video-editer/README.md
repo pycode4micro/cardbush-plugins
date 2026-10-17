@@ -4,6 +4,17 @@ A standalone, model-free MCP plugin with its own Python/FFmpeg execution core
 and bundled graphics, for Codex and other MCP-compatible agents. The caller
 decides what to edit; the plugin exposes deterministic atomic execution tools.
 
+## 0.3.6: selectable emphatic openings
+
+Alongside the default short dialogue, the bundled skills now offer a single
+presenter statement or rhetorical question with natural word emphasis and an
+optional two-note sting. The [hook options](skills/baiying-dialogue-video/references/hook-options.md)
+cover texture, customer response and outfit-reveal angles, their evidence needs,
+vocal delivery, typography timing and sound placement. Retained hooks still
+target 2–4 seconds at original speed. These are editable planning options;
+no prosody API or automatic paid generation was added. The new delivery style
+has not yet been validated through a generated audiovisual example.
+
 ## 0.3.5: reusable commerce editing defaults
 
 The plugin now bundles both the `video-editer` execution skill and the

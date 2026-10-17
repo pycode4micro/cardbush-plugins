@@ -3,6 +3,7 @@
   "record_type": "planning_template_not_api_request",
   "defaults_profile": {
     "id": "dialogue-commerce-2026-10-17",
+    "revision": "emphatic-hook-options",
     "scope": "live_commerce_product_demonstration_edits",
     "apply_when_user_has_no_new_override": true,
     "explicit_user_request_overrides_defaults": true,
@@ -48,11 +49,46 @@
     "min_total_seconds_exclusive": 30,
     "max_total_seconds_exclusive": 60,
     "reference_style": "real_demonstration_with_frequent_feature_closeups",
+    "hook_mode": "offscreen_dialogue",
+    "hook_mode_options": {
+      "offscreen_dialogue": {
+        "structure": "offscreen_question_presenter_reply_source_demonstration",
+        "copy_fields": ["question", "reply"],
+        "speaker_policy": "distinct_offscreen_and_presenter_voices"
+      },
+      "emphatic_statement": {
+        "structure": "presenter_emphasized_line_source_demonstration",
+        "copy_fields": ["statement"],
+        "speaker_policy": "presenter_only"
+      }
+    },
     "hook_structure": "offscreen_question_presenter_reply_source_demonstration",
+    "hook_options_reference": "../references/hook-options.md",
+    "hook_angle": null,
+    "hook_angle_options": ["texture_quality", "delivery_acceptance", "head_turning", "repeat_purchase", "customer_recommendation", "asked_about_outfit", "winter_style_reversal"],
+    "hook_selection_reason": null,
     "hook_estimated_seconds": 3,
     "hook_retained_seconds_range": [2, 4],
-    "hook_copy_policy": "one_short_question_one_direct_reply_then_show_evidence",
-    "hook_delivery": "energetic_natural_dialogue_with_distinct_speakers",
+    "hook_copy_policy": "short_selected_mode_copy_then_show_evidence",
+    "hook_delivery": "energetic_natural_mode_specific_delivery",
+    "hook_emphasis_policy": {
+      "optional": true,
+      "focus_points_guidance": 1,
+      "emphasized_syllable_seconds_guidance": [0.35, 0.7],
+      "timing_is_total_syllable_duration_not_extra_delay": true,
+      "implementation": "natural_source_or_generated_performance_at_original_speed",
+      "typography": "appear_on_emphasis_then_hold_one_accent_at_landing"
+    },
+    "hook_sfx_policy": {
+      "optional": true,
+      "suggested_cue": "two_note_sting",
+      "count_when_selected": 1,
+      "duration_seconds_guidance": [0.25, 0.5],
+      "landing": "question_end_or_first_reveal_cut",
+      "level_policy": "below_voice_without_masking_tail_words",
+      "do_not_duplicate_existing_generated_sfx": true,
+      "requires_visual_transition": false
+    },
     "hook_generation_policy": "only_when_needed_and_authorized",
     "hook_label_policy": "no_extra_ai_opening_title_preserve_required_or_existing_marks",
     "speech_tail_policy": "preserve_complete_words_shorten_copy_before_retiming",
@@ -67,6 +103,10 @@
     },
     "question": null,
     "reply": null,
+    "statement": null,
+    "hook_claims": [],
+    "hook_emphasis_events": [],
+    "hook_sfx_events": [],
     "offscreen_voice_description": null,
     "presenter_voice_profile_ref": null,
     "selling_point_evidence": [],
@@ -156,6 +196,8 @@
     "review_evidence": [],
     "editorial_review": {
       "hook_copy_and_retained_duration": "not_checked",
+      "hook_claim_evidence_and_scope": "not_checked",
+      "hook_emphasis_naturalness_and_sfx_landing": "not_checked",
       "real_selling_point_coverage": "not_checked",
       "typography_readability_and_occlusion": "not_checked",
       "decorative_transition_count_spacing_and_placement": "not_checked",

@@ -1,6 +1,6 @@
 {
   "name": "video-editer",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Model-free, deterministic video timeline and rendering tools for agents.",
   "author": {
     "name": "Local developer"
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "video_editer",
     "shortDescription": "GPU 优先、单重任务队列剪辑，支持生成钩子编排、字幕、花字和音频验收。",
-    "longDescription": "为 Agent 提供独立素材检查、异步导入和渲染、统一重任务队列、资源控制、时间线、花字字幕、音频混合与交付验收。附带百应编排 skill 和约 45 秒商品讲解默认标准：短问短答、真实细节切镜、重点花字及低频转场。可记录账号参考资产、生成钩子计划及异步状态，审阅后接回原片；实际生成由外部插件执行，剪辑决策由 Agent 作出。",
+    "longDescription": "为 Agent 提供独立素材检查、异步导入和渲染、统一重任务队列、资源控制、时间线、花字字幕、音频混合与交付验收。附带百应编排 skill 和约 45 秒商品讲解默认标准：对话或强调口播钩子、真实细节、重点花字及低频转场，支持拖字重音和提示音规划。可记录账号参考资产、生成钩子计划及异步状态，审阅后接回原片；实际生成由外部插件执行，剪辑决策由 Agent 作出。",
     "developerName": "Local developer",
     "category": "Productivity",
     "capabilities": [

@@ -26,6 +26,7 @@ def main():
         'skills/baiying-dialogue-video/references/components.md',
         'skills/baiying-dialogue-video/references/demonstration-editing.md',
         'skills/baiying-dialogue-video/references/editorial.md',
+        'skills/baiying-dialogue-video/references/hook-options.md',
         'skills/baiying-dialogue-video/references/tested-case.md',
         'skills/baiying-dialogue-video/references/workflow.md',
     )]

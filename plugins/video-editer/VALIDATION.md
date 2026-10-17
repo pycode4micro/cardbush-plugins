@@ -1,5 +1,22 @@
 # Validation
 
+## 0.3.6 emphatic hook options — 2026-10-17
+
+Both bundled skills and the local orchestration copy pass the skill validator.
+All nine orchestration files match locally; 28 relative skill links resolve.
+The plan parses with two hook modes and seven optional angles, mode-specific
+copy/speaker fields, separate emphasis and SFX records, and no paid task enabled.
+Version/UI metadata and the existing speed/resource/transition defaults check
+consistently. The standalone ZIP passes CRC and 72 content checksum checks and
+includes the new hook-options reference.
+
+This release changes skills, the planning template and package metadata only;
+the execution engine is unchanged. No video was generated or rendered, no new
+voice/SFX performance was auditioned, and the engine suite was not rerun.
+The naturalness of stretched emphasis and the proposed two-note cue must still
+be reviewed on actual output; the examples are planning guidance, not a passed
+audiovisual production test or substantiation of customer/commerce claims.
+
 ## 0.3.5 editorial defaults and audio clock — 2026-10-17
 
 The execution and Baiying orchestration skills were validated with

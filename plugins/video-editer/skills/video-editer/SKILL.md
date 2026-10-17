@@ -13,8 +13,11 @@ inside the plugin; the caller supplies clip boundaries, text and effects.
 For live-commerce product cuts, use the bundled
 [editorial defaults](../baiying-dialogue-video/references/editorial.md) unless the
 user gives a newer direction: about 45 seconds (over 30, under 60), original
-speed, a 2–4 second offscreen question/presenter reply when a hook is needed,
-real feature/detail cuts and role-based typography. Decorative transitions
+speed, a 2–4 second hook when needed, real feature/detail cuts and role-based
+typography. The default offscreen question/presenter reply also has an optional
+[emphatic presenter opening](../baiying-dialogue-video/references/hook-options.md)
+with one naturally lengthened emphasis and optional two-note sound cue.
+Decorative transitions
 default to one, at most two, only at major topic boundaries; none is fine when
 there is no useful boundary. The reference and
 [planning template](../baiying-dialogue-video/assets/workflow-plan.json) define

@@ -12,7 +12,7 @@ flowchart TD
     D -- 是 --> F[异步导入与内容审阅]
     F --> G{同主播同商品且讲解可用?}
     G -- 否 --> E
-    G -- 是 --> H[正文剪辑与问答钩子计划]
+    G -- 是 --> H[正文剪辑与所选钩子计划]
     H --> O{需要且已授权生成钩子?}
     O -- 是 --> I[参考预处理、上传与生成]
     O -- 否，采用已有开场 --> K[开场衔接、花字和音轨]
@@ -35,7 +35,7 @@ flowchart TD
 | import | `media_register` → `media_job_status`，短视频也排队 | `asset_key + sha256 → project/job/asset`，仅取 succeeded 且哈希相符的结果 |
 | semantic_review | 实际抽帧、听取/ASR，标记换人换衣、重复、动作与有效句 | 每个可用源区间、人物服装观察、台词证据；技术足量与语义可用分开记录 |
 | body | 先建立能兑现主要卖点的正文；已有认可正文保存快照后复用 | 源入出点、声音策略、时间线版本和正文时长；一句话与动作完整 |
-| hook_plan | 问答、角色、参考范围、衣服锁定、声音、末姿态与整片时长 | `hook_plan_create`、账号版本、源哈希、完整 prompt；请求与媒体索引可追溯 |
+| hook_plan | 对话/强调口播模式、台词及依据、拖字重音、可选音效落点、角色、参考、衣服与整片时长 | `hook_plan_create`、账号版本、源哈希、完整 prompt；计划字段按真实 schema 映射，不新增虚构参数 |
 | reference | 排队导出参考；按当前支持路线处理并审阅；只上传选中片段 | 原片范围→导出→预处理→上传哈希一致，尺寸/帧率/时长满足当前能力 |
 | generate | 免费预览→`hook_request_prepare`→`hook_generation_begin`→授权的一次 create | `may_submit=true` 才创建；保存 task ID、请求指纹、结果哈希，轮询原任务 |
 | hook_review | 人物、服装、动作、接缝、事实、音频实物审阅 | `hook_output_review` 逐项证据；失败不能 attach，不以 provider succeeded 替代审阅 |

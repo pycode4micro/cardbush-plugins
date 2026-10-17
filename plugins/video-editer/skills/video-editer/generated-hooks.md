@@ -47,8 +47,10 @@ duration. Plan fields: `product_key`, `product_description`, `opening_idea`,
 `seam_description`, `prompt`, `keep_seconds`,
 `source_references=[{asset_id,start,end,purpose}]`.
 
-For the dialogue-commerce profile, retain 2–4 seconds: one short question and
-one direct reply, then immediately show the real demonstration. Request a
+For the commerce profile, retain 2–4 seconds: by default one short question and
+one direct reply, or one emphatic presenter statement/rhetorical question, then
+immediately show the real demonstration. Select a mode using the
+[hook options](../baiying-dialogue-video/references/hook-options.md). Request a
 provider-supported duration with trim room; generated duration and retained
 duration are separate. Shorten the copy before generation rather than speeding
 up delivery or truncating a final syllable to fit. Honor explicit user choices.
@@ -80,6 +82,19 @@ distinct synthetic voice for an unspecified offscreen colleague. Prefer short,
 conversational lines; heightened emotion should not become robotic syllables or
 shouting. State desired pitch/energy in generation, not through accidental audio
 resampling. Review turn-taking and the speaker distinction, not just transcript text.
+
+For an emphatic single-presenter hook, omit the offscreen voice and extra reply.
+Separate literal spoken copy from performance directions: naturally lengthen
+one stressed syllable (for example the opening of “非常好”), then land the final
+word cleanly. Keep the actual video at 1.0x; do not stretch existing lip-synced
+speech independently. Attach supporting evidence to sales, repeat-purchase or
+customer-experience claims; sample copy is not proof. Use a visible product
+evaluation instead when the needed business data or experience is unavailable.
+An optional nonverbal two-note sting lands after the question or at the first
+reveal, below dialogue. It does not require a decorative visual transition.
+Map typography and SFX to the reviewed output timing and avoid duplicating an
+already generated sound cue. These are caller/provider directions, not new
+editor prosody parameters. Inspect the actual vocal performance and final mix.
 
 Keep both the hook and body at original speed (1.0x) by default. When the user
 requests 1.25x, generate at natural speed and perform exactly one

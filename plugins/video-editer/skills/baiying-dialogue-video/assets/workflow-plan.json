@@ -3,7 +3,7 @@
   "record_type": "planning_template_not_api_request",
   "defaults_profile": {
     "id": "dialogue-commerce-2026-10-17",
-    "revision": "seedance-2-0-fast-default",
+    "revision": "continuous-body-source-audio-and-transparent-safe-typography",
     "scope": "live_commerce_product_demonstration_edits",
     "apply_when_user_has_no_new_override": true,
     "explicit_user_request_overrides_defaults": true,
@@ -39,33 +39,97 @@
     "collection_job_id": null,
     "shortage": null,
     "shot_role_coverage": [],
-    "semantic_review_status": "not_started"
+    "semantic_review_status": "not_started",
+    "source_audio_policy": {
+      "reference": "../references/source-audio.md",
+      "check_before_selection": true,
+      "check_actual_source_ranges_and_used_stream": true,
+      "stream_presence_alone_is_insufficient": true,
+      "exclude_body_if": [
+        "missing_audio_stream",
+        "silent_source_range"
+      ],
+      "hold_pending_review_if": [
+        "near_silence",
+        "incomplete_audio_coverage",
+        "decode_failed",
+        "insufficient_evidence"
+      ],
+      "silent_picture_exception": {
+        "role": "hook_full_body_display",
+        "requires_verified_independent_audio": true,
+        "requires_final_expected_voice_coverage": true,
+        "body_use_allowed": false
+      },
+      "background_music_replacement_cannot_bypass_source_gate": true,
+      "natural_pauses_are_contextual_not_automatic_rejection": true,
+      "recalculate_body_coverage_after_exclusions": true,
+      "recheck_after_source_range_or_stream_change": true,
+      "enforcement": "caller_selection_gate_not_editor_runtime"
+    },
+    "source_audio_checks": []
   },
   "editorial": {
     "accepted_body_project_id": null,
     "accepted_body_snapshot_id": null,
     "preserve_accepted_body": true,
+    "latest_negative_feedback_reopens_affected_ranges": true,
     "target_total_seconds": 45,
     "min_total_seconds_exclusive": 30,
     "max_total_seconds_exclusive": 60,
-    "reference_style": "real_demonstration_with_frequent_feature_closeups",
-    "hook_mode": "offscreen_dialogue",
+    "reference_style": "coherent_real_demonstration_with_meaningful_feature_closeups",
+    "hook_mode": "source_voiceover",
     "hook_mode_options": {
       "offscreen_dialogue": {
         "structure": "offscreen_question_presenter_reply_source_demonstration",
-        "copy_fields": ["question", "reply"],
+        "copy_fields": [
+          "question",
+          "reply"
+        ],
         "speaker_policy": "distinct_offscreen_and_presenter_voices"
       },
       "emphatic_statement": {
         "structure": "presenter_emphasized_line_source_demonstration",
-        "copy_fields": ["statement"],
+        "copy_fields": [
+          "statement"
+        ],
         "speaker_policy": "presenter_only"
+      },
+      "source_voiceover": {
+        "structure": "full_body_silent_display_with_independent_emotional_source_voiceover",
+        "copy_fields": [
+          "source_transcript"
+        ],
+        "speaker_policy": "original_source_no_synthesized_voice",
+        "source_audio_range": null,
+        "visual_source_ranges": [],
+        "generated_assets_required": false,
+        "target_seconds": 3,
+        "picture_policy": "whole_body_natural_display_no_required_speaking_or_feature_closeups",
+        "visual_source_audio_muted": true,
+        "video_playback_speed": 1.0,
+        "audio_playback_speed": null,
+        "audio_speed_policy": "user_allows_pitch_preserving_audio_only_retiming_to_fit_complete_line",
+        "typography_policy": "one_subtitle_style_typography_group_with_integrated_emphasis_and_short_sfx",
+        "source_audio_scope": "authorized_materials_selected_independently_from_picture",
+        "caption_policy": "complete_source_phrase_with_integrated_emphasis_no_simultaneous_duplicate_ordinary_caption",
+        "emphasis_policy": "one_or_two_original_voice_emotional_keywords_not_required_product_feature_cards"
       }
     },
-    "hook_structure": "offscreen_question_presenter_reply_source_demonstration",
+    "hook_structure": "full_body_silent_display_with_independent_emotional_source_voiceover",
     "hook_options_reference": "../references/hook-options.md",
     "hook_angle": null,
-    "hook_angle_options": ["wearing_concern", "detail_curiosity", "texture_quality", "delivery_acceptance", "head_turning", "repeat_purchase", "customer_recommendation", "asked_about_outfit", "winter_style_reversal"],
+    "hook_angle_options": [
+      "wearing_concern",
+      "detail_curiosity",
+      "texture_quality",
+      "delivery_acceptance",
+      "head_turning",
+      "repeat_purchase",
+      "customer_recommendation",
+      "asked_about_outfit",
+      "winter_style_reversal"
+    ],
     "hook_selection_reason": null,
     "hook_attention_reason": null,
     "hook_payoff": {
@@ -76,14 +140,20 @@
       "body_entry_plan": null
     },
     "hook_estimated_seconds": 3,
-    "hook_retained_seconds_range": [2, 4],
-    "hook_copy_policy": "specific_concern_or_difference_then_immediate_source_payoff",
+    "hook_retained_seconds_range": [
+      2,
+      4
+    ],
+    "hook_copy_policy": "mode_specific_emotional_source_line_for_display_or_specific_question_for_dialogue",
     "generic_quality_praise_as_standalone_hook": false,
     "hook_delivery": "energetic_natural_mode_specific_delivery",
     "hook_emphasis_policy": {
       "optional": true,
       "focus_points_guidance": 1,
-      "emphasized_syllable_seconds_guidance": [0.35, 0.7],
+      "emphasized_syllable_seconds_guidance": [
+        0.35,
+        0.7
+      ],
       "timing_is_total_syllable_duration_not_extra_delay": true,
       "implementation": "natural_source_or_generated_performance_at_original_speed",
       "typography": "appear_on_emphasis_then_hold_one_accent_at_landing"
@@ -92,7 +162,10 @@
       "optional": true,
       "suggested_cue": "two_note_sting",
       "count_when_selected": 1,
-      "duration_seconds_guidance": [0.25, 0.5],
+      "duration_seconds_guidance": [
+        0.25,
+        0.5
+      ],
       "landing": "question_end_or_first_reveal_cut",
       "level_policy": "below_voice_without_masking_tail_words",
       "do_not_duplicate_existing_generated_sfx": true,
@@ -104,11 +177,54 @@
     "hook_playback_speed": 1.0,
     "body_playback_speed": 1.0,
     "pacing_policy": {
+      "priority": "complete_meaning_audio_and_action_before_cut_density",
       "cut_at": "new_information_sentence_meaning_and_completed_actions",
-      "remove": ["waiting", "repeated_claims", "irrelevant_chatter"],
+      "remove": [
+        "waiting",
+        "repeated_claims",
+        "irrelevant_chatter"
+      ],
       "feature_evidence": "show_real_source_detail_or_demonstration_for_each_main_claim",
       "shot_count_policy": "content_driven_no_fixed_quota",
-      "allow_duration_padding_with_repetition_or_freezes": false
+      "allow_duration_padding_with_repetition_or_freezes": false,
+      "body_entry": {
+        "single_complete_point_before_topic_change": true,
+        "first_unit_seconds_guidance": [
+          3,
+          5
+        ],
+        "main_shot_guidance": 1,
+        "supporting_detail_cuts_guidance_max": 1,
+        "extend_for_complete_sentence_or_action": true
+      },
+      "body_shot_seconds_guidance": [
+        2,
+        4
+      ],
+      "readable_detail_seconds_initial_guidance": [
+        1.5,
+        2
+      ],
+      "short_shot_review_trigger": {
+        "consecutive_count": 3,
+        "under_seconds": 1.5,
+        "action": "review_meaning_and_action_then_merge_extend_or_record_justification"
+      },
+      "guidance_is_not_timer_or_runtime_limit": true,
+      "retain_continuous_speech_across_relevant_qualified_detail_shots": true,
+      "count_internal_cuts_in_composites_and_abrupt_reframes": true,
+      "cut_frequency_is_separate_from_decorative_transition_count": true,
+      "continuity_review_window": {
+        "start_before_hook_end_seconds": 1,
+        "body_seconds_guidance": [
+          8,
+          10
+        ],
+        "continuous_viewing_required_for_experience_pass": true,
+        "technical_or_sampled_checks_do_not_pass_experience": true
+      },
+      "reference": "../references/editorial.md#钩子后的正文承接",
+      "enforcement": "caller_planning_not_editor_runtime"
     },
     "question": null,
     "reply": null,
@@ -121,21 +237,37 @@
     "selling_point_evidence": [],
     "selected_source_ranges": [],
     "body_edit_plan": [],
+    "body_entry_plan": {
+      "first_point": null,
+      "complete_spoken_unit": null,
+      "source_audio_check_refs": [],
+      "source_ranges": [],
+      "actual_output_range": null,
+      "action_completion": null,
+      "supporting_cut_reasons": []
+    },
+    "continuity_review_points": [],
     "focus_cut_plan": [],
     "decorative_transition_policy": {
       "scope": "current_user_dialogue_commerce_workflow_typical_30_to_60_seconds",
+      "min_count": 1,
       "default_count": 1,
       "max_count": 2,
-      "allow_zero": true,
+      "allow_zero": false,
       "min_center_gap_seconds": 15,
       "default_duration_seconds": 0.32,
-      "duration_seconds_range": [0.24, 0.48],
+      "duration_seconds_range": [
+        0.24,
+        0.48
+      ],
       "placement": "major_topic_boundaries_only",
       "avoid_hook": true,
       "avoid_final_seconds": 2,
       "preferred_style_count": 1,
       "count_effects_on_overlay_tracks": true,
-      "do_not_fill_quota": true,
+      "do_not_add_extra_transitions_to_reach_max": true,
+      "exclude_hard_cuts_typography_entrances_and_audio_only_cues": true,
+      "review_actual_rendered_count_before_delivery": true,
       "preserve_feature_cuts": true,
       "explicit_user_request_overrides_defaults": true,
       "enforcement": "caller_planning_not_editor_runtime"
@@ -144,7 +276,7 @@
     "garment_identity_notes": [],
     "seam_description": null,
     "typography_presets": [
-      "question_bubble",
+      "question_emphasis",
       "reply_emphasis",
       "feature_keyword",
       "demonstration_step",
@@ -153,16 +285,225 @@
     "typography_presets_are_design_guidance_not_api_templates": true,
     "typography_policy": {
       "emphasis": "one_current_point_at_a_time",
-      "keyword_chinese_characters_guidance": [2, 6],
-      "main_color_count_guidance": [2, 3],
-      "style": "consistent_fonts_and_palette_with_role_specific_layouts",
+      "keyword_chinese_characters_guidance": [
+        2,
+        6
+      ],
+      "main_color_count_guidance": [
+        2,
+        3
+      ],
+      "style": "transparent_outlined_lettering_with_role_specific_hierarchy_and_thin_underlines",
+      "layout_reference": "../references/typography-layout.md",
+      "background": "transparent",
+      "disallowed_backgrounds": [
+        "rectangle_panel",
+        "rounded_panel",
+        "banner",
+        "pill",
+        "bubble",
+        "broad_translucent_backplate"
+      ],
+      "theme_color_max_count": 3,
+      "palette_scope": "whole_video_not_per_shot",
+      "theme_selection_scope": "per_video_not_global_or_fixed_per_account",
+      "theme_design_brief": "",
+      "role_specific_layout_and_motion_plan": [],
+      "theme_palette_hex": [],
+      "palette_applies_to": [
+        "text_fill",
+        "colored_outline",
+        "underline",
+        "icons",
+        "decorative_dots"
+      ],
+      "neutral_outline_and_shadow": "one_consistent_dark_neutral_no_extra_saturated_accents",
+      "source_video_and_burned_in_text_colors_unchanged": true,
+      "filled_or_fixed_position_preset_fallback": "reviewed_editable_transparent_overlay_not_invented_tool_parameters",
       "motion": "brief_entrance_then_readable_hold",
       "timing": "spoken_emphasis_and_visible_demonstration",
-      "avoid": ["face", "garment_details", "demonstrating_hands", "burned_in_subtitles", "platform_safe_areas"],
+      "avoid": [
+        "face",
+        "garment_details",
+        "demonstrating_hands",
+        "burned_in_subtitles",
+        "platform_ui_exclusion_regions"
+      ],
+      "placement_profile": {
+        "id": "user_vertical_ui_schematic_20261017",
+        "coordinate_space": "normalized_actual_picture_xyxy",
+        "source": "user_supplied_ui_and_placement_diagrams",
+        "approximate_guidance_not_official_platform_spec": true,
+        "review_for_actual_target_ui_and_canvas": true,
+        "exclude_player_outer_chrome_from_picture_coordinates": true,
+        "ui_exclusion_regions": [
+          {
+            "name": "top_ui",
+            "rect": [
+              0,
+              0,
+              1,
+              0.06
+            ]
+          },
+          {
+            "name": "bottom_ui",
+            "rect": [
+              0,
+              0.94,
+              1,
+              1
+            ]
+          },
+          {
+            "name": "right_interactions",
+            "rect": [
+              0.84,
+              0.41,
+              1,
+              0.94
+            ]
+          },
+          {
+            "name": "lower_account_and_description",
+            "rect": [
+              0.02,
+              0.77,
+              0.8,
+              0.94
+            ]
+          }
+        ],
+        "candidate_regions": [
+          {
+            "name": "top_space",
+            "rect": [
+              0.14,
+              0.09,
+              0.86,
+              0.29
+            ]
+          },
+          {
+            "name": "middle_left_space",
+            "rect": [
+              0.11,
+              0.33,
+              0.72,
+              0.5
+            ]
+          },
+          {
+            "name": "lower_left_space",
+            "rect": [
+              0.03,
+              0.53,
+              0.64,
+              0.69
+            ]
+          }
+        ],
+        "candidate_requires_subtracting_ui_caption_face_and_action_regions": true,
+        "per_shot_reserved_regions": [],
+        "padding_fraction_of_canvas_width_initial_guidance": 0.02,
+        "check_entire_visible_animated_extent": true,
+        "visible_extent_includes": [
+          "glyphs",
+          "stroke",
+          "shadow",
+          "underline",
+          "decorations"
+        ],
+        "review_moments": [
+          "entrance",
+          "maximum_scale_and_rotation",
+          "hold",
+          "exit",
+          "source_caption_or_subject_movement"
+        ],
+        "when_no_space": [
+          "choose_another_candidate",
+          "shorten_emphasis",
+          "retime_within_same_spoken_unit",
+          "omit_optional_emphasis"
+        ],
+        "do_not_force_all_candidate_regions_into_one_frame": true,
+        "enforcement": "caller_layout_and_visual_review_not_editor_runtime"
+      },
+      "caption_integration": {
+        "preferred_format": "mixed_by_section_and_information_role",
+        "opening_preference": "centered_lower_subtitle_style_effect",
+        "body_emphasis_preference": "independent_non_subtitle_effect_in_other_reviewed_safe_areas",
+        "body_plain_speech": "quiet_centered_lower_subtitle",
+        "avoid_whole_video_subtitle_style": true,
+        "alternation_policy": "content_driven_no_fixed_quota_or_timed_switching",
+        "maximum_simultaneous_authored_text_groups": 1,
+        "priority": "effect_typography_over_ordinary_subtitle",
+        "when_no_emphasis": "quiet_subtitle_in_same_theme",
+        "hide_or_replace_own_subtitle_during_separate_emphasis": true,
+        "distinguish_editable_own_captions_from_burned_in_source_text": true,
+        "alignment_scope": "ordinary_subtitles_and_subtitle_style_effects_only",
+        "horizontal_alignment": "full_canvas_center_each_line",
+        "independent_effect_placement": "reviewed_top_middle_left_or_lower_left_space_not_forced_to_center_or_bottom",
+        "center_x_normalized": 0.5,
+        "vertical_placement": "lower_allowed_region_above_account_description_and_bottom_ui",
+        "resolve_right_ui_conflict": "narrow_or_wrap_line_keep_full_canvas_center",
+        "avoid_residual_caption_flashes_at_effect_boundaries": true,
+        "review_full_motion_extent_and_adjacent_frames": true,
+        "enforcement": "caller_timeline_and_visual_review_not_editor_runtime"
+      },
       "editable_assets": true,
       "do_not_require_all_presets": true
     },
-    "typography_events": []
+    "typography_events": [],
+    "typography_sound_policy": {
+      "enabled_for": [
+        "source_voiceover",
+        "offscreen_dialogue",
+        "emphatic_statement",
+        "real_body"
+      ],
+      "plan_per_emphasis_event": true,
+      "ordinary_subtitles_may_be_silent": true,
+      "reference": "../references/typography-sound.md",
+      "same_point_multiword_policy": "one_main_accent",
+      "short_cue_seconds_guidance": [
+        0.1,
+        0.35
+      ],
+      "count_per_45_seconds_initial_guidance": [
+        5,
+        9
+      ],
+      "do_not_fill_quota": true,
+      "speech_priority": true,
+      "merge_with_simultaneous_transition_cue": true,
+      "check_existing_source_and_generated_sfx": true,
+      "preserve_editable_audio_tracks": true,
+      "verify_each_designed_cue_in_final_mix": true,
+      "compare_solo_cue_and_context_mix_at_same_playback_level": true,
+      "do_not_calibrate_only_against_brief_quiet_voice_window": true,
+      "separate_signal_presence_from_perceptual_audibility_review": true,
+      "explicit_audio_track_role": "sfx",
+      "retain_audio_id_and_binding_when_adjusting_gain": true,
+      "update_tool_when_available": "audio_track_update",
+      "queued_review": {
+        "minimum_editor_version": "0.3.9",
+        "submit_tool": "audio_review_submit",
+        "status_tool": "media_job_status",
+        "retry_tool": "media_job_retry",
+        "render_job_id": null,
+        "audio_ids": null,
+        "context_seconds": 1.5,
+        "null_audio_ids_select_only_explicit_sfx_roles": true,
+        "requires_at_least_one_selected_cue": true,
+        "use_successful_render_saved_revision_for_delivery_review": true,
+        "new_edit_requires_new_review_not_retry": true,
+        "signal_confirmation_is_not_listening_approval": true,
+        "human_listened": false
+      }
+    },
+    "typography_sound_events": []
   },
   "generation": {
     "requested": false,
@@ -173,7 +514,10 @@
     "resolution": "720p",
     "ratio": "9:16",
     "duration": 4,
-    "omit_request_fields": ["omni_reference_task_type", "output_format"],
+    "omit_request_fields": [
+      "omni_reference_task_type",
+      "output_format"
+    ],
     "native_generation_resolution_is_separate_from_edit_canvas": true,
     "capabilities_receipt": null,
     "generate_audio": true,
@@ -208,7 +552,12 @@
     "timeline_revision": null,
     "preview_job_id": null,
     "final_render_job_id": null,
+    "audio_review_job_ids": [],
+    "audio_review_report_paths": [],
+    "cue_signal_review": [],
+    "cue_listening_review": [],
     "actual_encoder": null,
+    "actual_decorative_transition_count": null,
     "review_evidence": [],
     "editorial_review": {
       "hook_copy_and_retained_duration": "not_checked",
@@ -217,11 +566,40 @@
       "hook_emphasis_naturalness_and_sfx_landing": "not_checked",
       "real_selling_point_coverage": "not_checked",
       "typography_readability_and_occlusion": "not_checked",
+      "mixed_typography_roles_mutual_exclusion_and_role_specific_placement": "not_checked",
+      "typography_ui_and_original_caption_avoidance_during_animation": "not_checked",
+      "transparent_text_without_filled_backplates": "not_checked",
+      "whole_video_theme_palette_at_most_three": "not_checked",
       "decorative_transition_count_spacing_and_placement": "not_checked",
-      "final_mixed_audio_and_tail": "not_checked"
+      "at_least_one_visible_transition_in_final": "not_checked",
+      "final_mixed_audio_and_tail": "not_checked",
+      "typography_sound_timing_and_speech_masking": "not_checked",
+      "each_designed_cue_final_mix_presence_and_audibility": "not_checked",
+      "full_body_display_and_independent_audio_timing": "not_checked",
+      "opening_captions_emotional_typography_and_sfx": "not_checked",
+      "hook_to_first_complete_body_unit": "not_checked",
+      "continuous_first_body_seconds_review": "not_checked",
+      "short_shot_runs_and_composite_internal_cuts": "not_checked",
+      "selected_source_audio_eligibility_and_hook_exception": "not_checked",
+      "final_expected_sound_intervals_without_unintended_silence": "not_checked"
     },
     "listening_review_performed": false,
     "final_output": null,
-    "known_limitations": []
-  }
+    "known_limitations": [],
+    "delivery_review": {
+      "minimum_editor_version": "0.4.0",
+      "record_tool": "delivery_review_record",
+      "get_tool": "delivery_review_get",
+      "profile": "commerce-v1",
+      "reference": "../references/quality-and-repair.md",
+      "review_id": null,
+      "render_job_id": null,
+      "status": "not_started",
+      "delivery_ready": false,
+      "never_prefill_pass": true,
+      "content_failure_requires_new_rendered_revision": true,
+      "listening_pending_is_not_pass": true
+    }
+  },
+  "execution_note": "Advanced planning reference only. For pure-source produce use commerce_workflow_start/status and references/source-only-stages.md; this JSON is not a tool request."
 }

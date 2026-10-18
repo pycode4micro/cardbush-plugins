@@ -6,6 +6,13 @@ measurements, not proof of speech correctness or creative quality.
 
 ## Before cutting
 
+- For product-demonstration edits, apply the bundled
+  [source audio eligibility rules](../baiying-dialogue-video/references/source-audio.md)
+  before admitting each selected source range. Missing or silent body audio is
+  excluded; only a full-body hook display with verified independent sound is
+  exempt. Metadata stream presence, whole-file loudness and ASR alone cannot
+  establish that each selected range has usable sound. Mark uncertain or failed
+  checks pending, recalculate usable material coverage, and preserve the source.
 - Inspect source audio with `audio_inspect`: integrated LUFS, true peak, sample
   peak and RMS are different metrics. Silent measurements are `null`.
 - For generated animation, use `media_cadence_inspect`. It reports decoded
@@ -47,9 +54,18 @@ just because a render is requested; preserve the user's intended sound level.
 Source sound, replacement bed and extra tracks have separate controls. An
 additive mix can exceed headroom; changing clip gain cannot fix a loud separate
 music track. Keep all settings and track choices in the project snapshot.
+Use `audio_track_add(role="sfx", label="reveal of collar")` for explicit cue
+metadata; `voiceover`, `music` and `unspecified` are other roles, not mixer buses.
+Older entries remain unclassified until explicitly tagged. Change gain, fades
+or metadata with `audio_track_update(audio_id=...)`, preserving the entry ID,
+time binding and undo snapshot. Detach a binding before changing its start or
+duration. Replacing a track by removing and re-adding it loses those references.
 An explicit extra track accepts `playback_speed=1.0` or `1.25`; its `duration`
 is output time and `source_start` is source time. For a sped-up hook, supply the
-same speed for picture and separate sound. Audio tempo changes preserve pitch.
+same speed for picture and separate sound when they are a lip-synced take.
+An independently sourced voiceover over silent display footage may use a
+different speed when the user requests it; record both rates and keep the
+picture at its requested speed. Audio tempo changes preserve pitch.
 Do not accelerate the accepted body edit unless requested.
 
 Separate tracks are normalized to 48 kHz before sample-based delay. Keep
@@ -64,6 +80,13 @@ Do not assume raw selected seconds sum to output duration. `cover` padding
 stays below one frame per clip; it must not conceal seconds of missing footage.
 
 ## Validate and repair
+
+Review editorial continuity separately from technical audio joins. Keep a
+complete spoken unit across relevant detail shots, inspect cuts already baked
+into source composites, and continuously review the last hook second through
+the first 8–10 body seconds. Check topic, pronoun/context, action completion and
+caption alignment. Short fades repair neither broken meaning nor rushed action;
+frame samples and low boundary jumps do not prove a smooth viewing experience.
 
 1. `timeline_validate` defaults to audio checks. It renders only planned audio
    to temporary float PCM, applies clip/bed/extra-track/master settings and
@@ -92,3 +115,61 @@ stays below one frame per clip; it must not conceal seconds of missing footage.
 
 When claiming a fix, report measurements and sampled scope. These regressions
 do not establish the cause of every third-party file's gain or motion defects.
+
+For designed sound effects, separately verify each cue in the delivered mix.
+Track presence, unchanged prior audio and whole-video loudness do not establish
+that an effect is perceptible. Compare isolated cues and the contextual mix at
+the same playback level; do not normalize A/B examples independently. A fixed
+offset below a very short quiet speech window can make cues effectively vanish.
+Use nearby complete speech and the rendered cue envelope to adjust individual
+gain, timbre or timing. Record measured signal presence and listening status
+separately; user feedback that a cue is inaudible reopens that review.
+
+### Queued cue review (0.3.9+)
+
+1. Tag intentional effects `role="sfx"` or pass explicit `audio_ids`. Submit
+   `audio_review_submit(project_id, audio_ids, render_job_id=...)` after a
+   successful preview/final render. The render job selects its immutable saved
+   timeline, not today's edit. Without `render_job_id`, only a saved snapshot
+   of the planned mix is checked; delivery remains explicitly unchecked.
+2. Poll `media_job_status`. Review generation, source verification and retries
+   use the shared heavy slot. `media_job_retry` creates a queued attempt from the
+   same saved request; after changing the edit, submit a new review instead.
+   Resource waiting is not failure and must not trigger duplicate submissions.
+3. Read each cue's report and equal-level `with.wav`, `without.wav`,
+   `contribution.wav`, and optional `delivered.wav`. All comparisons use the
+   full mix's actual master gain; normalization is never recomputed separately
+   for the version without the cue. Contribution is the marginal difference
+   after the master, including limiter interactions, not an isolated source stem.
+4. Warnings flag muted/negligible cues, low cue RMS (initially below -40 dBFS)
+   or possible masking (more than 14 dB below nearby active audio). Context is
+   the 75th percentile of non-silent 20 ms windows, not automatic speech detection.
+   These are review prompts, not target levels, creative approval or instructions
+   to raise every effect. Compare with complete nearby phrases and listen.
+5. Delivered signal comparison reports `confirmed`, `not_detected`,
+   `inconclusive` or `not_testable`. Lossy encoding or changed audio runtime can
+   make a comparison inconclusive. Every report keeps `human_listened=false`
+   and `perceptual_review=needs_listening`; record actual listening/user review
+   separately. Even confirmed signal presence does not certify audibility.
+
+One request handles 1–16 explicit cues, each at most 15 effective seconds, in
+a timeline of at most 600 seconds, with 0.25–5 seconds of context per side
+(default 1.5). It renders one reference mix and one version without each cue
+sequentially, so it can take time. It creates review artifacts only: no timeline,
+gain, video or production resource policy is changed. No model/service is used.
+This check does not replace the source-audio gate, full expected-speech interval
+checks or human review of the mix. Preserve the final job/revision and report IDs.
+
+Source eligibility and final-mix audibility are separate checks. Inspect each
+intended sound-bearing output interval for unexpected silence, especially hook
+handoff, extra-track boundaries and the ending. Check global and clip mute,
+source volume, separate-track gain and coverage. Whole-video LUFS or background
+music elsewhere cannot clear a silent interval; natural pauses are reviewed in
+context rather than automatically removed. User-reported continuity failures
+reopen that section for repair even if an earlier technical review succeeded.
+
+## 0.5.0 bound delivery inspection
+
+For the staged source-only commerce workflow, queue delivery_inspection_submit after each successful preview/final. Poll media_job_status and use delivery_review_form with the succeeded inspection ID. It includes PTS images, listening WAV, per-selected-source signal qualification and per-final-segment sound. The inspector does not import its output into the edit or change the timeline revision.
+
+Pass inspection_job_id to delivery_review_record along with actual observations and matching sound-review job IDs. Mandatory not_applicable, unrelated JSON evidence, missing inspection, unmeasured planned sound, and a revision-only/content-unrelated repair cannot produce delivery_ready. A new output requires a new bound inspection; a repeated request for the same immutable output reuses its queued/running/succeeded inspection. No measurement certifies listening or naturalness.

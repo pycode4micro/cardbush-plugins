@@ -1,5 +1,69 @@
 # Validation
 
+## 0.5.0 staged source-only workflow — 2026-10-18
+
+Validation uses isolated fixtures and small synthetic audio, not customer footage. No new customer video or paid generation was submitted.
+
+101 targeted tests pass: commerce workflow (18), delivery review (18), generated hooks (9), resource queue (18), audio review (10), binding precision (2), long media (26). The resource suite deliberately logs a mocked dispatcher startup failure; its recovery assertion passes.
+
+Targeted suites cover commerce stage persistence/recovery, talking/cropped hook facts, silent-source rejection, independent source voice, duplicate body windows, atomic timeline construction, original speed and explicit voice timing, shared queue admission, raw-render stage gates, final-after-preview gate, transparent centered lettering, reserved areas, caption exclusivity, per-video palette consistency, source/evidence tampering, inspection without timeline mutation, mandatory-check applicability, unrelated JSON evidence, missing bound inspection, output/subject-aware repair, never-prefilled approval, GPU fallback/resource isolation, audio comparisons and existing generated-hook behavior.
+
+The staged inspector creates continuous previews and machine evidence. It does not implement a vision or speech-understanding model. A caller must actually watch/listen; model observations are explicitly distinguished from measurements. An incapable reviewer must leave checks pending. These tests do not certify editorial quality or benchmark a particular smaller model.
+
+Bundled reference media is copied from pre-existing examples; the accepted hook demonstrates display plus independent source voice, not blanket compliance with later typography changes. Existing user projects are not enrolled or changed by the upgrade. Fresh installations preserve host MCP configuration.
+
+## 0.4.0 evidence-bound review — 2026-10-18
+
+61 targeted regressions pass: `test_delivery_review.py` (7),
+`test_long_media.py` (26), `test_resources_queue.py` (18), and
+`test_audio_review.py` (10). The dispatcher-error traceback in the resource
+suite is an intentional failure fixture, not a production startup failure.
+
+New cases cover missing checks, evidence-required judgements, failed-check
+retention until a new rendered revision, output/evidence/revision invalidation,
+unreviewed new renders, preview-only approval, individual warning resolution,
+exact audio/render identity, missing cue signals, and explicit listening
+versus measurements. PTS cases reject mislabeled first/key frames while allowing
+the following decoded frame and low-frame-rate sources.
+
+These are synthetic software tests, not creative approval of a new customer
+video. Existing Kexin source frames were inspected; the user then chose to run
+the new edit in Cardbush. No new Kexin render or generation was submitted here.
+Accepted examples are user-approved typography crops only, explicitly separate
+from whole-video approval, motion review and listening.
+
+## 0.3.9 cue review and commerce rules — 2026-10-18
+
+49 targeted regressions pass: all tests in `test_audio_review.py` (10),
+`test_resources_queue.py` (18), `test_audio_track_clock.py` (1),
+`test_binding_precision.py` (2), `test_execution.py` (14), plus four delivery
+audio cases covering gain/mute/fades, audio joins, sped-up voice tails and MCP
+schemas. Synthetic fixtures use an isolated resource directory and bounded CPU;
+the production resource policy and existing customer video projects are unchanged.
+
+New checks demonstrate immediate cached reads without a probe/heavy slot,
+explicit guarded refresh, in-place audio updates retaining IDs/anchors/undo,
+quiet effects despite audible background sound, independently overlapping cues,
+muted cues, common-gain A/B with normalization/limiting, saved-revision review
+after live edits, missing delivered effects, AAC comparison, deferred source
+hashing, changed-source rejection and queued retry from the saved request.
+The existing suite also checks MCP stdio, single-heavy-task resource locking,
+portable GPU selection/fallback, and unchanged editing/render behavior.
+
+Both bundled skill entrypoints and the synchronized local orchestration skill
+pass the skill validator. All 12 orchestration files match the local copy;
+103 relative references across those three skill trees resolve. Planning JSON
+parses and plugin/package versions agree at 0.3.9. The bundle builder now
+includes source-audio, typography-layout and typography-sound references and
+rejects skill links to unbundled local files.
+
+These are software and documentation checks using synthetic media. No paid
+generation or new Autumn video was produced. Reports deliberately leave
+`human_listened=false`; signal measurements do not establish creative quality,
+final audibility or completion of the pending real-video sound repair. The
+current commerce layout, pacing and minimum-one-transition rules remain caller
+planning/review responsibilities, not automatic restrictions on every video.
+
 ## 0.3.8 Fast generation default — 2026-10-17
 
 The model-free editing engine is unchanged. The commerce skills and plan now

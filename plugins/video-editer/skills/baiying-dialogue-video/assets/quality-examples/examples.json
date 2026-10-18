@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "examples": [
+    {
+      "file": "accepted-display-hook.mp4",
+      "sha256": "e936c02a759f06c4125fb054d1210d584b6429ebbdf06fac943d313bebf717e1",
+      "bytes": 652436,
+      "provenance": "Existing user-reviewed output, copied without editing",
+      "scope": "Approved hook structure only: natural whole-body display with independent source voice. Older typography is not a gold standard for latest layout rules; source account/product must not be transplanted into another job.",
+      "duration_seconds": 3
+    },
+    {
+      "file": "rejected-talking-hook.jpg",
+      "sha256": "e158a720b659241dfdc0ec71d1913bda382e02fbad25a1930e201a376ab07e81",
+      "bytes": 184103,
+      "provenance": "Existing rejected output frame, copied without editing",
+      "scope": "Rejected framing: not full body. A single frame cannot establish continuous speaking; inspect the full candidate preview for that judgement."
+    }
+  ],
+  "not_for_new_video_reuse": true,
+  "new_render_performed": false
+}

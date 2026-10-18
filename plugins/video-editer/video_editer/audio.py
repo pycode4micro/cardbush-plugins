@@ -104,7 +104,7 @@ def concat(parts, durations, transitions, output):
         current = dest
 
 
-def render(project, timeline, output):
+def render(project, timeline, output, *, fixed_master_gain_db=None):
     """Render only audio from the same clip clock, including bed, tracks and explicit master settings."""
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -168,7 +168,11 @@ def render(project, timeline, output):
             '-ar', str(RATE), '-ac', '2', '-c:a', 'pcm_f32le', str(mixed)], capture_output=True, check=True, timeout=1800)
         gain = settings['gain_db']
         normalization_gain = 0.0
-        if settings['target_lufs'] is not None:
+        if fixed_master_gain_db is not None:
+            if not math.isfinite(fixed_master_gain_db):
+                raise ValueError('Comparison master gain must be finite')
+            gain = fixed_master_gain_db
+        elif settings['target_lufs'] is not None:
             loudness = measure(mixed)['integrated_lufs']
             if loudness is not None:
                 normalization_gain = float(settings['target_lufs'])-loudness
@@ -180,7 +184,7 @@ def render(project, timeline, output):
         processes.run([engine.ffmpeg_bin(), '-nostdin', '-y', '-i', str(mixed), '-af', ','.join(master),
             '-c:a', 'pcm_f32le', str(output)], capture_output=True, check=True, timeout=1800)
     return {**settings, 'normalization_gain_db': normalization_gain, 'applied_master_gain_db': gain,
-        'normalization_mode': 'static measured gain' if settings['target_lufs'] is not None else 'off',
+        'normalization_mode': 'fixed comparison gain' if fixed_master_gain_db is not None else 'static measured gain' if settings['target_lufs'] is not None else 'off',
         'clip_settings': [{'clip_id': c['id'], **clip_settings(c)} for c in clips],
         'mix_mode': 'additive, normalize=0', 'intermediate_codec': 'pcm_f32le', 'sample_rate': RATE,
         'channels': 2, 'channel_layout': 'stereo', 'duration': total}

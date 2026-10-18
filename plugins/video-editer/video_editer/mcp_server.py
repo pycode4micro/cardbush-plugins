@@ -23,7 +23,7 @@ from .contracts import check_overlay, finite, position_expression, timeline_chan
 
 from . import engine, timing, preflight, jobs, canvas, visuals, animation, processes
 from . import media_ops, media_jobs, media_store, segments, audio as audio_engine, quality
-from . import resources, encoders, hooks
+from . import resources, encoders, hooks, audio_review, delivery_review, commerce
 from .locking import project_write, file_lock
 
 
@@ -421,17 +421,22 @@ def media_import(project_id: str, source_path: str, base_dir: str | None = None,
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
-@resources.heavy_operation
-def media_inspect(project_id: str, asset_id: str | None = None) -> dict[str, Any]:
-    """Return deterministic media metadata; no semantic or model analysis is performed."""
+def media_inspect(project_id: str, asset_id: str | None = None, refresh: bool = False) -> dict[str, Any]:
+    """Read stored metadata immediately, without probes or a heavy-work wait. refresh=true explicitly probes under the shared resource guard; neither mode changes the project. Cached metadata is not source verification."""
+    if not isinstance(refresh, bool):
+        raise ValueError("refresh must be boolean")
     project = _read(project_id)
     rows = project.get("materials", [])
     if asset_id:
         rows = [_asset(project, asset_id)]
-    for row in rows:
-        if row.get("kind") == "video":
-            row["probe"] = engine.ffprobe(Path(row["path"]))
-    return {"project_id": project_id, "materials": rows}
+    if refresh:
+        with resources.heavy_slot():
+            for row in rows:
+                if row.get("kind") in {"video", "audio"}:
+                    row["probe"] = engine.ffprobe(Path(row["path"]))
+    return {"project_id": project_id, "materials": rows,
+            "inspection": "fresh_probe" if refresh else "stored_metadata",
+            "metadata_refreshed": refresh, "content_verified": False}
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
@@ -510,9 +515,106 @@ def media_job_retry(project_id: str, job_id: str) -> dict[str, Any]:
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def audio_review_submit(project_id: str, audio_ids: list[str] | None = None, render_job_id: str | None = None, context_seconds: float = 1.5) -> dict[str, Any]:
+    """Queue per-cue signal review and equal-level with/without/contribution WAVs. Select 1-16 audio IDs, or omit IDs to select role=sfx. Optional succeeded render_job_id reviews its SAVED revision and delivered sound, not live edits. Max 600s timeline, 15s/cue. Poll/cancel/retry via media_job_*; measurements never certify listening quality or adjust gain."""
+    request = audio_review.prepare_request(project_id, _read(project_id), audio_ids, render_job_id, context_seconds)
+    return media_jobs.submit(project_id, request)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def media_queue_start() -> dict[str, Any]:
     """Restart the shared media/render FIFO after host restart; drains queued jobs only."""
     return media_jobs.start()
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def delivery_review_record(project_id: str, render_job_id: str, checks: list[dict[str, Any]], audio_review_job_ids: list[str] | None = None, warning_resolutions: list[dict[str, Any]] | None = None, inspection_job_id: str | None = None) -> dict[str, Any]:
+    """Record commerce-v2 review. Required: succeeded delivery_inspection_submit job for these bytes. checks: id,status(pass/fail/not_checked),note,evidence_paths,method,repair_action(on fail),observations. Continuous visual checks need continuous_review/user_feedback; auditory checks need listening/user_feedback. Pure hook_picture pass observations: full_body_visible,natural_display,no_continuous_speaking,burned_captions_compatible=true. not_applicable only for absent hook/sfx, never mandatory checks. Missing inspection cannot be waived. Failed checks require changed output AND relevant content, not merely revision. No automatic semantic certification."""
+    return delivery_review.record(project_id, render_job_id, checks, audio_review_job_ids, warning_resolutions, inspection_job_id)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def delivery_inspection_submit(project_id: str, render_job_id: str) -> dict[str, Any]:
+    """Queue bound output evidence: actual PTS frames, listening WAV, per-selected-source audio eligibility and per-final-segment sound. Uses the single heavy FIFO. Poll media_job_status; pass its succeeded job ID to delivery_review_record. Does not decide aesthetics or listen on behalf of an agent."""
+    return delivery_review.inspection_submit(project_id, render_job_id)
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+def delivery_review_form(project_id: str, render_job_id: str, inspection_job_id: str) -> dict[str, Any]:
+    """Return exact v2 check IDs, methods, false/not_checked defaults and bound evidence paths for a succeeded inspection. Watch/listen before filling. Pass the completed checks to delivery_review_record; a generated form is never approval."""
+    return delivery_review.form(project_id, render_job_id, inspection_job_id)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def commerce_workflow_start(project_id: str, account: str, product: str, target_seconds: float = 45) -> dict[str, Any]:
+    """Start/resume SOURCE-ONLY display+independent-source-voice workflow. Locks account/product/mode. No generation or render. Returns current stage, required actions and exact next tool. Import sources with media_register before candidate selection."""
+    return commerce.start(project_id, account, product, target_seconds)
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+def commerce_workflow_status(project_id: str) -> dict[str, Any]:
+    """Resume staged pure editing after interruption/compaction. Returns accepted IDs, missing stage and next tool. State persists outside chat history."""
+    return commerce.status(project_id)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def commerce_candidate_submit(project_id: str, asset_id: str, start: float, end: float, role: Literal['hook_picture','hook_voice','body']) -> dict[str, Any]:
+    """Inspect a candidate VIDEO range through shared queue: continuous preview, actual source-PTS frames and decoded audio. Hook display: 2–4s. Others: complete sentence/action, <=60s. Returns required observed facts; never infers full-body/non-speaking from a label."""
+    return commerce.candidate_submit(project_id, asset_id, start, end, role)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def commerce_candidate_review(project_id: str, job_id: str, facts: dict[str, bool], method: Literal['continuous_review','listening','continuous_review_and_listening'], note: str) -> dict[str, Any]:
+    """Review succeeded candidate evidence; supply exactly the booleans returned by commerce_candidate_submit. Unknown=false. Hook picture requires continuous_review; voice requires listening; body requires both. Sustained talking picture, missing full body, silent body or unresolved sound are rejected. Rejected candidates need new source evidence, not relabelling."""
+    return commerce.candidate_review(project_id, job_id, facts, method, note)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def commerce_candidate_skip(project_id: str, job_id: str, reason: str) -> dict[str, Any]:
+    """Discard an unselected terminal candidate with a reason, preserving evidence. Use for exhausted/unsuitable source instead of endless execution retries. Queued/running jobs must first be cancelled and confirmed terminal; applied candidates need a replacement plan first. Never marks anything accepted."""
+    return commerce.candidate_skip(project_id, job_id, reason)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def commerce_timeline_apply(project_id: str, hook_picture_job_id: str, hook_voice_job_id: str, body_job_ids: list[str], expected_revision: int, voice_speed: Literal[1.0,1.25] = 1.0, transition_after_body: int = 1, transition: str = 'slide_push', replace_timeline: bool = False) -> dict[str, Any]:
+    """Atomically assemble accepted display+voice+ordered body. Mutes only hook source, keeps pictures/body 1x, fits complete independent voice, adds one explicit topic transition and returns actual time map + undo. First body >=3s; total near target. transition_after_body is one-based and between body units. 1.25 voice needs user authorization. Existing edits require explicit replace_timeline; no render."""
+    return commerce.timeline_apply(project_id, hook_picture_job_id, hook_voice_job_id, body_job_ids, voice_speed, transition_after_body, transition, expected_revision, replace_timeline)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def commerce_presentation_record(project_id: str, theme_colors: list[str], hook_text_ids: list[str], body_text_ids: list[str], sfx_audio_ids: list[str]) -> dict[str, Any]:
+    """Bind existing hook/body effect text and role=sfx audio IDs to a 1–3 color theme. Checks timing and editable-caption exclusivity. Create graphics/sound with overlay/audio tools first. Does not certify the pixels, safe zones or actual audibility; review final output."""
+    return commerce.presentation_record(project_id, theme_colors, hook_text_ids, body_text_ids, sfx_audio_ids)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def commerce_typography_add(project_id: str, text: str, emphasis: str, support: str, style: Literal['hook_center','keyword_stack','detail_underline'], start: float, end: float, box: list[float], theme_colors: list[str], reserved_boxes: list[list[float]]) -> dict[str, Any]:
+    """Create transparent outlined effect lettering + editable overlay + short animation. box and observed reserved_boxes are [x0,y0,x1,y1]. Same 1–3 #RRGGBB palette per video. hook_center centers on full width in lower safe region; body styles use reviewed free space. Checks UI exclusions; clips our overlapping ordinary captions, never erases burned captions. No filled card, face detection or auto copywriting. Returns overlay ID for commerce_presentation_record. Add role=sfx audio separately at selected emphasis."""
+    from . import commerce_typography
+    return commerce_typography.add(project_id, text, emphasis, support, style, start, end, box, theme_colors, reserved_boxes)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def commerce_render_submit(project_id: str, preview: bool = True) -> dict[str, Any]:
+    """Preflight the saved commerce stages and queue preview/final. No bypass through raw render entrypoints for enrolled projects. Successful rendering remains unreviewed; inspect/review exact output before commerce_delivery_get."""
+    commerce.load(project_id)
+    return render_submit(project_id, preview)
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+def commerce_delivery_get(project_id: str, render_job_id: str) -> dict[str, Any]:
+    """Delivery gate for source-only workflow: valid current stages AND exact final artifact's complete v2 review. Missing/failed/stale checks never become delivery_ready. Preview is review-only."""
+    errors = commerce.preflight(project_id)
+    result = delivery_review.get(project_id, render_job_id)
+    if errors: result.update(status='needs_repair', delivery_ready=False, workflow_errors=errors)
+    result['next_tool'] = 'commerce_workflow_status' if errors else 'delivery_inspection_submit' if result['status'] == 'needs_review' else 'delivery_review_get'
+    return result
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+def delivery_review_get(project_id: str, render_job_id: str) -> dict[str, Any]:
+    """Recheck delivery review and evidence hashes. Returns needs_review/needs_repair/stale/preview_reviewed/ready. A render success alone is never delivery_ready. Does not prevent exporting a clearly labelled review copy."""
+    return delivery_review.get(project_id, render_job_id)
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
@@ -622,6 +724,7 @@ def hook_account_get(account_id: str | None = None, version: int | None = None) 
 @project_write
 def hook_plan_create(project_id: str, account_id: str, account_version: int, plan: dict[str, Any]) -> dict[str, Any]:
     """Pin an agent-authored hook plan and actual source hashes. plan requires product_key,product_description,opening_idea,seam_description,prompt,keep_seconds,source_references[{asset_id,start,end,purpose}]. Save before preparing reference slices. No generation or timeline edits."""
+    if commerce.path(project_id).is_file(): raise ValueError('This project is locked to source-only commerce; no generated hook plan')
     project = _read(project_id)
     result = hooks.plan_create(project_id, project, account_id, account_version, plan)
     _write(project_id, project)
@@ -643,6 +746,7 @@ def hook_get(project_id: str, hook_id: str | None = None) -> dict[str, Any]:
 @project_write
 def hook_request_prepare(project_id: str, hook_id: str, provider: str, request: dict[str, Any], bindings: list[dict[str, Any]], preview_receipt: str) -> dict[str, Any]:
     """Pin fingerprint of the exact FREE provider-validated request. Every content media index needs a binding: source=account or slice. Slice: source_index,evidence_id,uploaded_sha256; real Seedance slices also provider_asset{uri,status:Active,account_id,asset_group_id,verification_reference}. Must contain actual exported reference_video. Stores redacted request only; no external call."""
+    if commerce.path(project_id).is_file(): raise ValueError('Source-only commerce does not prepare generated hooks')
     project = _read(project_id)
     result = hooks.prepare(project_id, hooks.get(project, hook_id), provider, request, bindings, preview_receipt)
     _write(project_id, project)
@@ -653,6 +757,7 @@ def hook_request_prepare(project_id: str, hook_id: str, provider: str, request: 
 @project_write
 def hook_generation_begin(project_id: str, hook_id: str, request_sha256: str, authorization_reference: str) -> dict[str, Any]:
     """Durably claim one externally submitted paid task. Only may_submit=true permits the host's one create call; repeated claims return false, including after failure/unknown/reconnection. Records the existing user authorization; does not request new consent, call a provider, or hold a local heavy slot."""
+    if commerce.path(project_id).is_file(): raise ValueError('Source-only commerce does not submit generated hooks')
     project = _read(project_id)
     result = hooks.begin(project_id, hooks.get(project, hook_id), request_sha256, authorization_reference)
     _write(project_id, project)
@@ -683,6 +788,7 @@ def hook_output_review(project_id: str, hook_id: str, asset_id: str, source_star
 @project_write
 def hook_attach(project_id: str, hook_id: str, expected_revision: int, audio_policy: Literal['silent','inherit'], playback_speed: Literal[1.0,1.25] = 1.0) -> dict[str, Any]:
     """Atomically prepend the accepted generated hook and ripple ALL captions, graphics, keyframes, point cards, audio events and source-bound events. Hard cut at seam, shared 25fps clock. CAS revision + undo. Silent requires audio-free hook or globally muted source; inherit keeps existing source volume. Convert legacy continuous bed to timed audio first. No render starts here."""
+    if commerce.path(project_id).is_file(): raise ValueError('Pure source workflow uses commerce_timeline_apply, not generated hook_attach')
     project = _read(project_id)
     hook = hooks.get(project, hook_id)
     timeline = _timeline(project)
@@ -1137,7 +1243,7 @@ def subtitle_update(project_id: str, subtitle_id: str, text: str | None = None, 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 @project_write
-def audio_track_add(project_id: str, asset_id: str, start: float = 0.0, duration: float = 0.0, volume: float = 1.0, fade_in: float = 0.0, fade_out: float = 0.0, track_id: str = "audio", source_start: float = 0.0, playback_speed: Literal[1.0,1.25] = 1.0) -> dict[str, Any]:
+def audio_track_add(project_id: str, asset_id: str, start: float = 0.0, duration: float = 0.0, volume: float = 1.0, fade_in: float = 0.0, fade_out: float = 0.0, track_id: str = "audio", source_start: float = 0.0, playback_speed: Literal[1.0,1.25] = 1.0, role: Literal['unspecified','sfx','voiceover','music'] = 'unspecified', label: str = '') -> dict[str, Any]:
     """Add explicit audio with gain/fades and pitch-preserving tempo. duration/fades use output seconds; source_start uses source seconds. No music is generated."""
     project = _read(project_id)
     timeline = _timeline(project)
@@ -1146,17 +1252,54 @@ def audio_track_add(project_id: str, asset_id: str, start: float = 0.0, duration
         raise ValueError("Audio track must reference an audio or video asset")
     if timeline.get("track_meta", {}).get(track_id, {}).get("kind") != "audio":
         raise ValueError("track_id must refer to an audio track")
-    if not finite(start, duration, volume, fade_in, fade_out, source_start) or min(start, duration, volume, fade_in, fade_out, source_start) < 0:
-        raise ValueError("Audio timing and gain must be non-negative")
-    if isinstance(playback_speed, bool) or playback_speed not in SPEEDS:
-        raise ValueError('Audio playback_speed must be 1.0 or 1.25')
-    if source_start >= _duration(asset) or (duration > 0 and source_start + duration * playback_speed > _duration(asset) + 0.05):
-        raise ValueError("Audio selection exceeds source bounds")
+    item = {"id": f"audio_{uuid.uuid4().hex[:10]}", "asset_id": asset_id, "start": start, "duration": duration, "volume": volume, "fade_in": fade_in, "fade_out": fade_out, "source_start": source_start, "playback_speed": playback_speed, "role": role, "label": label}
+    _check_audio_entry(item, asset)
+    item.update(start=round(start, 3), duration=round(duration, 3))
     undo = _snapshot(project, "before audio_track_add")
-    item = {"id": f"audio_{uuid.uuid4().hex[:10]}", "asset_id": asset_id, "start": round(start, 3), "duration": round(duration, 3), "volume": volume, "fade_in": fade_in, "fade_out": fade_out, "source_start": source_start, "playback_speed": playback_speed}
     timeline["tracks"][track_id].append(item)
     result = _commit(project_id, project, "audio_track_add", {"audio_id": item["id"], "track_id": track_id}, undo)
     return {**result, "audio": item}
+
+
+def _check_audio_entry(item, asset):
+    values = [item.get(k, default) for k, default in (
+        ('start', 0), ('duration', 0), ('volume', 1), ('fade_in', 0), ('fade_out', 0), ('source_start', 0))]
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in values) or not finite(*values) or min(values) < 0:
+        raise ValueError('Audio timing and gain must be finite non-negative numbers')
+    speed = item.get('playback_speed', 1.0)
+    if isinstance(speed, bool) or speed not in SPEEDS:
+        raise ValueError('Audio playback_speed must be 1.0 or 1.25')
+    if item.get('role', 'unspecified') not in ('unspecified', 'sfx', 'voiceover', 'music'):
+        raise ValueError('Unknown audio role')
+    if not isinstance(item.get('label', ''), str) or len(item.get('label', '')) > 160:
+        raise ValueError('Audio label must be text, at most 160 characters')
+    source_start, duration = item.get('source_start', 0), item.get('duration', 0)
+    available = _duration(asset)
+    if source_start >= available or (duration > 0 and source_start + duration * speed > available + .05):
+        raise ValueError('Audio selection exceeds source bounds')
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+@project_write
+def audio_track_update(project_id: str, audio_id: str, start: float | None = None, duration: float | None = None, volume: float | None = None, fade_in: float | None = None, fade_out: float | None = None, source_start: float | None = None, playback_speed: Literal[1.0,1.25] | None = None, role: Literal['unspecified','sfx','voiceover','music'] | None = None, label: str | None = None) -> dict[str, Any]:
+    """Update an audio entry in place, preserving its ID, metadata and binding with undo. Detach a time binding before changing start/duration; volume/fades/labels can change while bound. No automatic mixing decisions."""
+    project = _read(project_id)
+    timeline = _timeline(project)
+    kind, item = timing.locate(timeline, audio_id)
+    if kind != 'audio':
+        raise ValueError('audio_id must refer to an audio entry')
+    if item.get('time_binding') and (start is not None or duration is not None):
+        raise ValueError('Detach time binding before changing audio timestamps')
+    undo = _snapshot(project, 'before audio_track_update')
+    for key, value in {'start': start, 'duration': duration, 'volume': volume, 'fade_in': fade_in,
+                       'fade_out': fade_out, 'source_start': source_start, 'playback_speed': playback_speed,
+                       'role': role, 'label': label}.items():
+        if value is not None:
+            item[key] = value
+    resolved = timing.locate(timing.resolve(timeline), audio_id)[1]
+    _check_audio_entry(resolved, _asset(project, item['asset_id']))
+    result = _commit(project_id, project, 'audio_track_update', {'audio_id': audio_id}, undo)
+    return {**result, 'audio': resolved}
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
@@ -1211,6 +1354,7 @@ def _render(project_id: str, preview: bool, retry_job: str | None = None) -> dic
         with file_lock(_folder(project_id) / "writer.lock"):
             project = _read(project_id)
         prior = None
+    commerce.render_guard(project_id, project, preview=preview)
     errors = _validate(project)
     if errors:
         raise ValueError("Timeline validation failed: " + "; ".join(errors))
@@ -1230,6 +1374,7 @@ def _execute_attempt(attempt):
     diagnostics=preflight.inspect(project,timeline)
     try:
         with attempt.running(), processes.cancellation(attempt.root/'cancel.json'):
+            commerce.render_guard(project_id, project)
             attempt.bind_media()
             def base():
                 value = engine.render_project(project_id, _plan(project), render_job=attempt.job_id,
@@ -1472,6 +1617,7 @@ def render_retry(project_id: str, job_id: str) -> dict[str, Any]:
     """Queue a failed/interrupted/cancelled job in a NEW background attempt using its saved revision. Reuse completed stages only when checksums and runtime match. Reject changed source media."""
     from . import render_queue
     snapshot, prior = jobs.retry_input(project_id, job_id, strong=False)
+    commerce.render_guard(project_id, snapshot['project'], preview=snapshot['preview'])
     return render_queue.submit(jobs.Attempt(project_id, snapshot['project'], snapshot['preview'], prior,
                                            defer_media=True, manifest=snapshot['media']))
 
@@ -1540,6 +1686,7 @@ def render_submit(project_id: str, preview: bool = False) -> dict[str, Any]:
     from . import render_queue
     with file_lock(_folder(project_id)/'writer.lock'):
         project=copy.deepcopy(_read(project_id))
+    commerce.render_guard(project_id, project, preview=preview)
     errors=_validate(project)
     if errors: raise ValueError('Timeline validation failed: '+'; '.join(errors))
     project['mcp_timeline']=timing.resolve(_timeline(project))

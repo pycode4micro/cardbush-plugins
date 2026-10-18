@@ -1,6 +1,6 @@
 # Resource controls
 
-Use background `media_register`, `media_prepare`, `render_submit` and
+Use background `media_register`, `media_prepare`, `audio_review_submit`, `render_submit` and
 `render_retry` for expensive work. Render retry now returns a queued job, not a
 finished video. Poll status and use only `succeeded.result`. A resource wait is
 still `queued`, with `resource_wait` explaining memory, CPU or lock contention.
@@ -14,6 +14,10 @@ offline execution is not guaranteed. Queued work resumes on reconnection; this
 plugin does not install an independent OS service or alter host process controls.
 
 `resource_status` reads policy and the last GPU probe without starting work.
+`media_inspect` defaults to stored metadata, without media probes or waiting
+for this slot; missing/stale cached metadata is not a completed source check.
+Its explicit `refresh=true` option is guarded and may wait. Cue review reads,
+decodes and mixes audio under the shared queue, with the same cancel/retry rules.
 `resource_configure(settings)` changes portable defaults for subsequent heavy
 slots. `resource_probe` tests four synthetic frames per candidate encoder under
 the same resource lock; it never edits a project. Inspect returned failures.

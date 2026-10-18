@@ -3,7 +3,7 @@ import hashlib
 import subprocess
 import time
 import uuid
-from . import engine, media_ops, processes, task_queue, resources
+from . import engine, media_ops, processes, task_queue, resources, audio_review
 from .locking import file_lock
 
 
@@ -109,7 +109,11 @@ def execute(project_id,job_id):
             if hashlib.sha256((path/'request.json').read_bytes()).hexdigest()!=state['request_sha256']: raise ValueError('Saved request checksum mismatch')
             request=engine.read_json(path/'request.json')
             with processes.cancellation(path/'cancel.json'):
-                if request['operation']=='register': result=media_ops.register(project_id,request,path,progress)
+                if request['operation']=='audio_review': result=audio_review.execute(request,path,progress)
+                elif request['operation'] in ('commerce_inspect', 'delivery_inspect'):
+                    from . import commerce_inspection
+                    result=commerce_inspection.execute(project_id,request,path,progress)
+                elif request['operation']=='register': result=media_ops.register(project_id,request,path,progress)
                 else: result=media_ops.prepare(project_id,request,path,progress)
             # Cancellation after an atomic commit does not undo committed artifacts.
             engine.write_json(path/'result.json',result)

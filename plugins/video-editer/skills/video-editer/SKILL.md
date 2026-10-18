@@ -6,6 +6,26 @@ description: Inspect and edit videos using explicit timelines, local audiovisual
 # video_editer
 
 Use this plugin when an agent needs to execute a concrete video-editing plan.
+
+For source-only commerce edits, first use the staged workflow in
+[Source-only stages](../baiying-dialogue-video/references/source-only-stages.md).
+Start/resume with commerce_workflow_start / commerce_workflow_status and follow
+its next_tool. Review candidate display, independent source voice and body units
+before commerce_timeline_apply; use commerce_typography_add for transparent
+lettering and commerce_presentation_record for the real event IDs. Render via
+commerce_render_submit. Queue delivery_inspection_submit for the actual output,
+fill delivery_review_form only after reviewing its evidence, then record and
+check commerce_delivery_get. Missing or uncertain facts do not pass.
+These tools are available in 0.5.0+. They do not call an AI or independently
+certify visual meaning; they make the required decisions explicit and durable.
+
+For commerce edits, read [examples and repair](../baiying-dialogue-video/references/quality-and-repair.md)
+and [demonstration editing](../baiying-dialogue-video/references/demonstration-editing.md)
+before choosing footage. Use actual PTS from queued `media_frames_at`, not labelled
+first-frame contact sheets. Record editorial evidence through `delivery_review_record`
+and recheck `delivery_review_get`. Missing/listening-pending checks cannot become
+delivery_ready. Failed editorial choices need a changed timeline and a new render;
+`render_retry` executes the old saved edit and cannot improve its content.
 It is standalone: do not start an editing platform or load another project's
 environment. Tool outputs refer to its own data directory. No model is called
 inside the plugin; the caller supplies clip boundaries, text and effects.
@@ -14,19 +34,66 @@ For live-commerce product cuts, use the bundled
 [editorial defaults](../baiying-dialogue-video/references/editorial.md) unless the
 user gives a newer direction: about 45 seconds (over 30, under 60), original
 speed, a 2–4 second hook when needed, real feature/detail cuts and role-based
-typography. The default offscreen question/presenter reply also has an optional
-[emphatic presenter opening](../baiying-dialogue-video/references/hook-options.md)
-with one naturally lengthened emphasis and optional two-note sound cue.
-Decorative transitions
-default to one, at most two, only at major topic boundaries; none is fine when
-there is no useful boundary. The reference and
+typography. The current default is full-body natural display plus a separately
+selected complete emotional source voiceover. Reject visibly sustained talking
+in the display; muting that footage does not make it a pure display.
+Offscreen question/presenter reply and emphatic presenter openings are optional
+only when selected by the user; read their separate
+[generated/dialogue route](../baiying-dialogue-video/references/generated-route.md).
+For this product workflow, require at least one visible decorative transition,
+default to one and allow at most two, at a major topic boundary between complete
+explanatory units. Do not silently deliver zero unless the user explicitly
+changes the requirement. Hard cuts, typography entrances and audio-only cues
+do not count. Verify the actual rendered count and timestamps before delivery.
+The reference and
 [planning template](../baiying-dialogue-video/assets/workflow-plan.json) define
 spacing, duration, placement and review. These are caller planning defaults,
-not runtime limits or rules for unrelated video genres. Read the
+not runtime limits or rules for unrelated video genres. For this workflow,
+plan typography and short sound cues together for both real-source and generated
+openings; read [Typography and sound](../baiying-dialogue-video/references/typography-sound.md).
+For this product workflow, read
+[Typography layout](../baiying-dialogue-video/references/typography-layout.md):
+use transparent lettering without filled panels, bubbles or pills, and one
+whole-video palette of at most three theme colors with a consistent neutral
+outline. Design each video's theme for its garment, setting and content; do not
+turn a case palette into a global default or a closed preset menu. Within that
+theme, vary keyword scale, supporting type, arrangement and brief motion by role.
+Consistency does not mean identical single-line lettering everywhere.
+Keep effect text outside platform UI exclusions and burned-in source captions;
+choose available top, middle-left or lower-left space only after checking the
+face and product action. Inspect the full animated extent, including overshoot
+and rotation. A preset's canvas bounds do not establish safe placement.
+Prioritize complete meaning and actions over cut density. After the hook,
+establish one complete body unit before changing topics; inspect existing
+composites for internal cuts as well. Read
+[Body entry continuity](../baiying-dialogue-video/references/editorial.md#钩子后的正文承接)
+for adjustable timing guidance and continuous review of the first 8–10 body seconds.
+For this product workflow, apply the
+[Source audio gate](../baiying-dialogue-video/references/source-audio.md)
+to every selected range before use: silent body material is ineligible. Only
+a full-body hook display with verified independent sound may use silent picture
+material. Stream presence and a successful render are not evidence of audible
+source content or continuous final sound. These are caller eligibility rules,
+not new automatic restrictions in the general-purpose editor.
+For this product workflow, mix typography by role. Prefer centered lower
+subtitle-style effects in the opening hook. For body selling points, prefer
+independent non-subtitle typography in reviewed top, middle-left or lower-left
+space, interspersed with quiet subtitles for ordinary speech. Share the video's
+theme, but do not make the entire video subtitle-style or force a fixed alternation
+quota. Effect text hides/replaces our editable ordinary subtitle while active;
+one information group may contain multiple coordinated graphics layers.
+Only ordinary subtitles and subtitle-style effects must center each line on the
+full canvas width (x=0.5), in the lower allowed region. Narrow/wrap these lines
+to avoid right-side UI instead of shifting left. Independent body effects follow
+available safe space and are not forced to the canvas center or bottom.
+Distinguish editable captions from burned-in source text, and review entry/exit
+frames for duplication and residual flashes. Prioritize speech and avoid
+duplicating sounds already present in the source. Read the
 [Baiying workflow](../baiying-dialogue-video/SKILL.md) only when collecting or
 orchestrating that source; existing local footage does not require collection.
 
-When adding or generating an opening hook, read [Generated hooks](generated-hooks.md).
+Only when the user requests a generated opening hook, read [Generated hooks](generated-hooks.md).
+Pure source hooks use commerce_timeline_apply, never hook_attach.
 Use the selected account's actual footage AND identity assets, preserve the
 accepted body edit, and attach only a reviewed output. External generation is
 asynchronous and requires the user's existing authorization; the local editor
@@ -34,9 +101,12 @@ records it but never makes hidden paid calls.
 Plan and verify sound and whole-video duration separately from the hook;
 silent reference preparation must not silently mute requested generated speech.
 For dialogue hooks, separate offscreen and presenter voices and speaking turns.
-Keep hook and body at 1.0x by default. Only retime when explicitly requested;
-retime video and explicit audio together, preserve pitch, and shift body events
-by the actual hook length. Do not add an unsolicited decorative AI-opening label.
+Keep hook and body at 1.0x by default. Only retime when explicitly requested.
+For lip-synced dialogue, retime video and explicit audio together and preserve
+pitch. For a silent full-body display with an independent voiceover, an explicit
+audio-only speed request applies only to that voiceover: keep the picture and
+accepted body at their requested speeds, record both rates, and shift body
+events by the actual hook length. Do not add an unsolicited decorative AI-opening label.
 
 1. For a new edit or authorized handoff test, call `project_create` and import
    authorized local videos with background `media_register`, including short
@@ -47,6 +117,9 @@ by the actual hook length. Do not add an unsolicited decorative AI-opening label
    For a handoff-only test, stop after import verification. For an existing
    project, reuse its ID. Inspect using
    `media_inspect` and `timeline_get` before changing its timeline.
+   `media_inspect` now reads stored metadata without waiting for the heavy slot;
+   it does not verify current file contents. Request `refresh=true` only for an
+   explicit guarded probe, or queue verification/preparation when appropriate.
    Use `canvas_configure` for a nondefault aspect ratio or explicit cover crop;
    it never chooses a subject-aware crop. Defaults are vertical and contained.
 2. Make one explicit change per `clip_*`, `transition_apply`, `callout_*`,
@@ -65,6 +138,10 @@ instruction from the calling agent or user.
 For audio levels, fades, frame coverage, cadence, or soundtrack-only repair, read
 [Audio and delivery](audio-and-delivery.md). Retain the explicit gain/fade and
 frame-alignment controls; audio checks measure LUFS/true peak and can be expensive.
+For designed effects, use `audio_track_update` to retain IDs/bindings while
+adjusting cues, then queue `audio_review_submit` against the successful render's
+saved revision. Check every planned cue and its equal-level comparison samples;
+do not equate a successful review job or signal presence with audible quality.
 
 
 For long-source exploration, index/coverage, or candidate workflows, read
@@ -76,11 +153,14 @@ not make a whole video understood simply by generating thumbnails or proxies.
   `callout_list_templates`, and `output_inspect` are read-only.
 - Importing media, editing a timeline, and final rendering mutate project
   state or artifacts. Preserve each returned revision and undo snapshot.
-- For speech-driven point cards prefer `callout_points_add`: 1-4 entries with
+- When a requested style permits filled point cards, use `callout_points_add`: 1-4 entries with
   explicit `text`, `start`, `end` (max 7 characters; duration >=0.12s). No beat is
   derived. Use `callout_update(points=...)` to revise them; card appearance is a
   fixed preset. Legacy `callout_add(template="point_list")` keeps its two-point
   `|` format and +0.72s delay only for compatibility.
+  The current product workflow disallows filled backgrounds: inspect the actual
+  preset and use editable transparent overlays when its panel or fixed placement
+  conflicts. Do not invent a background-removal parameter for a fixed template.
 - Callouts only use `product_left` or `product_right`; do not obscure the
   product centre.
 - Use overlay/caption/audio tracks rather than adding decorative content to the

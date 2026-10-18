@@ -1,0 +1,206 @@
+"""Isolated contracts; no customer media, encoding, worker or paid call is started."""
+import copy
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from video_editer import commerce, engine, media_jobs, media_ops, resources
+from video_editer import mcp_server as m
+
+
+class CommerceTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.root = Path(self.tmp.name)
+        self.patches = [patch.object(engine, 'PROJECTS', self.root/'projects'),
+                        patch.object(resources, 'heavy_slot'), patch.object(media_jobs, 'start_worker', return_value={}),
+                        patch.object(engine, 'ffprobe', return_value={'duration':120,'width':1080,'height':1920,'has_audio':True})]
+        for p in self.patches: p.start()
+        self.pid = m.project_create('commerce fixture')['project_id']
+        source = self.root/'source.mp4'; source.write_bytes(b'isolated fixture, no decoder invoked')
+        self.asset = {'id': 'mat_source', 'kind': 'video', 'path': str(source),
+            'identity': {'sha256': media_ops.digest(source)[0], 'stat': media_ops.stat_signature(source)},
+            'probe': {'duration': 120, 'width': 1080, 'height': 1920, 'has_audio': True}}
+        p=m._read(self.pid);p['materials'].append(self.asset);m._write(self.pid,p)
+        m.commerce_workflow_start(self.pid, 'fixture account', 'fixture product')
+
+    def tearDown(self):
+        for p in reversed(self.patches): p.stop()
+        self.tmp.cleanup()
+
+    def candidate(self, role, start, end, audio='audible_signal', approve=True):
+        job=m.commerce_candidate_submit(self.pid,self.asset['id'],start,end,role)
+        folder=media_jobs.folder(self.pid,job['job_id']); req=engine.read_json(folder/'request.json')
+        preview=folder/'preview.mp4';preview.write_bytes(b'fixture preview')
+        frame=folder/'frame.jpg';frame.write_bytes(b'fixture frame')
+        file=lambda p:{'path':str(p),'sha256':media_ops.digest(p)[0]}
+        result={'operation':'commerce_inspect','project_id':self.pid,'request':req,'role':role,
+                'asset_id':self.asset['id'],'source_sha256':self.asset['identity']['sha256'],
+                'source_start':start,'source_end':end,'audio_eligibility':audio,
+                'preview':{'path':str(preview),'files':[file(preview)]},'frames':{'files':[file(frame)]}}
+        engine.write_json(folder/'result.json',result)
+        state=engine.read_json(folder/'state.json');state['status']='succeeded';engine.write_json(folder/'state.json',state)
+        if approve:
+            m.commerce_candidate_review(self.pid,job['job_id'],{k:True for k in commerce.FACTS[role]},commerce.METHODS[role],'Synthetic observed fixture facts')
+        return job['job_id']
+
+    def plan(self):
+        picture=self.candidate('hook_picture',0,3)
+        voice=self.candidate('hook_voice',4,7)
+        body=[self.candidate('body',a,b) for a,b in [(10,20),(20,30),(30,41),(41,52)]]
+        return picture,voice,body
+
+    def apply(self):
+        h,v,b=self.plan()
+        return m.commerce_timeline_apply(self.pid,h,v,b,expected_revision=0)
+
+    def test_start_resume_scope_and_no_worker(self):
+        resumed=m.commerce_workflow_status(self.pid)
+        self.assertEqual(resumed['stage'],'candidates')
+        self.assertEqual(resumed['account'],'fixture account')
+        self.assertEqual(len(resumed['reference_files']),2)
+        first=commerce.load(self.pid)['state_revision']
+        m.commerce_workflow_start(self.pid,'fixture account','fixture product')
+        self.assertEqual(first,commerce.load(self.pid)['state_revision'])
+        with self.assertRaises(ValueError): m.commerce_workflow_start(self.pid,'another','fixture product')
+
+    def test_candidate_repeat_reuses_job_and_queue(self):
+        a=m.commerce_candidate_submit(self.pid,'mat_source',0,3,'hook_picture')
+        b=m.commerce_candidate_submit(self.pid,'mat_source',0,3,'hook_picture')
+        self.assertEqual(a['job_id'],b['job_id']);self.assertTrue(b['reused'])
+
+    def test_corrupt_candidate_evidence_can_be_reinspected(self):
+        old=self.candidate('hook_picture',0,3)
+        (media_jobs.folder(self.pid,old)/'preview.mp4').write_bytes(b'changed fixture')
+        new=m.commerce_candidate_submit(self.pid,'mat_source',0,3,'hook_picture')
+        self.assertNotEqual(old,new['job_id'])
+
+    def test_talking_or_cropped_hook_cannot_be_accepted(self):
+        job=self.candidate('hook_picture',0,3,approve=False)
+        facts={k:True for k in commerce.FACTS['hook_picture']};facts['no_continuous_speaking']=False
+        r=m.commerce_candidate_review(self.pid,job,facts,'continuous_review','Mouth continuously speaks during all 3 seconds')
+        self.assertEqual(r['candidate']['status'],'rejected')
+        facts['no_continuous_speaking']=True
+        with self.assertRaises(ValueError): m.commerce_candidate_review(self.pid,job,facts,'continuous_review','Relabel attempt')
+
+    def test_unknown_facts_and_wrong_review_method_rejected(self):
+        job=self.candidate('hook_picture',0,3,approve=False)
+        with self.assertRaises(ValueError): m.commerce_candidate_review(self.pid,job,{},'continuous_review','missing')
+        with self.assertRaises(ValueError): m.commerce_candidate_review(self.pid,job,{k:True for k in commerce.FACTS['hook_picture']},'listening','not picture evidence')
+
+    def test_silent_body_rejected_silent_hook_allowed(self):
+        body=self.candidate('body',10,20,audio='silent')
+        hook=self.candidate('hook_picture',0,3,audio='silent')
+        rows=commerce.load(self.pid)['reviews']
+        self.assertEqual(rows[body]['status'],'rejected');self.assertEqual(rows[hook]['status'],'accepted')
+
+    def test_atomic_plan_original_speed_and_voice_routes(self):
+        r=self.apply();p=m._read(self.pid);t=p['mcp_timeline']
+        self.assertEqual(r['stage'],'presentation')
+        self.assertTrue(t['tracks']['main'][0]['audio_mute'])
+        self.assertTrue(all(not c['audio_mute'] for c in t['tracks']['main'][1:]))
+        self.assertEqual({c['playback_speed'] for c in t['tracks']['main']},{1.0})
+        self.assertEqual(t['tracks']['audio'][0]['source_start'],4)
+        self.assertEqual(sum(c['transition']!='none' for c in t['tracks']['main']),1)
+
+    def test_stale_revision_does_not_replace_timeline(self):
+        h,v,b=self.plan();before=m._read(self.pid)
+        with self.assertRaises(ValueError):m.commerce_timeline_apply(self.pid,h,v,b,expected_revision=7)
+        self.assertEqual(before,m._read(self.pid))
+
+    def test_changed_evidence_blocks_plan(self):
+        h,v,b=self.plan();folder=media_jobs.folder(self.pid,h);(folder/'frame.jpg').write_bytes(b'changed')
+        with self.assertRaises(ValueError):m.commerce_timeline_apply(self.pid,h,v,b,expected_revision=0)
+
+    def test_raw_render_cannot_skip_workflow_stages(self):
+        with patch('video_editer.render_queue.submit') as queue:
+            with self.assertRaises(ValueError):m.render_submit(self.pid)
+            queue.assert_not_called()
+        self.apply()
+        with self.assertRaises(ValueError):m.render_submit(self.pid)
+
+    def test_typography_transparency_center_and_caption_exclusion(self):
+        from PIL import Image
+        self.apply();p=m._read(self.pid)
+        p['mcp_timeline']['tracks']['captions']=[{'id':'subtitle_original','start':0,'end':3,'text':'fixture'}]
+        m._write(self.pid,p)
+        r=m.commerce_typography_add(self.pid,'穿上就好看','好看','','hook_center',.2,2.8,[.19,.60,.81,.71],['#FFF4DA','#FFAE80'],[])
+        overlay=r['overlay'];self.assertAlmostEqual(overlay['x']+overlay['width']/2,.5)
+        with Image.open(r['asset']['path']) as im:self.assertEqual(im.getchannel('A').getpixel((0,0)),0)
+        captions=m._read(self.pid)['mcp_timeline']['tracks']['captions']
+        self.assertEqual([(c['start'],c['end']) for c in captions],[(0,.2),(2.8,3)])
+
+    def test_text_rejects_reserved_boxes_left_hook_and_theme_drift(self):
+        self.apply()
+        args=(self.pid,'好看','好看','','hook_center',.2,2.8,[.19,.60,.81,.71],['#FFF4DA','#FFAE80'])
+        with self.assertRaises(ValueError):m.commerce_typography_add(*args,[[.2,.62,.8,.70]])
+        with self.assertRaises(ValueError):m.commerce_typography_add(self.pid,'好看','','','hook_center',.2,2.8,[.1,.60,.7,.71],['#FFFFFF'],[])
+        m.commerce_typography_add(*args,[])
+        with self.assertRaises(ValueError):m.commerce_typography_add(self.pid,'细节','','','keyword_stack',4,6,[.1,.1,.6,.25],['#00FF00'],[])
+
+    def test_presentation_and_render_submission_resume_without_encoding(self):
+        self.apply();palette=['#FFF4DA','#FFAE80']
+        hook=m.commerce_typography_add(self.pid,'好看','好看','','hook_center',.2,2.8,[.19,.60,.81,.71],palette,[])['overlay']['id']
+        body=m.commerce_typography_add(self.pid,'细节','细节','看得清','detail_underline',4,6,[.1,.1,.65,.24],palette,[])['overlay']['id']
+        cue=m.audio_track_add(self.pid,'mat_source',start=.4,duration=.2,role='sfx')['audio']['id']
+        result=m.commerce_presentation_record(self.pid,palette,[hook],[body],[cue])
+        self.assertEqual(result['stage'],'preview')
+        with self.assertRaisesRegex(ValueError,'Review a succeeded preview'):
+            m.commerce_render_submit(self.pid,preview=False)
+        with patch('video_editer.render_queue.start_worker',return_value={}):
+            job=m.commerce_render_submit(self.pid)
+        self.assertEqual(job['status'],'queued')
+        status=m.commerce_workflow_status(self.pid)
+        self.assertEqual(status['next_tool'],'render_job_status');self.assertEqual(status['render_job_id'],job['job_id'])
+        from video_editer import jobs
+        path=jobs.folder(self.pid,job['job_id'])/'state.json'
+        state=engine.read_json(path);state['status']='succeeded';engine.write_json(path,state)
+        with patch('video_editer.delivery_review.get',return_value={
+            'status':'needs_repair','failed_checks':['hook_picture'],
+            'checks':[{'id':'hook_picture','status':'fail','note':'Sustained talking','repair_action':'Replace with non-speaking full display'}]}):
+            status=m.commerce_workflow_status(self.pid)
+        self.assertEqual(status['next_tool'],'commerce_candidate_submit')
+        self.assertEqual(status['repair_actions'][0]['repair_action'],'Replace with non-speaking full display')
+
+    def test_generated_hook_route_is_blocked_for_source_only_project(self):
+        with self.assertRaisesRegex(ValueError,'source-only'):
+            m.hook_plan_create(self.pid,'irrelevant',1,{})
+        with self.assertRaisesRegex(ValueError,'Pure source'):
+            m.hook_attach(self.pid,'irrelevant',0,'silent')
+
+    def test_delivery_inspection_never_increments_edit_revision(self):
+        from video_editer import commerce_inspection, delivery_review, jobs
+        output=self.root/'fake-output.mp4';output.write_bytes(b'fixture output')
+        attempt=jobs.Attempt(self.pid,m._read(self.pid),True)
+        attempt.succeed({'path':str(output),'has_audio':False})
+        identity,result=delivery_review.artifact(self.pid,attempt.job_id)
+        directory=self.root/'inspection';directory.mkdir()
+        frame=directory/'frame.jpg';frame.write_bytes(b'fixture frame')
+        frame_result={'files':[{'path':str(frame),'sha256':media_ops.digest(frame)[0]}]}
+        before=m._read(self.pid)
+        with patch.object(media_ops,'metadata',return_value={'duration':3,'has_audio':False}), patch.object(media_ops,'prepare',return_value=frame_result) as prepare:
+            report=commerce_inspection.execute(self.pid,{'operation':'delivery_inspect','render_job_id':attempt.job_id,
+                'artifact':identity,'inspection_asset_id':'mat_inspection'},directory,lambda *args:None)
+        self.assertEqual(before,m._read(self.pid))
+        self.assertEqual(report['artifact'],identity)
+        self.assertIn('evidence_asset',prepare.call_args.kwargs)
+
+    def test_failed_candidate_can_be_skipped_without_retry_loop(self):
+        job=m.commerce_candidate_submit(self.pid,'mat_source',0,3,'hook_picture')
+        folder=media_jobs.folder(self.pid,job['job_id']);s=engine.read_json(folder/'state.json');s['status']='failed';engine.write_json(folder/'state.json',s)
+        status=m.commerce_workflow_status(self.pid);self.assertEqual(status['alternative_tool'],'commerce_candidate_skip')
+        r=m.commerce_candidate_skip(self.pid,job['job_id'],'Source unavailable; use another authorized candidate')
+        self.assertEqual(r['stage'],'candidates');self.assertEqual(r['accepted_counts']['hook_picture'],0)
+
+    def test_own_display_audio_is_not_an_independent_voice(self):
+        h,v,b=self.plan();same_voice=self.candidate('hook_voice',0,3)
+        with self.assertRaisesRegex(ValueError,'another source range'):
+            m.commerce_timeline_apply(self.pid,h,same_voice,b,expected_revision=0)
+
+    def test_duplicate_body_windows_are_not_extra_material(self):
+        h,v,b=self.plan();overlap=self.candidate('body',11,19)
+        with self.assertRaisesRegex(ValueError,'overlap'):
+            m.commerce_timeline_apply(self.pid,h,v,b+[overlap],expected_revision=0)
+
+
+if __name__=='__main__':unittest.main()

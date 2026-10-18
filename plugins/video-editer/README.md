@@ -4,6 +4,65 @@ A standalone, model-free MCP plugin with its own Python/FFmpeg execution core
 and bundled graphics, for Codex and other MCP-compatible agents. The caller
 decides what to edit; the plugin exposes deterministic atomic execution tools.
 
+## 0.5.0: staged source-only commerce editing
+
+- The main skill now routes source-only editing separately from generated/dialogue hooks. A muted talking shot is explicitly ineligible as a pure display.
+- Persistent commerce workflow tools expose the next stage/action after interruption: inspect and review picture/voice/body candidates, atomically assemble selected units, add transparent typography, bind presentation events, queue preview/final, and check delivery.
+- Candidate inspection, output inspection and retries share the existing single-heavy FIFO. The editor still does not call an LLM or certify visual meaning.
+- delivery_inspection_submit creates output-bound PTS frames, listening material, selected-source audio checks and per-final-segment sound checks. It never increments the edit revision. delivery_review_form starts every judgement unchecked.
+- Mandatory checks cannot use not_applicable; unrelated evidence cannot certify a check; missing inspection or unmeasured planned sound cannot be waived. Repair requires changed output and relevant content, not an unrelated edit/revision bump.
+- commerce_typography_add provides transparent outlined lettering, per-video custom palette, main/support hierarchy and contained animation. It checks supplied exclusions and removes conflicting editable subtitle intervals; it does not detect faces or burned captions.
+- A pre-existing accepted 3-second display/voice hook and a rejected framing example are bundled with hashes and explicit scope. Old typography in a sample does not supersede current layout requirements.
+
+Start with the [source-only stages](skills/baiying-dialogue-video/references/source-only-stages.md). Existing projects are not enrolled automatically. Existing generic editing/generation tools remain available for their explicit workflows; enrolled source-only projects cannot prepare or attach generated hooks. Existing review-v1 records remain readable but require bound inspection for v2 delivery approval.
+
+## 0.4.0: artifact-bound review and repair
+
+- `delivery_review_record` records fourteen commerce review checks with local
+  evidence hashes against an immutable succeeded render. Missing checks stay
+  pending; failures need a repair action and a newly rendered timeline revision.
+  Saved failures cannot be erased by submitting an empty or all-pass form.
+- `delivery_review_get` rechecks the output, evidence and current revision.
+  Rendering success is separate from `delivery_ready`; preview approval is not
+  final delivery approval. The tools permit clearly labelled review copies.
+- Cue signal reports must match the exact render, input and output hashes.
+  Warnings remain visible until individually resolved with evidence. Auditory
+  checks require an explicit listening/user-feedback observation; no tool
+  infers subjective quality from RMS, ASR or a successful job.
+- Queued frame extraction verifies requested versus decoded source PTS and
+  rejects mislabeled first/key frames. The skills include accepted typography
+  crops, a rejected panel example, and a concrete content-repair workflow.
+
+Read [examples and repair](skills/baiying-dialogue-video/references/quality-and-repair.md).
+This adds no model/provider dependency and makes no automatic editorial choices.
+GPU-first selection, the shared single-heavy-task lock and queued retries remain.
+
+## 0.3.9: cue evidence and reviewed commerce defaults
+
+- `audio_review_submit` queues per-cue with/without/contribution audio samples
+  at the same master gain, warns about low or masked effects and optionally
+  compares the delivered sound from a succeeded render's saved revision.
+  Signal presence is separate from listening approval. Query/cancel/retry using
+  `media_job_*`; expensive work retains the single shared heavy slot.
+- `audio_track_update` changes levels/fades/labels in place, preserving IDs,
+  source bindings and undo. Explicit `sfx`/`voiceover`/`music` metadata supports
+  selection; it never guesses an effect from a filename or adjusts gain itself.
+- `media_inspect` defaults to an immediate stored-metadata read, even while
+  heavy work waits for resources. `refresh=true` explicitly uses the guarded
+  probe. Neither mode certifies current media bytes.
+
+The bundled skills now share the accepted approximately 45-second workflow:
+a roughly three-second full-body hook with independent source voice, complete
+body units, varied transparent typography within one theme, subtitle/effect
+mutual exclusion and reviewed safe placement. This workflow requires at least
+one visible decorative transition, defaults to one and permits at most two.
+Source-speech eligibility, final sound coverage, per-cue signal and listening
+are separate checks. Existing user preferences override these scoped defaults.
+Generated hooks remain optional and default to Seedance 2.0 Fast. No dependency,
+model call, universal template style or automatic editorial engine was added.
+See [audio review semantics](skills/video-editer/audio-and-delivery.md) and
+[validation scope](VALIDATION.md).
+
 ## 0.3.8: Seedance 2.0 Fast hook default
 
 The bundled commerce workflow now explicitly selects
@@ -52,7 +111,8 @@ unless the user specifies a different direction:
   emphasizes one current point with consistent fonts and colours.
 - Use one decorative transition by default, at most two, at major topic changes.
   If two are used, their centres are at least 15 seconds apart. Default length
-  is 0.32 seconds (0.24–0.48 allowed). Zero is valid; never fill an effect quota.
+  is 0.32 seconds (0.24–0.48 allowed). The historical zero-transition option was
+  superseded by the current minimum of one; do not add a second merely to fill a quota.
 - GPU-first execution, one shared heavy task and queued retries remain in place.
 
 These are scoped skill defaults, not automatic timeline operations or runtime

@@ -167,10 +167,17 @@ def cached(project_id, a, key):
     return None
 
 
-def prepare(project_id, request, directory, progress):
+def prepare(project_id, request, directory, progress, *, evidence_asset=None):
     operation=request['operation']
     if operation in ('fingerprint','verify'): return fingerprint(project_id,request,progress)
-    a=asset(project_id,request['asset_id'],strong=True,progress=progress)
+    if evidence_asset is None:
+        a=asset(project_id,request['asset_id'],strong=True,progress=progress)
+    else:
+        # Render inspection can decode immutable output without importing it into
+        # the edit and incrementing its timeline revision.
+        a=evidence_asset
+        if a['id'] != request['asset_id'] or digest(Path(a['path']),progress)[0] != a['identity']['sha256']:
+            raise ValueError('Inspection-only source identity mismatch')
     info=a['probe']; options=request['options']; source=Path(a['path'])
     key=cache_key(a,operation,options); prior=cached(project_id,a,key)
     if prior: return prior
@@ -209,7 +216,9 @@ def prepare(project_id, request, directory, progress):
             pts=re.search(r'\bn:\s*0\s+pts:\s*(-?\d+)\s+pts_time:([-\d.e+]+)',log)
             if not output.is_file() or not pts: raise ValueError('No decoded frame/timestamp at requested position')
             actual=float(pts[2])-info['container_start']
+            timestamp_check = validate_frame_timestamp(stamp, actual, info)
             frames.append({'requested_source_time':stamp,'actual_source_time':actual,'absolute_pts':int(pts[1]),
+                           'timestamp_check':timestamp_check,
                            'time_base':next(s.get('time_base') for s in info['streams'] if s.get('codec_type')=='video'),'path':str(output)})
             common['files'].append({'path':str(output),'sha256':digest(output)[0]})
         common.update(frames=frames,source_start=min(options['timestamps']),source_end=max(options['timestamps']))
@@ -234,6 +243,22 @@ def prepare(project_id, request, directory, progress):
     if stat_signature(source)!=a['identity']['stat']: raise ValueError('Source changed during evidence generation')
     processes.check()
     return store.add(project_id,'evidence',a,common)
+
+
+def validate_frame_timestamp(requested, actual, info):
+    """Reject mislabeled first/key frames; nominal FPS only sets a conservative tolerance."""
+    from fractions import Fraction
+    import math
+    video = next((s for s in info['streams'] if s.get('codec_type') == 'video'), {})
+    try:
+        fps = float(Fraction(video.get('avg_frame_rate') or video.get('r_frame_rate') or '0/1'))
+    except (ValueError, ZeroDivisionError):
+        fps = 0
+    tolerance = max(.12, 2 / fps) if fps > 0 else .25
+    delta = actual - requested
+    if not math.isfinite(actual) or not -.002 <= delta <= tolerance:
+        raise ValueError(f'Decoded frame PTS does not match request: requested={requested}, actual={actual}. Inspect source gaps/time origin; never label the first decoded keyframe as the requested second.')
+    return {'verified': True, 'delta_seconds': round(delta, 6), 'tolerance_seconds': tolerance}
 
 
 def validate_options(project_id, asset_id, operation, options):

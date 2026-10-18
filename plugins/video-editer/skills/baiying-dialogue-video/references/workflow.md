@@ -1,3 +1,7 @@
+# 当前纯剪辑执行入口
+
+video-editer 0.5.0+ 的纯剪辑使用 [分阶段工具](source-only-stages.md)。下面的节点图用于解释依赖和备料恢复，不取代工具返回的阶段状态。已有原片钩子使用 commerce_timeline_apply；只有生成路线使用 hook_attach。
+
 # 流程节点与恢复
 
 把以下节点映射到实际工作流平台。它们是编排设计，不表示已导入旧数据平台或已存在无人值守服务。
@@ -5,12 +9,14 @@
 ```mermaid
 flowchart TD
     A[解析终点、账号与授权] --> B[盘点商品和素材]
-    B --> C[下载、解码与去重]
+    B --> C[下载、解码、源音频初检与去重]
     C --> D{技术素材足量?}
     D -- 否 --> E[按许可补原回放或智能切片]
     E --> C
     D -- 是 --> F[异步导入与内容审阅]
-    F --> G{同主播同商品且讲解可用?}
+    F --> Q{选区音频合格或钩子展示例外?}
+    Q -- 否 --> E
+    Q -- 是 --> G{同主播同商品且讲解可用?}
     G -- 否 --> E
     G -- 是 --> H[正文剪辑与所选钩子计划]
     H --> O{需要且已授权生成钩子?}
@@ -33,18 +39,20 @@ flowchart TD
 | inventory | 登录检查、子账号查询、该账号商品/视频分页 | 扫描范围、商品候选、切片/原回放/来源数；未扫描完整不宣称全部盘点完成 |
 | materials | 按设定数量、时长、来源数、音频与容量限额 `baiying_prepare_materials` | 原 job ID、`materials.json`、`editor_handoff.json`；完整解码、哈希和缺口 |
 | import | `media_register` → `media_job_status`，短视频也排队 | `asset_key + sha256 → project/job/asset`，仅取 succeeded 且哈希相符的结果 |
+| source_audio_gate | 按 [源音频检查](source-audio.md) 检查文件音轨及实际取用区间 | 每个选区的源哈希、测量/静音证据和通过/排除/待核实；无声只允许配有效独立声音的钩子全身展示，正文无声素材不入选 |
 | semantic_review | 实际抽帧、听取/ASR，标记换人换衣、重复、动作与有效句 | 每个可用源区间、人物服装观察、台词证据；技术足量与语义可用分开记录 |
-| body | 先建立能兑现主要卖点的正文；已有认可正文保存快照后复用 | 源入出点、声音策略、时间线版本和正文时长；一句话与动作完整 |
+| body | 先建立能兑现主要卖点的完整讲解单元；钩子后首单元稳定承接，已有仍获认可的正文保存快照后复用 | 源入出点、声音策略、时间线版本和正文时长；一句话与动作完整，连续短镜头及源成片内部切镜已复查 |
 | hook_plan | 对话/强调口播模式、台词及依据、拖字重音、可选音效落点、角色、参考、衣服与整片时长 | `hook_plan_create`、账号版本、源哈希、完整 prompt；计划字段按真实 schema 映射，不新增虚构参数 |
 | reference | 排队导出参考；按当前支持路线处理并审阅；只上传选中片段 | 原片范围→导出→预处理→上传哈希一致，尺寸/帧率/时长满足当前能力 |
 | generate | 免费预览→`hook_request_prepare`→`hook_generation_begin`→授权的一次 create | `may_submit=true` 才创建；保存 task ID、请求指纹、结果哈希，轮询原任务 |
 | hook_review | 人物、服装、动作、接缝、事实、音频实物审阅 | `hook_output_review` 逐项证据；失败不能 attach，不以 provider succeeded 替代审阅 |
-| compose | 生成钩子在最新 revision 上 `hook_attach`，已有开场按源区间编排；添加音轨、花字及低频装饰转场 | 所有正文事件只偏移一次；全局静音下显式补回钩子声音；效果计数包含叠加层，重叠转场后重新核对时间映射 |
-| deliver | validate→队列 preview→检查→队列 final→实物检查 | 本地视频、项目/任务、实际编码器、时长/尺寸/声音、源清单、检查范围和限制 |
+| compose | 生成钩子在最新 revision 上 `hook_attach`，已有开场按源区间编排；添加音轨、花字及至少 1 处、默认 1 处、最多 2 处低频转场动画 | 所有正文事件只偏移一次；全局静音下显式补回钩子声音；效果计数包含叠加层，重叠转场后重新核对时间映射 |
+| cue_review | 成功 preview/final 的 ID → `audio_review_submit` → `media_job_status` → 逐落点对照与试听记录 | 保存该版渲染 ID、音轨 ID、检查 job/report、有/无音效同电平样本；信号存在、可能掩蔽与听感分开；新版本改声后提交新检查，不复用旧结论 |
+| deliver | validate→队列 preview→连续检查钩子后 8–10 秒及整片→队列 final→实物检查 | 本地视频、项目/任务、实际编码器、时长/尺寸/声音、源清单；实际成片至少 1 处可见转场动画，记录数量、时间点及画面证据；源音频资格、逐段混音掉声、逐音效检查和承接体验分别记录检查范围与限制 |
 
 ## 素材足量的两层判断
 
-技术目标取任务 summary：通过数、计入数、保守时长、独立来源数和缺口。同一原片段与它的切片不重复累计；相似画面只有内容不同且审阅适用才放行计数。
+技术目标先取任务 summary：通过数、计入数、保守时长、独立来源数和缺口，再以源音频与选区审阅结果校正。`require_audio` 不代替实际非静音检查；无声或待核实正文不计入可用数和有效秒数，钩子展示例外单独列出。同一原片段与它的切片不重复累计；相似画面只有内容不同且审阅适用才放行计数。
 
 内容目标取真实视听证据：同一主播和这件衣服，完整卖点句，可用展示动作、可接的起止点和可听声音。一个高质量源片可以承载全部正文，不强迫把所有下载文件用进成片。
 
@@ -62,7 +70,7 @@ flowchart TD
 | 下载链接过期或单个下载失败 | 由百应工具刷新链接，`baiying_resume_materials(retry_failed=true)`；保留已通过文件 |
 | 百应智能切片 waiting/submitted/unknown | 查询原计划；超时不代表未受理，不另起计划重发；重剪需在用户许可范围内 |
 | 素材 partial/needs_input/source_exhausted | 读取 reason/alternatives 和真实缺口；按已有偏好有限补充，保存终点及恢复参数 |
-| 导入或参考导出失败/中断 | `media_job_retry` 新 attempt 排队；保存新 ID 与 retry_of，成功文件/证据可复用 |
+| 导入、参考导出或逐音效检查失败/中断 | `media_job_retry` 从保存请求新建排队 attempt，保存新 ID 与 retry_of；音轨或目标成片变更后重新提交检查，旧请求重试不会检查新版本 |
 | resource_wait / queued | 查 `task_queue_list` 与资源原因，等待或按用户要求取消；不放宽内存/CPU保护来强行通过 |
 | 渲染失败 | 时间线未改且源文件未变用 `render_retry`，按保存的旧 revision 新建排队 attempt；记录新 job ID 并查询到 `succeeded.result`。改过剪辑则 `render_submit` 新任务 |
 | 付费 create 超时未知 | 记录 unknown，核查原提交与服务记录；不可当作未计费再 create |

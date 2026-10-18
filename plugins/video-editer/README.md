@@ -4,6 +4,25 @@ A standalone MCP plugin with local ASR, its own Python/FFmpeg execution core
 and bundled graphics, for Codex and other MCP-compatible agents. The caller
 decides what to edit; the plugin exposes deterministic atomic execution tools.
 
+## 0.6.1: source evidence and readable commerce lettering
+
+- Preserve touching zero-duration ASR tokens in an indivisible timed group, with
+  original components and an explicit listening warning. Do not invent word times
+  or drop words; malformed or isolated timestamps still fail.
+- Decimal separators no longer split sentence candidates. Selection also rejects
+  a partial numeric expression from older transcripts; include adjacent sentence IDs.
+- Commerce lettering uses a main/support readability floor relative to canvas
+  width, supports two explicit lines and checks later scaling. Shorten copy,
+  omit redundant support or review another safe box instead of shrinking text.
+- The Baiying skill compares hook speech before fitting its display; pairs old
+  burned captions with the new quote; and checks outfit continuity and visible
+  evidence separately from an ASR sentence or a medium talking shot.
+
+These fixes do not certify meaning, emotion, lip motion or listening. The caller
+still reviews evidence; pending previews remain distinct from approved delivery.
+No Cardbush runtime changes are required. Tool names/count and dependencies stay
+unchanged; reconnect the MCP server after updating.
+
 ## 0.6.0: mandatory ASR before commerce source selection
 
 The six new tools are `speech_runtime_status`, `speech_model_prepare`,

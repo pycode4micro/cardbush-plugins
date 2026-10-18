@@ -199,6 +199,24 @@ class CommerceTests(unittest.TestCase):
         self.assertLess(layout['support_ink_top']-layout['main_ink_bottom'], layout['main_font_px']*.35)
         self.assertLessEqual(layout['block_height_px']+layout['padding_px']*2, 480)
 
+    def test_tiny_effect_label_rejected_without_mutating_project(self):
+        self.apply();before=m._read(self.pid)
+        with self.assertRaisesRegex(ValueError,'Readable lettering'):
+            m.commerce_typography_add(self.pid,'肩线往内收','往内收','溜肩也友好','detail_underline',4,6,
+                                     [.02,.315,.30,.408],['#FFF7E8','#E86A33'],[])
+        self.assertEqual(before,m._read(self.pid))
+
+    def test_two_line_keyword_and_later_shrink_are_checked_at_presentation(self):
+        from video_editer import canvas, commerce_typography
+        self.apply()
+        item=m.commerce_typography_add(self.pid,'肩线\n往内收','往内收','','keyword_stack',4,6,
+                                      [.02,.3,.30,.48],['#FFF7E8','#E86A33'],[])['overlay']
+        self.assertEqual(item['commerce_text']['layout']['line_count'],2)
+        settings=canvas.settings(m._read(self.pid)['mcp_timeline']['canvas'])
+        self.assertFalse(commerce_typography.readability_errors(item,settings))
+        item['width']*=.5;item['height']*=.5
+        self.assertTrue(commerce_typography.readability_errors(item,settings))
+
     def test_presentation_and_render_submission_resume_without_encoding(self):
         self.apply();palette=['#FFF4DA','#FFAE80']
         hook=m.commerce_typography_add(self.pid,'好看','好看','','hook_center',.2,2.8,[.19,.60,.81,.71],palette,[])['overlay']['id']

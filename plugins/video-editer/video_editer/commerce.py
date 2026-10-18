@@ -86,6 +86,11 @@ def candidate_submit(project_id, asset_id, start, end, role, transcript_job_id=N
                 job = {**media_jobs.status(project_id, saved['job_id']), 'reused': True}; break
     if job is None: job = media_jobs.submit(project_id, request)
     return {**job, 'next_tool': 'media_job_status', 'required_facts': list(FACTS[role]),
+            'selection_guidance': {
+                'hook_picture': 'Review this display WITH the chosen independent quote. Burned source captions about a different sentence are incompatible even without geometric overlap; known conflicts cannot be deferred.',
+                'hook_voice': 'A short complete sentence is not automatically an attention hook. Compare quotes/context for a real attention reason, then fit display duration; listen for emotion instead of approving plain styling narration.',
+                'body': 'Match the spoken claim to visible detail/action. Log look/session continuity; a medium talking shot or unrelated item held in frame is not product detail evidence.',
+            }[role],
             'required_method': METHODS[role], 'after_success': 'Watch/listen to the returned evidence, then commerce_candidate_review. If unable to observe a fact, commerce_candidate_defer records null for an explicitly unapproved review copy; known defects still require rejection.'}
 
 
@@ -280,6 +285,7 @@ def presentation_record(project_id, theme_colors, hook_text_ids, body_text_ids, 
 
 
 def validate_presentation(timeline, plan):
+    from . import canvas, commerce_typography
     errors = []
     entries = {e['id']: e for kind, e in timing.entries(timeline) if kind in ('overlay', 'callout', 'caption')}
     hook_end = timing.time_map(timeline)['clips'][0]['end']
@@ -289,6 +295,8 @@ def validate_presentation(timeline, plan):
             if e is None: errors.append('Missing text event: ' + ident); continue
             if e.get('commerce_text') and e['commerce_text']['theme_colors'] != plan['theme_colors']:
                 errors.append('Effect text does not share the declared palette: ' + ident)
+            errors.extend(ident + ': ' + message for message in
+                          commerce_typography.readability_errors(e, canvas.settings(timeline['canvas'])))
             if field == 'hook_text_ids' and not 0 <= e.get('start', -1) < e.get('end', -1) <= hook_end + .04:
                 errors.append('Hook text must fall inside the hook: ' + ident)
             if field == 'body_text_ids' and e.get('start', -1) < hook_end:

@@ -11,7 +11,7 @@ import wave
 
 from . import engine, media_jobs, media_ops, media_store, processes, resources
 
-VERSION = 'speech-evidence-1'
+VERSION = 'speech-evidence-2'
 MODEL_REPO = 'Systran/faster-whisper-small'
 MODEL_REVISION = '536b0662742c02347bc0e980a01041f333bce120'
 MODEL_FILES = ('config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt')
@@ -101,6 +101,52 @@ def submit(project_id, asset_id, start=0, end=None, language='zh', device='auto'
         'device': device, 'model_path': str(model_dir())})
 
 
+def _numeric_continuation(left, right):
+    """A decimal/list separator is not a sentence stop inside a number."""
+    return bool(re.search(r'\d[.．,，、]$', left.rstrip())
+                and re.match(r'\d', right.lstrip()))
+
+
+def _group_zero_duration_words(raw_words):
+    """Preserve untimed tokens inside a touching timed group, without inventing times.
+
+    Whisper can assign 0 seconds to a Chinese token. It cannot be selected alone;
+    keep the original components and require review of the entire timed group.
+    Nonfinite, negative, reversed and isolated timestamps remain errors.
+    """
+    rows = copy.deepcopy(raw_words)
+    numeric = lambda x: type(x) in (float, int) and math.isfinite(x)
+
+    def valid(row):
+        return (all(numeric(row.get(k)) for k in ('start', 'end', 'probability'))
+                and 0 <= row['probability'] <= 1 and row['end'] >= row['start']
+                and isinstance(row.get('word'), str) and bool(row['word'].strip()))
+
+    grouped, i = [], 0
+    while i < len(rows):
+        row = rows[i]
+        if valid(row) and row['start'] == row['end']:
+            parts = [row]; j = i + 1
+            while j < len(rows) and valid(rows[j]) and rows[j]['start'] == rows[j]['end'] == row['start']:
+                parts.append(rows[j]); j += 1
+            previous = grouped[-1] if grouped else None
+            following = rows[j] if j < len(rows) else None
+            if previous and valid(previous) and previous['end'] > previous['start'] and abs(previous['end'] - row['start']) <= 1e-6:
+                components = previous.get('timestamp_components', [copy.deepcopy(previous)]) + parts
+                previous.update(word=previous['word'] + ''.join(p['word'] for p in parts),
+                                probability=min(p['probability'] for p in components),
+                                timestamp_components=components, timestamp_basis='grouped_zero_duration')
+                i = j; continue
+            if following and valid(following) and following['end'] > following['start'] and abs(following['start'] - row['start']) <= 1e-6:
+                components = parts + [copy.deepcopy(following)]
+                following.update(word=''.join(p['word'] for p in components),
+                                 probability=min(p['probability'] for p in components),
+                                 timestamp_components=components, timestamp_basis='grouped_zero_duration')
+                grouped.append(following); i = j + 1; continue
+        grouped.append(row); i += 1
+    return grouped
+
+
 def build_sentences(segments, start, end):
     """Only structural proposals. Punctuation, pauses and ASR segments are not proof of meaning."""
     words, issues = [], []
@@ -109,7 +155,7 @@ def build_sentences(segments, start, end):
         raw_words = segment.get('words') or []
         if segment.get('text', '').strip() and not raw_words:
             issues.append('segment_%d_missing_word_timestamps' % segment_index)
-        for raw in raw_words:
+        for raw in _group_zero_duration_words(raw_words):
             text = raw.get('word', '')
             if not isinstance(text, str) or not text.strip(): continue
             a, b, probability = raw.get('start'), raw.get('end'), raw.get('probability')
@@ -124,10 +170,16 @@ def build_sentences(segments, start, end):
                 issues.append('zero_word_timestamp_%d' % len(words)); continue
             words.append({'id': len(words), 'start': round(a, 6), 'end': round(b, 6),
                           'word': text, 'probability': probability, 'segment': segment_index})
+            if raw.get('timestamp_components'):
+                words[-1].update(timestamp_components=raw['timestamp_components'],
+                                 timestamp_basis=raw['timestamp_basis'])
             previous_end = b
     sentences, first = [], 0
     for i, word in enumerate(words):
         following = words[i + 1] if i + 1 < len(words) else None
+        # Do not split 14. / 3 into two selectable sentences, even when the
+        # decoder also places an ASR segment boundary or pause at the decimal.
+        if following and _numeric_continuation(word['word'], following['word']): continue
         reason = ('punctuation' if PUNCTUATION.search(word['word']) else
                   'pause' if following and following['start'] - word['end'] >= .35 else
                   'asr_segment' if following and following['segment'] != word['segment'] else
@@ -137,6 +189,8 @@ def build_sentences(segments, start, end):
         text = ''.join(w['word'] for w in selected).strip()
         flags = []
         if min(w['probability'] for w in selected) < .45: flags.append('low_word_confidence')
+        if any(w.get('timestamp_basis') == 'grouped_zero_duration' for w in selected):
+            flags.append('grouped_word_timing_requires_listening')
         if reason in ('asr_segment', 'window_end'): flags.append('meaning_boundary_unverified')
         if first == 0 and start > 0: flags.append('window_start_context_missing')
         if i == len(words) - 1: flags.append('check_sentence_tail')
@@ -178,8 +232,12 @@ def candidates_get(project_id, job_id, role='all', offset=0, limit=20):
         if role == 'hook_voice' and not .8 <= row['duration'] <= 4: continue
         selected.append({**row, 'context_before': rows[i - 1]['text'] if i else '',
                          'context_after': rows[i + 1]['text'] if i + 1 < len(rows) else '',
+                         'context_before_sentence_id': rows[i - 1]['sentence_id'] if i else None,
+                         'context_after_sentence_id': rows[i + 1]['sentence_id'] if i + 1 < len(rows) else None,
                          'low_confidence_words': [w for w in value['words'][row['first_word']:row['last_word'] + 1] if w['probability'] < .45],
+                         'grouped_word_timings': [w for w in value['words'][row['first_word']:row['last_word'] + 1] if w.get('timestamp_components')],
                          'hook_duration_fit': .8 <= row['duration'] <= 4})
+    hook_guidance = ['Duration fit is not hook quality: compare real quotes/context for attention and emotional delivery before fitting display footage; a plain styling description is not a strong hook.'] if role == 'hook_voice' else []
     return {'project_id': project_id, 'transcript_job_id': job_id, 'asset_id': value['asset_id'],
             'source_sha256': value['source_sha256'], 'transcript_sha256': checksum,
             'speech_status': value['speech_status'], 'items': selected[offset:offset + limit],
@@ -187,7 +245,7 @@ def candidates_get(project_id, job_id, role='all', offset=0, limit=20):
             'next_tool': 'speech_range_validate' if selected else 'commerce_workflow_status',
             'required_actions': ['Read each full quote AND its context; join adjacent sentence IDs for a complete idea. Never remove conditions or split a word.',
                                  'ASR proposals are not approved sentences. Low confidence and unverified boundaries require checking the source.',
-                                 'Pass chosen IDs to speech_range_validate, then commerce_speech_candidate_submit; no hand-written transcript or guessed seconds.']}
+                                 'Pass chosen IDs to speech_range_validate, then commerce_speech_candidate_submit; no hand-written transcript or guessed seconds.'] + hook_guidance}
 
 
 def range_validate(project_id, job_id, sentence_ids, start=None, end=None):
@@ -201,6 +259,9 @@ def range_validate(project_id, job_id, sentence_ids, start=None, end=None):
     if order != list(range(order[0], order[0] + len(order))): raise ValueError('Select consecutive sentences in source order; do not omit conditions or join disjoint quotes')
     rows = [value['sentences'][i] for i in order]
     words = value['words']; first, last = rows[0]['first_word'], rows[-1]['last_word']
+    if ((first and _numeric_continuation(words[first - 1]['word'], words[first]['word']))
+            or (last + 1 < len(words) and _numeric_continuation(words[last]['word'], words[last + 1]['word']))):
+        raise ValueError('Selected sentence IDs split a numeric expression (for example 14.3); include the adjacent sentence IDs, never cut the number')
     before = words[first - 1]['end'] if first else value['source_start']
     after = words[last + 1]['start'] if last + 1 < len(words) else value['source_end']
     lo, hi = words[first]['start'], words[last]['end']

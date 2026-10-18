@@ -1,5 +1,6 @@
 """Transparent editable commerce lettering; explicit copy and reviewed placement."""
 import re
+import math
 import uuid
 from pathlib import Path
 
@@ -16,12 +17,33 @@ def overlaps(a, b):
     return max(a[0], b[0]) < min(a[2], b[2]) and max(a[1], b[1]) < min(a[3], b[3])
 
 
+def readability_errors(item, settings):
+    """Mechanical size floor for this commerce profile, not visual approval."""
+    meta = item.get('commerce_text', {}); layout = meta.get('layout', {})
+    if not meta: return []
+    main = layout.get('main_font_px', 0); support = layout.get('support_font_px')
+    # Recheck after generic overlay scaling as well as on insertion. Ignore
+    # transient entrance/exit shrink; steady visible states must stay readable.
+    sx = round(item['width'] * settings['width']) / max(1, layout.get('raster_width', round(item['width'] * settings['width'])))
+    sy = round(item['height'] * settings['height']) / max(1, layout.get('raster_height', round(item['height'] * settings['height'])))
+    scales = [k.get('scale', 1) for k in item.get('keyframes', []) if k.get('opacity', 1) >= .9]
+    scale = min(sx, sy) * min(scales or [1])
+    limits = {'main': math.ceil(settings['width'] * .07), 'support': math.ceil(settings['width'] * .036)}
+    errors = []
+    if main * scale < limits['main']:
+        errors.append('Main effect lettering would be %.1fpx; minimum %dpx on this canvas' % (main * scale, limits['main']))
+    if meta.get('support') and (support or 0) * scale < limits['support']:
+        errors.append('Support lettering would be %.1fpx; minimum %dpx on this canvas' % ((support or 0) * scale, limits['support']))
+    return errors
+
+
 @project_write
 def add(project_id, text, emphasis, support, style, start, end, box, theme_colors, reserved_boxes):
     from . import mcp_server as server
     commerce.load(project_id)
     if style not in ('hook_center', 'keyword_stack', 'detail_underline'): raise ValueError('Unknown transparent lettering style')
-    if not isinstance(text, str) or not 1 <= len(text) <= 24 or '\n' in text: raise ValueError('Use one readable phrase, 1–24 characters')
+    if not isinstance(text, str) or not 1 <= len(text) <= 24 or len(text.split('\n')) > 2 or any(not s.strip() for s in text.split('\n')):
+        raise ValueError('Use one readable phrase, 1–24 characters, with at most two explicit lines')
     if not isinstance(support, str) or len(support) > 18 or '\n' in support: raise ValueError('Support text is optional, max 18 characters')
     if emphasis and emphasis not in text: raise ValueError('emphasis must occur in text')
     if not isinstance(theme_colors, list) or not 1 <= len(theme_colors) <= 3 or any(not isinstance(c, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', c) for c in theme_colors):
@@ -48,33 +70,38 @@ def add(project_id, text, emphasis, support, style, start, end, box, theme_color
     settings = canvas.settings(timeline['canvas']); width = max(1, round((x1 - x0) * settings['width']))
     height = max(1, round((y1 - y0) * settings['height']))
     image = Image.new('RGBA', (width, height)); draw = ImageDraw.Draw(image)
-    font_path = visuals.font_file(); stroke = max(1, round(width / 130)); pad = stroke * 3
+    font_path = visuals.font_file(); lines = text.split('\n')
     # Fit the actual glyph block, including the support and underline, rather
     # than pinning the support to the bottom of a potentially tall safe box.
     # A wide safety box must not create a large empty gap inside the lettering.
-    for size in range(max(12, height - pad * 2), 10, -1):
+    minimum = math.ceil(settings['width'] * .07)
+    for size in range(max(minimum, height), minimum - 1, -1):
+        stroke = max(2, round(size * .05)); pad = stroke * 2
         font = ImageFont.truetype(font_path, size)
-        bounds = draw.textbbox((0, 0), text, font=font, stroke_width=stroke)
-        ink_height = bounds[3] - bounds[1]
+        line_bounds = [draw.textbbox((0, 0), line, font=font, stroke_width=stroke) for line in lines]
         gap = max(2, round(size * .10))
+        ink_height = sum(b[3] - b[1] for b in line_bounds) + gap * (len(lines) - 1)
         line_width = max(2, stroke)
         decoration_height = gap + line_width if style == 'detail_underline' else 0
-        small = ImageFont.truetype(font_path, max(11, int(size * .48))) if support else None
+        small = ImageFont.truetype(font_path, max(math.ceil(settings['width'] * .036), int(size * .48))) if support else None
         sb = draw.textbbox((0, 0), support, font=small, stroke_width=max(1, stroke // 2)) if support else (0, 0, 0, 0)
         total_height = ink_height + decoration_height + (gap + sb[3] - sb[1] if support else 0)
-        if (bounds[2] - bounds[0] <= width - pad * 2
+        if (all(b[2] - b[0] <= width - pad * 2 for b in line_bounds)
                 and sb[2] - sb[0] <= width - pad * 2
                 and total_height <= height - pad * 2): break
-    else: raise ValueError('Text does not fit the reviewed box; shorten the copy or choose another box')
+    else: raise ValueError('Readable lettering does not fit the reviewed box (main >= %dpx, support >= %dpx). Shorten to a key phrase, use two explicit lines with more height, remove optional support, or review another safe box; never shrink into a tiny label.' % (minimum, math.ceil(settings['width'] * .036)))
     centered = style == 'hook_center'
-    x = (width - (bounds[2] - bounds[0])) / 2 - bounds[0] if centered else pad - bounds[0]
-    y = pad - bounds[1]
     split = text.find(emphasis) if emphasis else -1
-    parts = [(text, theme_colors[0])] if split < 0 else [(text[:split], theme_colors[0]),
-        (emphasis, theme_colors[min(1, len(theme_colors) - 1)]), (text[split + len(emphasis):], theme_colors[0])]
-    for part, color in parts:
-        draw.text((x, y), part, font=font, fill=color, stroke_width=stroke, stroke_fill='#26211F')
-        x += draw.textlength(part, font=font)
+    line_top, offset = pad, 0
+    for line, bounds in zip(lines, line_bounds):
+        x = (width - (bounds[2] - bounds[0])) / 2 - bounds[0] if centered else pad - bounds[0]
+        y = line_top - bounds[1]
+        origin = x
+        for index, char in enumerate(line):
+            color = theme_colors[min(1, len(theme_colors) - 1)] if split >= 0 and split <= offset + index < split + len(emphasis) else theme_colors[0]
+            draw.text((origin + draw.textlength(line[:index], font=font), y), char, font=font, fill=color, stroke_width=stroke, stroke_fill='#26211F')
+        line_top += bounds[3] - bounds[1] + gap
+        offset += len(line) + 1
     cursor = pad + ink_height
     if style == 'detail_underline':
         line_y = cursor + gap + line_width / 2
@@ -103,6 +130,8 @@ def add(project_id, text, emphasis, support, style, start, end, box, theme_color
         'commerce_text': {'text': text, 'support': support, 'emphasis': emphasis, 'style': style,
                           'theme_colors': theme_colors, 'reserved_boxes': reserved_boxes,
                           'layout': {'main_font_px': size, 'main_ink_bottom': pad + ink_height,
+                                     'raster_width': width, 'raster_height': height,
+                                     'line_count': len(lines), 'stroke_px': stroke,
                                      'support_font_px': small.size if support else None,
                                      'support_ink_top': support_top if support else None,
                                      'block_height_px': total_height, 'padding_px': pad}}}

@@ -10,7 +10,7 @@ Use this plugin when an agent needs to execute a concrete video-editing plan.
 For source-only commerce edits, first use the staged workflow in
 [Source-only stages](../baiying-dialogue-video/references/source-only-stages.md).
 Start/resume with commerce_workflow_start / commerce_workflow_status and follow
-its next_tool and next_arguments. In 0.6.0+, first complete local ASR with
+its next_tool and next_arguments. Use 0.6.1+ for this workflow; first complete local ASR with
 speech_transcribe_submit, speech_candidates_get and speech_range_validate; read
 [Speech evidence](../baiying-dialogue-video/references/speech-evidence.md).
 Use commerce_speech_candidate_submit with consecutive sentence IDs for voice/body,
@@ -22,6 +22,12 @@ fill delivery_review_form only after reviewing its evidence, then record and
 check commerce_delivery_get. Missing or uncertain facts do not pass.
 ASR uses a local recognition model; it never generates speech or independently
 certifies visual meaning, sentence meaning or emotional delivery.
+Touching zero-duration tokens are preserved in indivisible estimated groups,
+flagged for listening; isolated/invalid timings still fail. Decimal numbers must
+remain whole, including in older transcripts. Read candidate context before
+selection. Commerce lettering rejects unreadably small main/support text and
+supports two explicit lines; shorten copy or review another safe box instead of
+shrinking into a label. Known source-caption/voice conflicts cannot be deferred.
 In 0.5.1+, missing visual/listening capability may be recorded honestly using
 commerce_candidate_defer (unknown=null). Explicit preview_only timeline assembly
 permits an unapproved review copy; rejected/silent candidates and final delivery

@@ -7,7 +7,7 @@ description: 编排百应主播商品视频，从选账号商品、备料校验�
 
 先确定终点：`plan` 只规划；`materials` 只备料；`handoff` 导入异步队列后停止；`produce` 才编辑和渲染。已有授权及明确参数直接沿用，不能将“先不实际剪辑”升级为 produce。
 
-按 [组件](references/components.md) 发现实际工具 schema。编辑器为 `video-editer@cardbush-plugins`，服务名 `video_editer`。本流程需要 0.6.0+ 的内置 ASR 与分阶段工具；缺工具时报告版本缺口，不临时写脚本替代转写、验收或启动另一套平台。
+按 [组件](references/components.md) 发现实际工具 schema。编辑器为 `video-editer@cardbush-plugins`，服务名 `video_editer`。本流程使用 0.6.1+：修复零时长词、数值断句及过小花字；缺工具或仍为旧版时报告版本缺口，不临时写脚本替代转写、验收或启动另一套平台。
 
 ## 选择唯一执行路线
 
@@ -26,6 +26,8 @@ description: 编排百应主播商品视频，从选账号商品、备料校验�
 5. **再加花字和声音。** 读 [布局](references/typography-layout.md) 与 [音效](references/typography-sound.md)。优先 `commerce_typography_add` 生成透明字和短动效；实际看图提供脸、动作、原字幕避让框。添加 role=sfx 音轨后，用 `commerce_presentation_record` 登记真实事件 ID 和本片配色。
 6. **预览及返修。** `commerce_render_submit(preview=true)` → 成功后 `delivery_inspection_submit` → 等检查任务成功。审阅实际连续画面和声音，音效另做 `audio_review_submit`。用 `delivery_review_record(inspection_job_id=...)` 登记证据。失败修内容、生成新版本；执行失败才重试旧任务。
 7. **最终交付。** 审阅版通过后提交 `preview=false`，对最终文件重新检查并记录。`commerce_delivery_get` 返回 delivery_ready=true 才称合格交付。缺能力/未试听/缺检查只交待审阅版并列明缺项。
+
+选钩子先比较完整原声的吸引力，再找能容纳它的全身展示；普通穿法说明不能因为短、容易装入三秒就入选。画面和独立配音成对复查烧录字幕的意思，位置不重叠仍可能冲突。具体淘汰例见 [样例与返修](references/quality-and-repair.md#纯剪辑选材的反例)。
 
 ## 当前商品剪辑默认要求
 

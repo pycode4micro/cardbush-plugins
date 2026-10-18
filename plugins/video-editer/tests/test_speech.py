@@ -159,5 +159,54 @@ class SpeechTests(unittest.TestCase):
             self.assertTrue(Path(value['result']['transcript_path']).is_file())
         self.assertEqual(len(speech.report(self.pid,job)[0]['words']),4)
 
+    def test_touching_zero_duration_tokens_preserve_quote_and_estimated_group(self):
+        segments=[{'text':'拍就可以了。','words':[
+            {'word':'拍','start':1,'end':1.3,'probability':.9},
+            {'word':'就可以','start':1.3,'end':1.3,'probability':.85},
+            {'word':'了。','start':1.3,'end':1.5,'probability':.9}]}]
+        original=copy.deepcopy(segments)
+        job=self.finished(segments)
+        row=speech.candidates_get(self.pid,job)['items'][0]
+        self.assertEqual(row['text'],'拍就可以了。')
+        self.assertIn('grouped_word_timing_requires_listening',row['warnings'])
+        self.assertEqual(row['grouped_word_timings'][0]['timestamp_components'][1]['word'],'就可以')
+        self.assertEqual(row['meaning_status'],'unreviewed')
+        self.assertEqual(segments,original)
+        binding=speech.range_validate(self.pid,job,[row['sentence_id']])
+        self.assertLessEqual(binding['start'],1);self.assertGreaterEqual(binding['end'],1.5)
+        with self.assertRaisesRegex(ValueError,'cuts'):
+            speech.range_validate(self.pid,job,[row['sentence_id']],1.3,1.5)
+
+    def test_leading_zero_duration_group_and_isolated_zero_fail_closed(self):
+        words,rows,errors=speech.build_sentences([{'text':'28度。','words':[
+            {'word':'28','start':1,'end':1,'probability':.8},
+            {'word':'度。','start':1,'end':1.3,'probability':.9}]}],0,12)
+        self.assertFalse(errors);self.assertEqual(rows[0]['text'],'28度。')
+        self.assertEqual((words[0]['start'],words[0]['end']),(1,1.3))
+        _,_,errors=speech.build_sentences([{'text':'孤立','words':[
+            {'word':'孤立','start':1,'end':1,'probability':.9}]}],0,12)
+        self.assertTrue(errors)
+
+    def test_decimal_not_split_at_period_pause_or_asr_segment_boundary(self):
+        segments=[{'text':'14.','words':[{'word':'14.','start':1,'end':1.4,'probability':.9}]},
+                  {'text':'3微米以内。','words':[{'word':'3','start':1.9,'end':2.1,'probability':.9},
+                    {'word':'微米以内。','start':2.1,'end':3,'probability':.9}]}]
+        job=self.finished(segments)
+        rows=speech.candidates_get(self.pid,job)['items']
+        self.assertEqual(len(rows),1);self.assertEqual(rows[0]['text'],'14.3微米以内。')
+        self.assertEqual(speech.range_validate(self.pid,job,[rows[0]['sentence_id']])['text'],'14.3微米以内。')
+
+    def test_legacy_transcript_cannot_select_only_fractional_digits(self):
+        job=self.finished(); value,checksum=speech.report(self.pid,job)
+        value['words']=[{'word':'14.','start':1,'end':1.4}, {'word':'3微米以内。','start':1.6,'end':3}]
+        value['sentences']=[{'sentence_id':'sentence_0000','first_word':0,'last_word':0,'text':'14.','warnings':[]},
+                            {'sentence_id':'sentence_0001','first_word':1,'last_word':1,'text':'3微米以内。','warnings':[]}]
+        with patch.object(speech,'report',return_value=(value,checksum)):
+            for ident in ['sentence_0000','sentence_0001']:
+                with self.assertRaisesRegex(ValueError,'numeric expression'):
+                    speech.range_validate(self.pid,job,[ident])
+            result=speech.range_validate(self.pid,job,['sentence_0000','sentence_0001'])
+        self.assertEqual(result['text'],'14.3微米以内。')
+
 
 if __name__=='__main__':unittest.main()

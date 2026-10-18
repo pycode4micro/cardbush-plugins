@@ -1,5 +1,34 @@
 # Validation
 
+## 0.6.1 source selection repair — 2026-10-18
+
+82 targeted regressions passed: speech (18), speech clock (1), commerce (25),
+delivery review (20), shared resources/queue (18). Both skill structure validators
+passed. The commerce cases reject tiny labels without changing the project,
+accept an explicit two-line keyword layout, and reject later unreadable scaling.
+
+A read-only replay of 40 saved ASR decoder outputs from the reported local run
+now validates every timestamp structure while preserving all nonblank word text.
+All 14 formerly failed outputs contained recoverable touching zero-duration
+tokens; their components and low confidence are retained, with listening
+warnings. This parsing replay is not a fresh inference or a listening approval.
+Malformed/isolated timestamps still fail, and decimals cannot be split into
+independent sentence selections, including in a legacy transcript.
+
+A fresh MCP stdio run also transcribed one of those previously failing 38-second
+original sources: 10 sentence proposals, 191 timed groups, no timestamp errors.
+It verified 110 tools, shared heavy concurrency 1, source selection and word-cut
+rejection, job deduplication, and an unchanged timeline. Actual ASR device was
+bounded CPU int8 because CUDA was unavailable; no customer edit/render or
+candidate preview was submitted. Two lettering assets were visually inspected
+in an isolated synthetic fixture, not approved as a finished customer video.
+
+The reported video remains a 540x960 review copy, not an approved 1080x1920
+delivery. Source-caption/voice conflicts, a weak opening quote, outfit changes
+and insufficient detail emphasis are now explicit selection/repair examples in
+the skills. These are caller judgements; the plugin does not certify audiovisual
+meaning. No Cardbush host runtime or customer project state was modified.
+
 ## 0.6.0 local ASR prerequisite — 2026-10-18
 
 102 targeted regressions passed: speech (14), speech clock (1), commerce (23),

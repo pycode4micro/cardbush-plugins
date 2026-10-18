@@ -1,5 +1,38 @@
 # Validation
 
+## 0.6.0 local ASR prerequisite — 2026-10-18
+
+102 targeted regressions passed: speech (14), speech clock (1), commerce (23),
+delivery review (20), shared resources/queue (18), and long media (26).
+Two additional isolated standalone checks passed for the declared import
+boundary and FFmpeg stdin handling (104 checks total for this update).
+The speech-clock case uses only short synthetic audio: delayed audio, nonzero
+container origin, trimmed windows and padding stay aligned. No customer edit is
+created by these tests. Both bundled skill structure validators passed.
+
+Real MCP stdio transcription was tested on an existing authorized source in an
+isolated project. It returned 19 sentence proposals and 162 timed ASR words.
+Selection before transcription and a truncated first-word range were rejected;
+duplicate submission reused its job, recovery returned speech_candidates_get,
+and the original timeline stayed unchanged. No candidate video preview, edit,
+video generation or customer render was submitted. This is speech evidence,
+not a listening, sentence-meaning or creative quality approval.
+
+The initial run found a PyAV API incompatibility during second-pass decoding.
+The worker now consumes the already normalized PCM samples directly. The failed
+job remains recorded and its successful retry used media_job_retry and the same
+heavy queue. Actual device on this host was CPU int8, four bounded threads:
+CUDA ASR was unavailable and the existing policy allowed CPU fallback. CUDA
+preference and strict refusal of forbidden CPU fallback are unit-tested, not a
+claim of an actual CUDA inference on this host. GPU video encoding is separate.
+
+The new gate covers missing/corrupt/cross-source transcripts, nonconsecutive IDs,
+first/last-word cuts, adjacent unselected speech, no-speech display-only records,
+unknown meaning, low-confidence words, compact polling, legacy missing evidence,
+interrupted/failed retry routing and partial transcript coverage. It does not
+detect a model lying about listening or prove ASR word estimates acoustically
+exact. Default model files are prepared locally and not shipped in the ZIP.
+
 ## 0.5.1 real preview run and pending-review distinction — 2026-10-18
 
 43 targeted regressions pass: commerce workflow (23) and delivery review (20). New cases cover pending-only preview admission, blocked final delivery, known-defect/silent/rejected candidate exclusion, nonwaivable pending facts, pending status never hiding repair/stale evidence, wrong audio/image import rejected before queue submission, and compact main/support glyph spacing. Both bundled skills pass the skill validator. The 101-test 0.5.0 baseline remains separately recorded below; this patch did not rerun every historical suite.

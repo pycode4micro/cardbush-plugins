@@ -30,6 +30,9 @@ def range_evidence(project_id, asset_id, start, end, directory, progress):
 
 def execute(project_id, request, directory, progress):
     if request['operation'] == 'commerce_inspect':
+        from . import speech
+        speech.verify_binding(project_id, request.get('speech_binding'), request['asset_id'],
+                              request['start'], request['end'], request['role'])
         result = range_evidence(project_id, request['asset_id'], request['start'], request['end'], directory / 'candidate', progress)
         return {**result, 'role': request['role'], 'project_id': project_id,
                 'operation': 'commerce_inspect', 'request': copy.deepcopy(request)}

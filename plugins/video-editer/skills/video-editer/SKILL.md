@@ -1,6 +1,6 @@
 ---
 name: video-editer
-description: Inspect and edit videos using explicit timelines, local audiovisual evidence and a GPU-first single-heavy-task queue. Also orchestrate account-specific generated opening hooks using real reference slices, an external generation provider, durable task records and reviewed insertion. The execution tools do not call a model or infer editorial intent.
+description: Transcribe, inspect and edit videos using local word-timed ASR, source-bound sentence candidates, explicit timelines and a GPU-first single-heavy-task queue. Pure commerce edits require transcription before selection; optional generated hooks use an external provider only on request. Tools do not infer editorial intent or certify listening quality.
 ---
 
 # video_editer
@@ -10,14 +10,18 @@ Use this plugin when an agent needs to execute a concrete video-editing plan.
 For source-only commerce edits, first use the staged workflow in
 [Source-only stages](../baiying-dialogue-video/references/source-only-stages.md).
 Start/resume with commerce_workflow_start / commerce_workflow_status and follow
-its next_tool. Review candidate display, independent source voice and body units
+its next_tool and next_arguments. In 0.6.0+, first complete local ASR with
+speech_transcribe_submit, speech_candidates_get and speech_range_validate; read
+[Speech evidence](../baiying-dialogue-video/references/speech-evidence.md).
+Use commerce_speech_candidate_submit with consecutive sentence IDs for voice/body,
+not guessed seconds. Review candidate display, independent source voice and body units
 before commerce_timeline_apply; use commerce_typography_add for transparent
 lettering and commerce_presentation_record for the real event IDs. Render via
 commerce_render_submit. Queue delivery_inspection_submit for the actual output,
 fill delivery_review_form only after reviewing its evidence, then record and
 check commerce_delivery_get. Missing or uncertain facts do not pass.
-These tools are available in 0.5.0+. They do not call an AI or independently
-certify visual meaning; they make the required decisions explicit and durable.
+ASR uses a local recognition model; it never generates speech or independently
+certifies visual meaning, sentence meaning or emotional delivery.
 In 0.5.1+, missing visual/listening capability may be recorded honestly using
 commerce_candidate_defer (unknown=null). Explicit preview_only timeline assembly
 permits an unapproved review copy; rejected/silent candidates and final delivery
@@ -31,8 +35,9 @@ and recheck `delivery_review_get`. Missing/listening-pending checks cannot becom
 delivery_ready. Failed editorial choices need a changed timeline and a new render;
 `render_retry` executes the old saved edit and cannot improve its content.
 It is standalone: do not start an editing platform or load another project's
-environment. Tool outputs refer to its own data directory. No model is called
-inside the plugin; the caller supplies clip boundaries, text and effects.
+environment. Tool outputs refer to its own data directory. ASR is a bundled
+local recognition model; there is no LLM planner or speech synthesis. The caller
+chooses source-bound sentence IDs, display ranges, text and effects.
 
 For live-commerce product cuts, use the bundled
 [editorial defaults](../baiying-dialogue-video/references/editorial.md) unless the

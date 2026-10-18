@@ -1,8 +1,33 @@
 # video_editer
 
-A standalone, model-free MCP plugin with its own Python/FFmpeg execution core
+A standalone MCP plugin with local ASR, its own Python/FFmpeg execution core
 and bundled graphics, for Codex and other MCP-compatible agents. The caller
 decides what to edit; the plugin exposes deterministic atomic execution tools.
+
+## 0.6.0: mandatory ASR before commerce source selection
+
+The six new tools are `speech_runtime_status`, `speech_model_prepare`,
+`speech_transcribe_submit`, `speech_candidates_get`, `speech_range_validate`, and
+`commerce_speech_candidate_submit` (110 tools total). Local faster-whisper is now
+a declared dependency. Model preparation, recognition and retries use the same
+single-heavy-task queue as media/render work. CUDA is preferred; bounded CPU int8
+fallback follows the resource policy and records its reason. QSV video encoding
+does not imply CUDA ASR support. Recognition does not upload footage or synthesize speech.
+
+The staged workflow returns transcript progress and next-call arguments. Voice/body
+selection requires actual source-bound transcript job and consecutive sentence IDs.
+Word-boundary checks reject truncated, disjoint, changed or cross-source evidence;
+timeline and render gates revalidate it. Display-only silent sources get an explicit
+no-audio/no-speech record. ASR punctuation, confidence and context aid full-sentence
+selection but never certify meaning, emotional delivery or listening quality.
+
+Install this plugin's updated requirements in the MCP interpreter and reconnect.
+Call `speech_runtime_status`, then queue `speech_model_prepare` if needed. It downloads
+the pinned small model on first use; `source_model_dir` supports offline transfer.
+`VIDEO_EDITER_ASR_MODEL_DIR` selects another local faster-whisper model directory.
+No caller-written ASR scripts are required. Existing source-only projects retain
+artifacts but need this evidence before new candidate use or renders. Read
+[the exact sequence and limitations](skills/baiying-dialogue-video/references/speech-evidence.md).
 
 ## 0.5.1: explicit pending review copies
 
@@ -143,8 +168,8 @@ See [validation](VALIDATION.md) for the checked release scope.
   encoder probe, with an explicit bounded CPU fallback or a strict GPU mode.
 - Generated opening hooks use account profiles, reference slices, durable
   external task records and explicit review before insertion. The calling
-  agent uses its authorized generation provider; this plugin makes no model
-  calls. Preserve the accepted body edit and verify identity, clothing, speech
+  agent uses its authorized generation provider; this plugin makes no generation
+  calls. Local ASR is separate. Preserve the accepted body edit and verify identity, clothing, speech
   and the join. Original speed is supported; an explicitly requested 1.25x
   hook retimes picture and separate audio together while preserving pitch.
 - The audio, frame-coverage and cadence controls below remain available.
@@ -274,7 +299,7 @@ resource policy, generated hooks and explicit audio/delivery inspection.
 Timeline mutations return an incrementing `revision` and `undo_snapshot`.
 Restore creates a new revision and is itself undoable. Read-only tools do not
 write project state. Failed parameter updates leave project.json unchanged.
-The prompt field is inert metadata. There is no model client or planner.
+The prompt field is inert metadata. There is no LLM planner; local ASR only supplies speech evidence.
 
 Media imports preserve source files and keep copies. Restoring a timeline does
 not delete imported media. Render/frame tools create artifacts, not revisions.

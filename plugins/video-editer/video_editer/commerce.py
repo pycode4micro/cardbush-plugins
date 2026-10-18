@@ -6,7 +6,7 @@ import re
 import uuid
 from pathlib import Path
 
-from . import engine, media_jobs, media_ops, media_store, timing
+from . import engine, media_jobs, media_ops, media_store, timing, speech
 from .locking import project_write
 
 FACTS = {
@@ -54,7 +54,7 @@ def start(project_id, account, product, target_seconds=45):
     return status(project_id)
 
 
-def candidate_submit(project_id, asset_id, start, end, role):
+def candidate_submit(project_id, asset_id, start, end, role, transcript_job_id=None, sentence_ids=None):
     state = load(project_id)
     if role not in FACTS: raise ValueError('role must be hook_picture, hook_voice or body')
     asset = media_ops.asset(project_id, asset_id)
@@ -63,8 +63,16 @@ def candidate_submit(project_id, asset_id, start, end, role):
     if end - start > 60: raise ValueError('Select one complete unit, at most 60 seconds')
     if role == 'hook_picture' and not 2 <= end - start <= 4:
         raise ValueError('Select 2–4 seconds of continuous full-body display at original speed')
+    if role == 'hook_picture':
+        binding = speech.display_binding(project_id, asset_id, start, end, transcript_job_id)
+    else:
+        if not transcript_job_id or not sentence_ids:
+            raise ValueError('ASR is mandatory before voice/body selection: speech_transcribe_submit → speech_candidates_get → commerce_speech_candidate_submit. Supply real transcript_job_id and sentence_ids, never guessed timestamps.')
+        binding = speech.range_validate(project_id, transcript_job_id, sentence_ids, start, end)
+        if binding['asset_id'] != asset_id: raise ValueError('Transcript belongs to another source video')
     request = {'operation': 'commerce_inspect', 'asset_id': asset_id,
-        'start': start, 'end': end, 'role': role, 'scope': [state['account'], state['product']]}
+        'start': start, 'end': end, 'role': role, 'scope': [state['account'], state['product']],
+        'speech_binding': binding}
     job = None
     for saved in reversed(media_jobs.records(project_id)):
         if saved['operation'] == 'commerce_inspect' and saved['status'] in ('queued', 'running', 'succeeded'):
@@ -81,6 +89,13 @@ def candidate_submit(project_id, asset_id, start, end, role):
             'required_method': METHODS[role], 'after_success': 'Watch/listen to the returned evidence, then commerce_candidate_review. If unable to observe a fact, commerce_candidate_defer records null for an explicitly unapproved review copy; known defects still require rejection.'}
 
 
+def speech_candidate_submit(project_id, transcript_job_id, sentence_ids, role):
+    if role not in ('hook_voice', 'body'): raise ValueError('Use this tool for hook_voice/body; display has its own visual source range')
+    binding = speech.range_validate(project_id, transcript_job_id, sentence_ids)
+    return candidate_submit(project_id, binding['asset_id'], binding['start'], binding['end'], role,
+                            transcript_job_id, sentence_ids)
+
+
 def candidate_report(project_id, job_id):
     from .delivery_review import fingerprint
     job = media_jobs.status(project_id, job_id)
@@ -93,6 +108,8 @@ def candidate_report(project_id, job_id):
     asset = media_ops.asset(project_id, report['asset_id'])
     if asset['identity']['sha256'] != report['source_sha256']:
         raise ValueError('Candidate source changed')
+    speech.verify_binding(project_id, report['request'].get('speech_binding'), report['asset_id'],
+                          report['source_start'], report['source_end'], report['role'])
     for kind in ('preview', 'frames'):
         for file in report[kind]['files']:
             if fingerprint(file['path'])['sha256'] != file['sha256']:
@@ -402,15 +419,32 @@ def status(project_id):
                     todo = ['Read exact inspection evidence and every missing/failed check; unknown remains not_checked']
                 else:
                     stage, tool, todo = 'inspection', 'delivery_inspection_submit', ['Inspect this succeeded render, including source and final segment sound']
+    speech_progress = speech.workflow_progress(project_id)
+    if speech_progress['missing']:
+        missing = speech_progress['missing']
+        stage, tool = missing['stage'], missing['next_tool']
+        recovery['next_arguments'] = missing['next_arguments']
+        todo = ['Complete source transcription before selecting material. Poll queued work; retry failures through media_job_retry. Do not invent ASR text/times or bypass this stage.']
+    elif stage == 'candidates':
+        usable = [t for t in speech_progress['transcripts'] if t['speech_status'] == 'speech_detected']
+        if usable:
+            tool = 'speech_candidates_get'
+            recovery['next_arguments'] = {'project_id': project_id, 'job_id': usable[0]['job_id'], 'role': 'all'}
+            todo.insert(0, 'Read full sentence candidates and their surrounding context; select consecutive IDs with commerce_speech_candidate_submit, which validates word boundaries automatically')
+        elif speech_progress['transcripts']:
+            stage, tool = 'materials_insufficient', None
+            todo = ['No recognized source speech is available. Inspect ASR language/quality or obtain authorized audible material; silent/no-speech sources cannot become voice/body. Do not loop transcription or fabricate sentences.']
+    recovery['transcripts'] = speech_progress['transcripts']
     reference_root = Path(__file__).resolve().parents[1] / 'skills' / 'baiying-dialogue-video' / 'references'
     return {**recovery, 'project_id': project_id, 'mode': state['mode'], 'stage': stage, 'state_revision': state['state_revision'],
             'account': state['account'], 'product': state['product'], 'target_seconds': state['target_seconds'],
             'duration_range': state['duration_range'],
-            'reference_files': [str(reference_root / name) for name in ('source-only-stages.md', 'quality-and-repair.md')
+            'reference_files': [str(reference_root / name) for name in ('source-only-stages.md', 'speech-evidence.md', 'quality-and-repair.md')
                                 if (reference_root / name).is_file()],
             'next_tool': tool, 'required_actions': todo, 'accepted_counts': counts,
             'pending_candidate_ids': pending, 'preview_only': (state.get('selection') or {}).get('preview_only', False),
             'candidate_ids': {role: [j for j, r in state['reviews'].items() if r['role'] == role and r['status'] == 'accepted'] for role in FACTS},
             'must_keep': ['Source-only: no video generation or speech synthesis', 'Display picture is not talking footage with its sound muted',
+                          'ASR first: source-bound transcript, complete consecutive sentence IDs and word-boundary validation; ASR is not listening approval',
                           'Original picture/body speed; independent voice speed is explicit', 'GPU first; all heavy operations use the shared single queue'],
             'scope': 'Caller visual/listening observations are recorded, not independently certified by this plugin.'}

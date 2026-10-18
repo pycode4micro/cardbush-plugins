@@ -109,7 +109,10 @@ def execute(project_id,job_id):
             if hashlib.sha256((path/'request.json').read_bytes()).hexdigest()!=state['request_sha256']: raise ValueError('Saved request checksum mismatch')
             request=engine.read_json(path/'request.json')
             with processes.cancellation(path/'cancel.json'):
-                if request['operation']=='audio_review': result=audio_review.execute(request,path,progress)
+                if request['operation'] in ('speech_model_prepare', 'speech_transcribe'):
+                    from . import speech
+                    result=speech.execute(project_id,request,path,progress)
+                elif request['operation']=='audio_review': result=audio_review.execute(request,path,progress)
                 elif request['operation'] in ('commerce_inspect', 'delivery_inspect'):
                     from . import commerce_inspection
                     result=commerce_inspection.execute(project_id,request,path,progress)
@@ -117,6 +120,7 @@ def execute(project_id,job_id):
                 else: result=media_ops.prepare(project_id,request,path,progress)
             # Cancellation after an atomic commit does not undo committed artifacts.
             engine.write_json(path/'result.json',result)
+            state['result_sha256']=hashlib.sha256((path/'result.json').read_bytes()).hexdigest()
             latest=engine.read_json(path/'state.json')
             if latest.get('resource_events'): state['resource_events']=latest['resource_events']
             state.update(status='succeeded',finished_at=time.time()); progress('complete',1,1)

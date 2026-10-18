@@ -5,7 +5,7 @@
 | 组件 | 实测版本或形态 | 负责什么 | 如何接入 |
 |---|---|---|---|
 | `baiying-replay` 插件 + 同名 skill | 0.2.2 | 手机登录、子账号/商品、已有切片与原回放、智能切片、下载校验、缺口和交接 | 发现 `baiying_replay` MCP；无需启动旧数据平台网页/数据库 |
-| cardbush-plugins 的 `video-editer` 插件；界面/MCP/Python 包名 `video_editer` | 0.3.9 增加原位音轨更新、排队逐音效对照与不等待重任务的缓存查询，整合当前剪辑经验；生成默认仍为 2.0 Fast | 项目、统一异步队列、GPU 优先与资源控制、时间线、花字音轨、排队重试及音量/帧覆盖验收；保存账号钩子计划/生成状态/验收与插入 | 安装标识 `video-editer@cardbush-plugins`；随插件提供 `video-editer` 执行 skill 和 `baiying-dialogue-video` 编排 skill，工具本身不会选素材、写文案或调用模型 |
+| cardbush-plugins 的 `video-editer` 插件；界面/MCP/Python 包名 `video_editer` | 当前 0.6.0：110 项工具，内置 ASR、完整句候选、时间戳和来源校验；生成默认仍为 2.0 Fast | 项目、统一异步队列、GPU 优先与资源控制、时间线、花字音轨、排队重试及音量/帧覆盖验收；保存账号钩子计划/生成状态/验收与插入 | 安装标识 `video-editer@cardbush-plugins`；随插件提供 `video-editer` 执行 skill 和 `baiying-dialogue-video` 编排 skill，工具运行本地 ASR 给出结构化提案；不自主决定选片、写文案或调用生成模型 |
 | cardbush-plugins 的 `volcengine-plugins` + `reference-video-production` skill（原 `seedream-mcp`） | 仓库 0.7.1 默认 Fast；早期实测使用 seedream-mcp 0.3.0+codex.20260912063727 | 参考素材编排；Seedance 能力、免费预览、实际视频生成与查询 | 新生成显式用 `doubao-seedance-2-0-fast-260128`、720p、有声；2.5 历史任务记录保持真实，不作新请求模板 |
 | `anchor-asset-registry` 本地 skill | 1.0.0 | 主播别名、脸部与音色资产对应关系 | 本次读取本地登记表；这不是采集接口，也不是独立生成服务 |
 | `video-face-stylizer` 本地插件/CLI + 同名 skill | 包名 `video-face-stylizer-local` 0.2.3 | 原参考片头部视觉预处理，保留商品、动作、背景 | 本次走本地 CLI 并显式接入编辑器重任务锁；换环境先发现能力与入口 |
@@ -27,7 +27,7 @@
 0.3.9 新增 `audio_track_update` 和 `audio_review_submit`。后者共用 media 任务查询/取消/排队重试，对照有/无指定音效的同电平混音，并可绑定成功渲染的实际输出；不自动调增益或认证听感。`media_inspect` 默认只返回已有元数据，无重任务等待；显式 `refresh=true` 才受资源保护地重新探测，缓存查询不是源文件校验。新增能力不增加模型服务或第三方运行依赖。安装升级后重新连接 MCP，仍按实际发现的 schema 调用；不要假设旧会话已热加载新工具。
 
 - FFmpeg/ffprobe：元数据、解码、音视频处理与编码，优先由插件排队调用。
-- 本地 ASR：这次使用 faster-whisper；是可替换的转录能力，不是新增独立插件。中文 ASR 可能把“扣子”误写为“袖子”，不能直接生成销售文案。
+- 本地 ASR：0.6.0 起随 video-editer 安装 faster-whisper，内置模型准备、排队转写、完整句提案、时间戳和来源绑定工具。纯剪辑必经，见 [ASR 步骤](speech-evidence.md)。不用单独找插件或临时脚本；中文 ASR 错词仍需核对，不能直接生成销售文案。默认 small 模型，CUDA 优先，允许时 CPU int8 回退；模型权重首次由工具准备，不放进源码 ZIP。
 - PIL 与 SVG：本次自编图形脚本输出透明 PNG 和可编辑 SVG，编辑器执行叠加及关键帧；字体来自系统。还没有专业花字模板库，也没有调用 Herk 或 Remotion 渲染器。
 - `skill-creator`：整理和维护本 skill 时使用，不是每条视频的运行依赖。
 

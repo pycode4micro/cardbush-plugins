@@ -30,6 +30,7 @@ def main():
         'skills/baiying-dialogue-video/references/editorial.md',
         'skills/baiying-dialogue-video/references/hook-options.md',
         'skills/baiying-dialogue-video/references/source-audio.md',
+        'skills/baiying-dialogue-video/references/speech-evidence.md',
         'skills/baiying-dialogue-video/references/typography-layout.md',
         'skills/baiying-dialogue-video/references/typography-sound.md',
         'skills/baiying-dialogue-video/references/quality-and-repair.md',

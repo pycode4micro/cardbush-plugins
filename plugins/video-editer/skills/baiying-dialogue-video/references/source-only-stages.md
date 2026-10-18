@@ -1,4 +1,4 @@
-# 纯剪辑分阶段操作（video-editer 0.5.0+）
+# 纯剪辑分阶段操作（video-editer 0.6.0+）
 
 本路线固定为原片全身展示配独立原声，不调用生成，不读取生成钩子工具。先把用户要求带入 account、product、target_seconds；不会看/听时保留待审阅，不猜测事实。返回字段是操作依据，旧聊天里的阶段描述不是。
 
@@ -12,7 +12,11 @@
 
 ## 2. 每次只判断一个候选
 
-先粗看已有素材，找到一个合理源区间，再 commerce_candidate_submit(project_id,asset_id,start,end,role)。本工具排队生成连续预览、带实际 PTS 的首/中/尾画面和选区声音测量。成功后实际看/听返回的文件，再调用 commerce_candidate_review(job_id,facts,method,note)。
+**选素材之前必须先转写。** 按 [ASR 与完整句证据](speech-evidence.md) 完成模型准备、排队转写、完整句候选与时间戳校验。`commerce_workflow_status` 会返回 `source_transcription` / `transcript_wait` / `transcript_failed` 及下一步参数。转写依赖随插件提供，不临时补工具。默认原声，禁止把 ASR 当成重新配音。
+
+配音和正文：`speech_candidates_get` 读取原文及前后文 → `speech_range_validate` 校验连续句 ID → `commerce_speech_candidate_submit(project_id,transcript_job_id,sentence_ids,role)`。工具使用已校验区间生成证据，避免手填错秒。展示画面：实际看过后 `commerce_candidate_submit(project_id,asset_id,start,end,role="hook_picture")`，它要求该源已有覆盖所选区间的转写；无声展示可用显式无语音记录。
+
+候选检查排队生成连续预览、带实际 PTS 的首/中/尾画面和选区声音测量。成功后实际看/听返回的文件，再调用 commerce_candidate_review(job_id,facts,method,note)。没有 ASR 绑定的旧候选不能直接沿用或通过 defer 豁免。
 
 | role | 必须逐项观察的 facts | method |
 |---|---|---|

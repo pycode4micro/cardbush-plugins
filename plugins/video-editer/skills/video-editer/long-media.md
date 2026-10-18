@@ -1,7 +1,8 @@
 # Long-source evidence and candidate selection
 
-The host Agent supplies understanding. These tools have no LLM, transcription,
-embedding, image-generation or automatic editorial selection service.
+The host Agent supplies semantic understanding. Since 0.6.0 local ASR is bundled;
+see [Speech evidence](../baiying-dialogue-video/references/speech-evidence.md).
+There is no LLM, embedding, image-generation or automatic editorial selection service.
 
 ## Access and jobs
 
@@ -12,7 +13,7 @@ embedding, image-generation or automatic editorial selection service.
   `media_prepare(operation="fingerprint")` before the evidence workflow.
 - Poll `media_job_status`. Only `succeeded.result` is usable. Stage counts/bytes
   are technical progress, not how much the Agent has understood. Jobs run in a
-  separate persistent FIFO from rendering; media and render workers can overlap.
+  shared persistent FIFO with rendering and a host-wide heavy concurrency of one.
 - `media_job_cancel` retains artifacts. `media_job_retry` creates a new attempt
   of the saved request; completed verified evidence can be reused, but partial
   copy/hash/encode operations restart. It is not byte-level resume.

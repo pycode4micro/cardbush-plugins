@@ -491,7 +491,8 @@ def media_prepare(project_id: str, asset_id: str, operation: Literal['fingerprin
 @mcp.tool(annotations={"readOnlyHint": True})
 def media_job_status(project_id: str, job_id: str) -> dict[str, Any]:
     """Read media job stage, byte/count progress, result or structured failure. No speculative percent."""
-    return media_jobs.status(project_id,job_id)
+    from . import speech
+    return speech.public_job(media_jobs.status(project_id,job_id))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -500,7 +501,7 @@ def media_job_list(project_id: str, offset: int = 0, limit: int = 20) -> dict[st
     media_store.number(offset,'offset',0,1000000); media_store.number(limit,'limit',1,100)
     if not isinstance(offset,int) or not isinstance(limit,int): raise ValueError('Pagination must be integers')
     rows=media_jobs.records(project_id)
-    return {'items':[media_jobs.status(project_id,r['job_id']) for r in rows[offset:offset+limit]],
+    return {'items':[media_job_status(project_id,r['job_id']) for r in rows[offset:offset+limit]],
             'total':len(rows),'next_offset':offset+limit if offset+limit<len(rows) else None}
 
 
@@ -547,6 +548,47 @@ def delivery_review_form(project_id: str, render_job_id: str, inspection_job_id:
     return delivery_review.form(project_id, render_job_id, inspection_job_id)
 
 
+@mcp.tool(annotations={"readOnlyHint": True})
+def speech_runtime_status() -> dict[str, Any]:
+    """Read bundled local ASR dependencies/model availability. No download or inference. CUDA ASR support differs from video encoder GPU support; actual device is recorded by queued inference."""
+    from . import speech
+    return speech.runtime_status()
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def speech_model_prepare(project_id: str, source_model_dir: str | None = None) -> dict[str, Any]:
+    """Queue local ASR model preparation. Reuse VIDEO_EDITER_ASR_MODEL_DIR, copy an offline source_model_dir, or download the pinned small model from Hugging Face (no footage upload). Existing different files are never overwritten. Shares heavy concurrency 1. Poll media_job_status; retry failure with media_job_retry. No generation/editing."""
+    from . import speech
+    return speech.model_prepare(project_id, source_model_dir)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def speech_transcribe_submit(project_id: str, asset_id: str, start: float = 0, end: float | None = None, language: str = 'zh', device: Literal['auto','cuda','cpu'] = 'auto') -> dict[str, Any]:
+    """Required BEFORE commerce material selection. Queue local faster-whisper word-timed ASR for a registered source (max 600s/window; default starts at 0). No audio upload, synthesis or editing. Auto prefers CUDA, allows bounded CPU only under resource policy. Records source hash, word confidence, sentences and estimated timestamps. Silence/no audio yields explicit display-only evidence, never valid body/voice. Poll media_job_status; failed retries share the same single-heavy-task queue. Read speech_candidates_get after success."""
+    from . import speech
+    return speech.submit(project_id, asset_id, start, end, language, device)
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+def speech_candidates_get(project_id: str, job_id: str, role: Literal['all','hook_voice','body'] = 'all', offset: int = 0, limit: int = 20) -> dict[str, Any]:
+    """Page source-bound full sentence proposals with IDs, text, context, word confidence and duration. Hook filter is duration only, not an emotion/quality judgment. Join consecutive IDs for a complete thought. Low confidence and meaning boundaries still need actual review; no ASR result can certify speech naturally ends or sounds good."""
+    from . import speech
+    return speech.candidates_get(project_id, job_id, role, offset, limit)
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+def speech_range_validate(project_id: str, job_id: str, sentence_ids: list[str], start: float | None = None, end: float | None = None) -> dict[str, Any]:
+    """Validate consecutive complete sentence IDs against source-bound ASR word times. Optional range cannot cut first/last word or include adjacent unselected words. Default adds only small handles inside existing pauses. Returns exact source range, quote and evidence hash for commerce_speech_candidate_submit; validation is structural, not listening approval."""
+    from . import speech
+    return speech.range_validate(project_id, job_id, sentence_ids, start, end)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def commerce_speech_candidate_submit(project_id: str, transcript_job_id: str, sentence_ids: list[str], role: Literal['hook_voice','body']) -> dict[str, Any]:
+    """Select voice/body by real sentence IDs, automatically validate timestamps and queue source evidence. No hand-copied seconds needed. Read candidates first; join adjacent sentences to preserve a complete meaning. Still requires commerce_candidate_review/defer after actual audiovisual evidence. This tool does not edit/render a timeline."""
+    return commerce.speech_candidate_submit(project_id, transcript_job_id, sentence_ids, role)
+
+
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def commerce_workflow_start(project_id: str, account: str, product: str, target_seconds: float = 45) -> dict[str, Any]:
     """Start/resume SOURCE-ONLY display+independent-source-voice workflow. Locks account/product/mode. No generation or render. Returns current stage, required actions and exact next tool. Import sources with media_register before candidate selection."""
@@ -560,9 +602,9 @@ def commerce_workflow_status(project_id: str) -> dict[str, Any]:
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
-def commerce_candidate_submit(project_id: str, asset_id: str, start: float, end: float, role: Literal['hook_picture','hook_voice','body']) -> dict[str, Any]:
-    """Inspect a candidate VIDEO range through shared queue: continuous preview, actual source-PTS frames and decoded audio. Hook display: 2–4s. Others: complete sentence/action, <=60s. Returns required observed facts; never infers full-body/non-speaking from a label."""
-    return commerce.candidate_submit(project_id, asset_id, start, end, role)
+def commerce_candidate_submit(project_id: str, asset_id: str, start: float, end: float, role: Literal['hook_picture','hook_voice','body'], transcript_job_id: str | None = None, sentence_ids: list[str] | None = None) -> dict[str, Any]:
+    """Inspect a VIDEO range only AFTER source-bound ASR. Hook display 2–4s requires transcription coverage (no_audio/no_speech record allowed). Voice/body require transcript_job_id and consecutive sentence_ids; prefer commerce_speech_candidate_submit to avoid manual seconds. Queue continuous preview, actual source-PTS frames and audio measurement; still requires actual visual/listening review."""
+    return commerce.candidate_submit(project_id, asset_id, start, end, role, transcript_job_id, sentence_ids)
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})

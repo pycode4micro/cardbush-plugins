@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from video_editer import commerce, engine, media_jobs, media_ops, resources
+from video_editer import commerce, engine, media_jobs, media_ops, resources, speech
 from video_editer import mcp_server as m
 
 
@@ -23,13 +23,26 @@ class CommerceTests(unittest.TestCase):
             'probe': {'duration': 120, 'width': 1080, 'height': 1920, 'has_audio': True}}
         p=m._read(self.pid);p['materials'].append(self.asset);m._write(self.pid,p)
         m.commerce_workflow_start(self.pid, 'fixture account', 'fixture product')
+        # Explicit synthetic transcript, not an ASR inference or customer evidence.
+        request={'operation':'speech_transcribe','asset_id':self.asset['id'],
+                 'source_sha256':self.asset['identity']['sha256'],'start':0,'end':120}
+        self.transcript=media_jobs.submit(self.pid,request,start=False)['job_id']
+        folder=media_jobs.folder(self.pid,self.transcript)
+        segments=[{'text':'测试句。','words':[{'word':'测试句。','start':i+.1,'end':i+.9,'probability':.99}]} for i in range(120)]
+        words,sentences,issues=speech.build_sentences(segments,0,120)
+        engine.write_json(folder/'result.json',{'operation':'speech_transcribe','request':request,
+            'asset_id':self.asset['id'],'source_sha256':self.asset['identity']['sha256'],
+            'source_start':0,'source_end':120,'source_duration':120,'words':words,'sentences':sentences,
+            'timestamp_errors':issues,'speech_status':'speech_detected'})
+        state=engine.read_json(folder/'state.json');state.update(status='succeeded',result_sha256=media_ops.digest(folder/'result.json')[0]);engine.write_json(folder/'state.json',state)
 
     def tearDown(self):
         for p in reversed(self.patches): p.stop()
         self.tmp.cleanup()
 
     def candidate(self, role, start, end, audio='audible_signal', approve=True):
-        job=m.commerce_candidate_submit(self.pid,self.asset['id'],start,end,role)
+        ids=['sentence_%04d'%i for i in range(int(start),int(end))]
+        job=m.commerce_candidate_submit(self.pid,self.asset['id'],start,end,role,self.transcript,ids if role!='hook_picture' else None)
         folder=media_jobs.folder(self.pid,job['job_id']); req=engine.read_json(folder/'request.json')
         preview=folder/'preview.mp4';preview.write_bytes(b'fixture preview')
         frame=folder/'frame.jpg';frame.write_bytes(b'fixture frame')
@@ -58,7 +71,7 @@ class CommerceTests(unittest.TestCase):
         resumed=m.commerce_workflow_status(self.pid)
         self.assertEqual(resumed['stage'],'candidates')
         self.assertEqual(resumed['account'],'fixture account')
-        self.assertEqual(len(resumed['reference_files']),2)
+        self.assertEqual(len(resumed['reference_files']),3)
         first=commerce.load(self.pid)['state_revision']
         m.commerce_workflow_start(self.pid,'fixture account','fixture product')
         self.assertEqual(first,commerce.load(self.pid)['state_revision'])

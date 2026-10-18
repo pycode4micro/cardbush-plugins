@@ -40,9 +40,10 @@ class StandaloneTests(unittest.TestCase):
         assets = [s.media_import(pid, str(path))['asset']['id'] for path in self.media]
         return pid, assets
 
-    def test_no_external_platform_or_model_imports(self):
+    def test_no_external_platform_or_unlisted_model_imports(self):
         package = Path(engine.__file__).parent
-        allowed = sys.stdlib_module_names | {'video_editer', 'mcp', 'PIL', 'numpy', 'imageio_ffmpeg', 'psutil'}
+        allowed = sys.stdlib_module_names | {'video_editer', 'mcp', 'PIL', 'numpy', 'imageio_ffmpeg', 'psutil',
+                                             'faster_whisper', 'ctranslate2', 'huggingface_hub'}
         for source in package.glob('*.py'):
             text = source.read_text(encoding='utf-8')
             tree = ast.parse(text)

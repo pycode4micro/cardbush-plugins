@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "video-editer"
-version = "0.5.1"
+version = "0.6.0"
 description = "Standalone deterministic video editing tools for MCP agents"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["mcp>=1.28,<2", "imageio-ffmpeg>=0.6,<0.7", "Pillow>=11,<13", "numpy>=1.26,<3", "psutil>=5.9,<8"]
+dependencies = ["mcp>=1.28,<2", "imageio-ffmpeg>=0.6,<0.7", "Pillow>=11,<13", "numpy>=1.26,<3", "psutil>=5.9,<8", "faster-whisper==1.2.1"]
 
 [project.optional-dependencies]
 test = ["numpy>=1.26"]

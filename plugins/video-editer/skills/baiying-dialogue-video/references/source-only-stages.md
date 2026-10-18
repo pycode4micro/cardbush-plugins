@@ -20,7 +20,9 @@
 | hook_voice | complete_sentence、emotional_delivery、applicable_to_product、intelligible | listening |
 | body | same_person、same_garment、complete_meaning、complete_action、visible_support_for_claim、intelligible_source_speech | continuous_review_and_listening |
 
-facts 中每个值都必须是观察后的 true/false；不确定用 false，note 说明看到/听到的现象与时间点。首中尾截图帮助定位，不证明三秒内一直没有讲话。自然微笑、转身不等于持续讲话；连续口型与讲解手势应选另段。
+candidate_review 的 facts 必须来自真实观察：符合为 true，已知不符合为 false，note 说明现象与时间点。未能观察的项目用下面的 defer/null 分支，不把未知写成通过或已确认失败。首中尾截图帮助定位，不证明三秒内一直没有讲话。自然微笑、转身不等于持续讲话；连续口型与讲解手势应选另段。
+
+0.5.1+ 的审阅片分支：当前环境不能真实看/听时，不调用 candidate_review 冒充通过；用 commerce_candidate_defer，观察到的事实为 true，未知为 null，note 写明缺失能力与待查项。pending 与 rejected 不同：已知 false、无声正文/配音和已被拒绝的候选不能转成 pending。只有明确 preview_only=true 的 commerce_timeline_apply 与 preview=true 渲染可使用 pending；正式渲染和 delivery_ready 仍阻断。用户批准或具备能力后需对真实证据正常 review，不能用 warning_resolutions 豁免。
 
 钩子画面选 2–4 秒自然展示，全身及服装廓形可见；只到膝盖不算完整全身。原字幕与新配音冲突即不合格，静音不会消除原字幕。配音必须是一句适用于本商品的完整情绪话，不能把肩线参数、泛夸质感当作强情绪。
 
@@ -58,7 +60,7 @@ commerce_timeline_apply 的参数：
 
 工具生成透明 PNG 和可编辑动效，限制动画不超出已审阅矩形，并裁开我们添加的普通字幕的重叠时间。它不会识别人脸、商品或烧录字幕，reserved_boxes=[] 只能表示实际检查后没有额外遮挡。
 
-使用 audio_track_add(role="sfx") 添加许可明确的短音效，跟随少量关键词/转场，不逐字响。不要用其他主播的台词充当音效。保留音轨 ID，调音量用 audio_track_update。
+音效 WAV/MP3 和已有图片用 media_import 导入，取得 asset.id 后再 audio_track_add(role="sfx")；media_register 只收视频，不要将音效提交成视频任务反复重试。media_import 使用同一个重任务资源锁。短音效须许可明确，跟随少量关键词/转场，不逐字响；不要用其他主播的台词充当音效。保留音轨 ID，调音量用 audio_track_update。
 
 最后 commerce_presentation_record(theme_colors,hook_text_ids,body_text_ids,sfx_audio_ids)，传已存在的真实事件 ID。图层几何成立不代表视觉效果或听感合格，下一阶段检查实际输出。
 

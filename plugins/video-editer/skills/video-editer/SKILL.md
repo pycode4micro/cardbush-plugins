@@ -18,6 +18,10 @@ fill delivery_review_form only after reviewing its evidence, then record and
 check commerce_delivery_get. Missing or uncertain facts do not pass.
 These tools are available in 0.5.0+. They do not call an AI or independently
 certify visual meaning; they make the required decisions explicit and durable.
+In 0.5.1+, missing visual/listening capability may be recorded honestly using
+commerce_candidate_defer (unknown=null). Explicit preview_only timeline assembly
+permits an unapproved review copy; rejected/silent candidates and final delivery
+remain blocked. Never change unknown into a passing observation to obtain output.
 
 For commerce edits, read [examples and repair](../baiying-dialogue-video/references/quality-and-repair.md)
 and [demonstration editing](../baiying-dialogue-video/references/demonstration-editing.md)

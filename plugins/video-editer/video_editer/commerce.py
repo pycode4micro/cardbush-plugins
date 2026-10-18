@@ -78,7 +78,7 @@ def candidate_submit(project_id, asset_id, start, end, role):
                 job = {**media_jobs.status(project_id, saved['job_id']), 'reused': True}; break
     if job is None: job = media_jobs.submit(project_id, request)
     return {**job, 'next_tool': 'media_job_status', 'required_facts': list(FACTS[role]),
-            'required_method': METHODS[role], 'after_success': 'Watch/listen to the returned evidence, then commerce_candidate_review. Unknown facts must be false.'}
+            'required_method': METHODS[role], 'after_success': 'Watch/listen to the returned evidence, then commerce_candidate_review. If unable to observe a fact, commerce_candidate_defer records null for an explicitly unapproved review copy; known defects still require rejection.'}
 
 
 def candidate_report(project_id, job_id):
@@ -123,9 +123,33 @@ def candidate_review(project_id, job_id, facts, method, note):
     return {**status(project_id), 'candidate': row}
 
 
-def accepted(project_id, state, job_id, role):
+@project_write
+def candidate_defer(project_id, job_id, facts, note):
+    """Preserve unknowns for a review copy, never turn them into approval."""
+    report, evidence = candidate_report(project_id, job_id)
+    role = report['role']; state = load(project_id)
+    if not isinstance(facts, dict) or set(facts) != set(FACTS[role]) or any(v is not None and type(v) is not bool for v in facts.values()):
+        raise ValueError('Supply every required fact as true, false or null (unreviewed)')
+    if any(v is False for v in facts.values()):
+        raise ValueError('Known defects cannot be deferred into a preview; reject and replace this candidate')
+    if not any(v is None for v in facts.values()):
+        raise ValueError('No unknown facts; use candidate_review with the actual review method')
+    if state['reviews'].get(job_id, {}).get('status') == 'rejected':
+        raise ValueError('A rejected candidate cannot be relabelled pending')
+    if role != 'hook_picture' and report['audio_eligibility'] != 'audible_signal':
+        raise ValueError('Silent or unresolved source audio is not eligible even for a review copy')
+    state['reviews'][job_id] = {'job_id': job_id, 'role': role, 'facts': facts,
+        'method': 'incomplete_review', 'note': media_store.text(note, 'specific unreviewed facts and reason'),
+        'evidence': evidence, 'source_sha256': report['source_sha256'], 'status': 'pending',
+        'pending_facts': [k for k, v in facts.items() if v is None], 'failed': []}
+    save(project_id, state)
+    return {**status(project_id), 'candidate': state['reviews'][job_id],
+            'scope': 'Not accepted. Eligible only for an explicitly preview_only timeline; final delivery remains blocked.'}
+
+
+def accepted(project_id, state, job_id, role, allow_pending=False):
     row = state['reviews'].get(job_id, {})
-    if row.get('status') != 'accepted' or row.get('role') != role:
+    if row.get('status') not in (('accepted', 'pending') if allow_pending else ('accepted',)) or row.get('role') != role:
         raise ValueError('An accepted ' + role + ' candidate is required: ' + str(job_id))
     report, evidence = candidate_report(project_id, job_id)
     if row['evidence'] != evidence: raise ValueError('Candidate review is stale')
@@ -150,7 +174,7 @@ def candidate_skip(project_id, job_id, reason):
 @project_write
 def timeline_apply(project_id, hook_picture_job_id, hook_voice_job_id, body_job_ids,
                    voice_speed=1.0, transition_after_body=1, transition='slide_push',
-                   expected_revision=0, replace_timeline=False):
+                   expected_revision=0, replace_timeline=False, preview_only=False):
     from . import mcp_server as server
     state = load(project_id)
     if voice_speed not in (1.0, 1.25): raise ValueError('Voice speed must be 1.0 or explicitly authorized 1.25')
@@ -160,9 +184,9 @@ def timeline_apply(project_id, hook_picture_job_id, hook_voice_job_id, body_job_
         raise ValueError('Choose one visible decorative transition from transition_list')
     if type(transition_after_body) is not int or not 1 <= transition_after_body < len(body_job_ids):
         raise ValueError('Place the transition between complete body units; index is one-based')
-    picture = accepted(project_id, state, hook_picture_job_id, 'hook_picture')
-    voice = accepted(project_id, state, hook_voice_job_id, 'hook_voice')
-    body = [accepted(project_id, state, j, 'body') for j in body_job_ids]
+    picture = accepted(project_id, state, hook_picture_job_id, 'hook_picture', preview_only)
+    voice = accepted(project_id, state, hook_voice_job_id, 'hook_voice', preview_only)
+    body = [accepted(project_id, state, j, 'body', preview_only) for j in body_job_ids]
     if picture['source_sha256'] == voice['source_sha256'] and max(picture['source_start'], voice['source_start']) < min(picture['source_end'], voice['source_end']):
         raise ValueError('Select the independent voice from another source range, not the display\'s own sound')
     for index, first in enumerate(body):
@@ -204,7 +228,7 @@ def timeline_apply(project_id, hook_picture_job_id, hook_voice_job_id, body_job_
     if errors: raise ValueError('; '.join(errors))
     committed = server._commit(project_id, project, 'commerce_timeline_apply', {'candidates': ids}, undo)
     state['selection'] = {'pictures': ids, 'voice': hook_voice_job_id,
-        'voice_speed': voice_speed, 'base_signature': base_signature(fresh)}
+        'voice_speed': voice_speed, 'base_signature': base_signature(fresh), 'preview_only': bool(preview_only)}
     state['presentation'] = None
     save(project_id, state)
     return {**committed, **status(project_id), 'time_map': timing.time_map(fresh)}
@@ -260,7 +284,7 @@ def validate_presentation(timeline, plan):
     return errors
 
 
-def preflight(project_id, project=None, presentation_required=True):
+def preflight(project_id, project=None, presentation_required=True, allow_pending=False):
     state = load(project_id)
     project = project or engine.read_json(engine.project_dir(project_id) / 'project.json')
     timeline = project['mcp_timeline']; errors = []
@@ -269,9 +293,9 @@ def preflight(project_id, project=None, presentation_required=True):
     if base_signature(timeline) != selection['base_signature']:
         errors.append('Selected footage/voice/transition changed: apply a new reviewed plan')
     for i, job_id in enumerate(selection['pictures']):
-        try: accepted(project_id, state, job_id, 'hook_picture' if i == 0 else 'body')
+        try: accepted(project_id, state, job_id, 'hook_picture' if i == 0 else 'body', allow_pending)
         except (ValueError, OSError) as exc: errors.append(str(exc))
-    try: accepted(project_id, state, selection['voice'], 'hook_voice')
+    try: accepted(project_id, state, selection['voice'], 'hook_voice', allow_pending)
     except (ValueError, OSError) as exc: errors.append(str(exc))
     if presentation_required:
         if not state['presentation']: errors.append('Plan effect text, sound and theme; call commerce_presentation_record')
@@ -281,7 +305,9 @@ def preflight(project_id, project=None, presentation_required=True):
 
 def render_guard(project_id, project, preview=True):
     if path(project_id).is_file():
-        errors = preflight(project_id, project)
+        state = load(project_id)
+        pending_preview = preview and (state.get('selection') or {}).get('preview_only', False)
+        errors = preflight(project_id, project, allow_pending=pending_preview)
         if errors: raise ValueError('Commerce preflight: ' + '; '.join(errors))
         if not preview:
             from . import delivery_review
@@ -294,15 +320,19 @@ def render_guard(project_id, project, preview=True):
 def status(project_id):
     state = load(project_id)
     counts = {role: sum(r['role'] == role and r['status'] == 'accepted' for r in state['reviews'].values()) for role in FACTS}
-    if not counts['hook_picture'] or not counts['hook_voice'] or counts['body'] < 2:
+    pending = {role: [j for j,r in state['reviews'].items() if r['role']==role and r['status']=='pending'] for role in FACTS}
+    if not state['selection'] and (not counts['hook_picture'] or not counts['hook_voice'] or counts['body'] < 2):
         stage, tool = 'candidates', 'commerce_candidate_submit'
         todo = ['Find and continuously review full-body display with no sustained speaking', 'Choose a complete emotional source sentence independently', 'Review complete body explanation/action units with audible source speech']
+        if counts['hook_picture']+len(pending['hook_picture']) and counts['hook_voice']+len(pending['hook_voice']) and counts['body']+len(pending['body']) >= 2:
+            stage, tool = 'candidate_review_pending', 'commerce_timeline_apply'
+            todo = ['Complete pending reviews for normal production, or explicitly use preview_only=true to produce an unapproved review copy; never claim approval']
     elif not state['selection']:
         stage, tool, todo = 'timeline', 'commerce_timeline_apply', ['Order accepted body units; supply one topic-boundary transition']
     elif not state['presentation']:
         stage, tool, todo = 'presentation', 'commerce_typography_add', ['Review source safe boxes; add hook_center and body keyword_stack/detail_underline with one palette', 'Add selected short role=sfx sounds, then commerce_presentation_record with actual IDs']
     else:
-        errors = preflight(project_id)
+        errors = preflight(project_id, allow_pending=(state['selection'] or {}).get('preview_only', False))
         stage, tool = ('repair', 'commerce_timeline_apply') if errors else ('preview', 'commerce_render_submit')
         if errors and any('Candidate' in error or 'candidate' in error or 'source changed' in error for error in errors):
             tool = 'commerce_candidate_submit'
@@ -379,6 +409,7 @@ def status(project_id):
             'reference_files': [str(reference_root / name) for name in ('source-only-stages.md', 'quality-and-repair.md')
                                 if (reference_root / name).is_file()],
             'next_tool': tool, 'required_actions': todo, 'accepted_counts': counts,
+            'pending_candidate_ids': pending, 'preview_only': (state.get('selection') or {}).get('preview_only', False),
             'candidate_ids': {role: [j for j, r in state['reviews'].items() if r['role'] == role and r['status'] == 'accepted'] for role in FACTS},
             'must_keep': ['Source-only: no video generation or speech synthesis', 'Display picture is not talking footage with its sound muted',
                           'Original picture/body speed; independent voice speed is explicit', 'GPU first; all heavy operations use the shared single queue'],

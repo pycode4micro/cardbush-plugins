@@ -49,11 +49,22 @@ def add(project_id, text, emphasis, support, style, start, end, box, theme_color
     height = max(1, round((y1 - y0) * settings['height']))
     image = Image.new('RGBA', (width, height)); draw = ImageDraw.Draw(image)
     font_path = visuals.font_file(); stroke = max(1, round(width / 130)); pad = stroke * 3
-    main_height = height * (.62 if support else .88)
-    for size in range(max(12, int(main_height)), 10, -1):
+    # Fit the actual glyph block, including the support and underline, rather
+    # than pinning the support to the bottom of a potentially tall safe box.
+    # A wide safety box must not create a large empty gap inside the lettering.
+    for size in range(max(12, height - pad * 2), 10, -1):
         font = ImageFont.truetype(font_path, size)
         bounds = draw.textbbox((0, 0), text, font=font, stroke_width=stroke)
-        if bounds[2] - bounds[0] <= width - pad * 2 and bounds[3] - bounds[1] <= main_height: break
+        ink_height = bounds[3] - bounds[1]
+        gap = max(2, round(size * .10))
+        line_width = max(2, stroke)
+        decoration_height = gap + line_width if style == 'detail_underline' else 0
+        small = ImageFont.truetype(font_path, max(11, int(size * .48))) if support else None
+        sb = draw.textbbox((0, 0), support, font=small, stroke_width=max(1, stroke // 2)) if support else (0, 0, 0, 0)
+        total_height = ink_height + decoration_height + (gap + sb[3] - sb[1] if support else 0)
+        if (bounds[2] - bounds[0] <= width - pad * 2
+                and sb[2] - sb[0] <= width - pad * 2
+                and total_height <= height - pad * 2): break
     else: raise ValueError('Text does not fit the reviewed box; shorten the copy or choose another box')
     centered = style == 'hook_center'
     x = (width - (bounds[2] - bounds[0])) / 2 - bounds[0] if centered else pad - bounds[0]
@@ -64,16 +75,17 @@ def add(project_id, text, emphasis, support, style, start, end, box, theme_color
     for part, color in parts:
         draw.text((x, y), part, font=font, fill=color, stroke_width=stroke, stroke_fill='#26211F')
         x += draw.textlength(part, font=font)
-    if support:
-        small = ImageFont.truetype(font_path, max(11, int(size * .48)))
-        sw = draw.textlength(support, font=small)
-        if sw > width - pad * 2: raise ValueError('Support line does not fit; shorten it')
-        sy = height - small.size - pad
-        draw.text(((width - sw) / 2 if centered else pad, sy), support, font=small,
-                  fill=theme_colors[0], stroke_width=max(1, stroke // 2), stroke_fill='#26211F')
+    cursor = pad + ink_height
     if style == 'detail_underline':
-        line_y = min(height - pad, int(main_height + pad))
-        draw.line((pad, line_y, width - pad, line_y), fill=theme_colors[-1], width=max(2, stroke))
+        line_y = cursor + gap + line_width / 2
+        draw.line((pad, line_y, width - pad, line_y), fill=theme_colors[-1], width=line_width)
+        cursor += decoration_height
+    if support:
+        support_top = cursor + gap
+        sw = sb[2] - sb[0]
+        sx = (width - sw) / 2 - sb[0] if centered else pad - sb[0]
+        draw.text((sx, support_top - sb[1]), support, font=small,
+                  fill=theme_colors[0], stroke_width=max(1, stroke // 2), stroke_fill='#26211F')
     folder = server._folder(project_id) / 'materials'; folder.mkdir(exist_ok=True)
     asset_id = 'mat_' + uuid.uuid4().hex[:16]; output = folder / (asset_id + '.png')
     image.save(output)
@@ -89,7 +101,11 @@ def add(project_id, text, emphasis, support, style, start, end, box, theme_color
                       {'at': start + enter, 'scale': 1, 'opacity': 1},
                       {'at': end - leave, 'scale': 1, 'opacity': 1}, {'at': end, 'scale': 1, 'opacity': 0}],
         'commerce_text': {'text': text, 'support': support, 'emphasis': emphasis, 'style': style,
-                          'theme_colors': theme_colors, 'reserved_boxes': reserved_boxes}}
+                          'theme_colors': theme_colors, 'reserved_boxes': reserved_boxes,
+                          'layout': {'main_font_px': size, 'main_ink_bottom': pad + ink_height,
+                                     'support_font_px': small.size if support else None,
+                                     'support_ink_top': support_top if support else None,
+                                     'block_height_px': total_height, 'padding_px': pad}}}
     check_overlay(item, (settings['width'], settings['height']))
     # Split editable caption intervals so no same-time duplicate captions or exit flashes remain.
     captions = []

@@ -106,6 +106,34 @@ class DeliveryReviewTests(unittest.TestCase):
         checks=copy.deepcopy(self.checks);checks[-1]['method']='measurement'
         with self.assertRaises(ValueError): review.record(self.pid,self.job,checks)
 
+    def test_pending_candidate_cannot_be_waived_as_a_warning(self):
+        from video_editer import commerce
+        job = self.make_job(preview=True)
+        state = {'selection': {'preview_only': True, 'pictures': ['pending_hook']},
+                 'reviews': {'pending_hook': {'status': 'pending'}}}
+        with patch.object(commerce, 'path', return_value=self.evidence), \
+             patch.object(commerce, 'load', return_value=state), \
+             patch.object(commerce, 'preflight', return_value=[]):
+            result = review.record(self.pid, job, self.checks)
+            self.assertEqual(result['status'], 'needs_review')
+            self.assertIn('candidate_pending:pending_hook', result['pending_checks'])
+            with self.assertRaises(ValueError):
+                review.record(self.pid, job, self.checks, warning_resolutions=[{
+                    'code': 'candidate_pending:pending_hook', 'note': 'Treat unknown as pass',
+                    'evidence_paths': [str(self.evidence)]}])
+
+    def test_pending_does_not_hide_failed_or_stale_delivery(self):
+        from video_editer import commerce
+        state={'selection': {'preview_only': True, 'pictures': ['pending_hook']},
+               'reviews': {'pending_hook': {'status': 'pending'}}}
+        with patch.object(commerce, 'load', return_value=state), patch.object(commerce, 'preflight', return_value=[]):
+            for status in ('needs_repair', 'stale', 'needs_review'):
+                with self.subTest(status=status), patch.object(review, 'get', return_value={'status':status,'delivery_ready':False}):
+                    result=m.commerce_delivery_get(self.pid,self.job)
+                    self.assertEqual(result['status'],status)
+                    self.assertFalse(result['delivery_ready'])
+                    self.assertEqual(result['next_tool'],'commerce_workflow_status')
+
     def test_timestamp_guard_rejects_first_frame_mislabeled_as_later(self):
         info={'streams':[{'codec_type':'video','avg_frame_rate':'25/1'}]}
         with self.assertRaises(ValueError): media_ops.validate_frame_timestamp(12,0,info)

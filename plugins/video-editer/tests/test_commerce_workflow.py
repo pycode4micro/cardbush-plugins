@@ -64,10 +64,51 @@ class CommerceTests(unittest.TestCase):
         self.assertEqual(first,commerce.load(self.pid)['state_revision'])
         with self.assertRaises(ValueError): m.commerce_workflow_start(self.pid,'another','fixture product')
 
+    def test_audio_image_misdirection_is_rejected_before_queue_submission(self):
+        with patch.object(media_jobs, 'submit') as submit:
+            for suffix in ('.wav', '.MP3', '.png'):
+                source = self.root / ('non-video' + suffix)
+                source.write_bytes(b'fixture')
+                with self.assertRaisesRegex(ValueError, 'use media_import'):
+                    m.media_register(self.pid, str(source))
+            submit.assert_not_called()
+
     def test_candidate_repeat_reuses_job_and_queue(self):
         a=m.commerce_candidate_submit(self.pid,'mat_source',0,3,'hook_picture')
         b=m.commerce_candidate_submit(self.pid,'mat_source',0,3,'hook_picture')
         self.assertEqual(a['job_id'],b['job_id']);self.assertTrue(b['reused'])
+
+    def test_deferred_candidate_is_preview_only_and_not_accepted(self):
+        picture, voice, body = self.plan()
+        facts={k:None for k in commerce.FACTS['hook_voice']}
+        m.commerce_candidate_defer(self.pid,voice,facts,'Audio input unavailable; ASR is not listening')
+        with self.assertRaisesRegex(ValueError,'accepted'):
+            m.commerce_timeline_apply(self.pid,picture,voice,body,expected_revision=0)
+        result=m.commerce_timeline_apply(self.pid,picture,voice,body,expected_revision=0,preview_only=True)
+        self.assertEqual(result['stage'],'presentation')
+        self.assertTrue(result['preview_only'])
+        self.assertEqual(commerce.load(self.pid)['reviews'][voice]['status'],'pending')
+        with patch.object(commerce,'validate_presentation',return_value=[]):
+            state=commerce.load(self.pid);state['presentation']={'fixture':True};commerce.save(self.pid,state)
+            commerce.render_guard(self.pid,m._read(self.pid),preview=True)
+            with self.assertRaisesRegex(ValueError,'accepted'):
+                commerce.render_guard(self.pid,m._read(self.pid),preview=False)
+
+    def test_deferral_cannot_mask_known_defect_or_silent_body(self):
+        job=self.candidate('body',10,20,audio='silent',approve=False)
+        with self.assertRaisesRegex(ValueError,'Silent'):
+            m.commerce_candidate_defer(self.pid,job,{k:None for k in commerce.FACTS['body']},'No listening')
+        job=self.candidate('hook_picture',0,3,approve=False)
+        facts={k:None for k in commerce.FACTS['hook_picture']};facts['full_body_visible']=False
+        with self.assertRaisesRegex(ValueError,'Known defects'):
+            m.commerce_candidate_defer(self.pid,job,facts,'Cropped feet')
+
+    def test_rejected_candidate_cannot_be_deferred(self):
+        job=self.candidate('hook_picture',0,3,approve=False)
+        facts={k:True for k in commerce.FACTS['hook_picture']};facts['no_continuous_speaking']=False
+        m.commerce_candidate_review(self.pid,job,facts,'continuous_review','Sustained talking')
+        with self.assertRaisesRegex(ValueError,'rejected'):
+            m.commerce_candidate_defer(self.pid,job,{k:None for k in facts},'Cannot review')
 
     def test_corrupt_candidate_evidence_can_be_reinspected(self):
         old=self.candidate('hook_picture',0,3)
@@ -137,6 +178,13 @@ class CommerceTests(unittest.TestCase):
         with self.assertRaises(ValueError):m.commerce_typography_add(self.pid,'好看','','','hook_center',.2,2.8,[.1,.60,.7,.71],['#FFFFFF'],[])
         m.commerce_typography_add(*args,[])
         with self.assertRaises(ValueError):m.commerce_typography_add(self.pid,'细节','','','keyword_stack',4,6,[.1,.1,.6,.25],['#00FF00'],[])
+
+    def test_typography_support_stays_close_to_actual_glyphs(self):
+        self.apply()
+        r=m.commerce_typography_add(self.pid,'细腻丝滑','丝滑','精纺小开衫','detail_underline',4,6,[.05,.3,.36,.55],['#FFF4DA','#FFAE80'],[])
+        layout=r['overlay']['commerce_text']['layout']
+        self.assertLess(layout['support_ink_top']-layout['main_ink_bottom'], layout['main_font_px']*.35)
+        self.assertLessEqual(layout['block_height_px']+layout['padding_px']*2, 480)
 
     def test_presentation_and_render_submission_resume_without_encoding(self):
         self.apply();palette=['#FFF4DA','#FFAE80']

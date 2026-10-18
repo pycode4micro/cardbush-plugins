@@ -4,6 +4,12 @@ A standalone, model-free MCP plugin with its own Python/FFmpeg execution core
 and bundled graphics, for Codex and other MCP-compatible agents. The caller
 decides what to edit; the plugin exposes deterministic atomic execution tools.
 
+## 0.5.1: explicit pending review copies
+
+When the host cannot actually watch/listen, commerce_candidate_defer saves observed facts as true and unknown facts as null. Explicit preview_only assembly can render an unapproved review copy. Known defects, silent body/voice and rejected candidates stay blocked; pending facts cannot be waived or reach final delivery. Normal production still requires actual review.
+
+Audio/image files use media_import; the video-only asynchronous entrypoint now rejects those formats immediately with the correct next tool. Both entrypoints retain the shared heavy resource guard. Typography fits main words, underline and support as a compact glyph block instead of anchoring support to the bottom of an oversized safe box; returned layout measurements aid review.
+
 ## 0.5.0: staged source-only commerce editing
 
 - The main skill now routes source-only editing separately from generated/dialogue hooks. A muted talking shot is explicitly ineligible as a pure display.

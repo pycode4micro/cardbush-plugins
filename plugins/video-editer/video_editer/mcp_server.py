@@ -466,9 +466,11 @@ def media_extract_frames(project_id: str, asset_id: str, frame_count: int = 8) -
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def media_register(project_id: str, source_path: str, mode: Literal['managed_copy','reference'] = 'managed_copy') -> dict[str, Any]:
-    """Submit a background VIDEO import with streaming SHA-256; reference avoids copying. Poll media_job_status. No model calls."""
+    """Submit a background VIDEO import with streaming SHA-256; reference avoids copying. Audio/images use media_import under the same heavy resource guard. Poll media_job_status. No model calls."""
     _folder(project_id)
     source=Path(source_path).expanduser().resolve()
+    if source.suffix.lower() in {'.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg', '.png', '.jpg', '.jpeg', '.webp', '.bmp'}:
+        raise ValueError('media_register accepts VIDEO only; use media_import for audio/image files under the shared heavy resource guard. Do not retry this as a video job.')
     if mode not in ('managed_copy','reference'): raise ValueError('Unknown import mode')
     signature=media_ops.stat_signature(source)
     if signature['size']==0: raise ValueError('Cannot register an empty file')
@@ -565,8 +567,14 @@ def commerce_candidate_submit(project_id: str, asset_id: str, start: float, end:
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def commerce_candidate_review(project_id: str, job_id: str, facts: dict[str, bool], method: Literal['continuous_review','listening','continuous_review_and_listening'], note: str) -> dict[str, Any]:
-    """Review succeeded candidate evidence; supply exactly the booleans returned by commerce_candidate_submit. Unknown=false. Hook picture requires continuous_review; voice requires listening; body requires both. Sustained talking picture, missing full body, silent body or unresolved sound are rejected. Rejected candidates need new source evidence, not relabelling."""
+    """Review succeeded candidate evidence; supply exactly the observed booleans returned by commerce_candidate_submit. Unobserved facts use commerce_candidate_defer with null, never guessed true. Hook picture requires continuous_review; voice requires listening; body requires both. Sustained talking picture, missing full body, silent body or unresolved sound are rejected. Rejected candidates need new source evidence, not relabelling."""
     return commerce.candidate_review(project_id, job_id, facts, method, note)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def commerce_candidate_defer(project_id: str, job_id: str, facts: dict[str, bool | None], note: str) -> dict[str, Any]:
+    """Record incomplete candidate review honestly: true=observed, null=unknown. Known false defects and silent body/voice remain blocked. Pending is NOT accepted and only permits explicit preview_only assembly, never final delivery. State exactly what could not be watched/listened to and why."""
+    return commerce.candidate_defer(project_id, job_id, facts, note)
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
@@ -576,9 +584,9 @@ def commerce_candidate_skip(project_id: str, job_id: str, reason: str) -> dict[s
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
-def commerce_timeline_apply(project_id: str, hook_picture_job_id: str, hook_voice_job_id: str, body_job_ids: list[str], expected_revision: int, voice_speed: Literal[1.0,1.25] = 1.0, transition_after_body: int = 1, transition: str = 'slide_push', replace_timeline: bool = False) -> dict[str, Any]:
-    """Atomically assemble accepted display+voice+ordered body. Mutes only hook source, keeps pictures/body 1x, fits complete independent voice, adds one explicit topic transition and returns actual time map + undo. First body >=3s; total near target. transition_after_body is one-based and between body units. 1.25 voice needs user authorization. Existing edits require explicit replace_timeline; no render."""
-    return commerce.timeline_apply(project_id, hook_picture_job_id, hook_voice_job_id, body_job_ids, voice_speed, transition_after_body, transition, expected_revision, replace_timeline)
+def commerce_timeline_apply(project_id: str, hook_picture_job_id: str, hook_voice_job_id: str, body_job_ids: list[str], expected_revision: int, voice_speed: Literal[1.0,1.25] = 1.0, transition_after_body: int = 1, transition: str = 'slide_push', replace_timeline: bool = False, preview_only: bool = False) -> dict[str, Any]:
+    """Atomically assemble display+independent voice+ordered body. Requires accepted candidates by default. Explicit preview_only=true also permits pending candidates for an unapproved review copy; final remains blocked until real review. Known rejected/silent sources never qualify. Mutes only hook source, keeps pictures/body 1x, fits complete voice, adds one topic transition, returns time map + undo. First body >=3s; total near target. transition_after_body is one-based between body units. 1.25 voice needs authorization. Existing edits require replace_timeline; no render."""
+    return commerce.timeline_apply(project_id, hook_picture_job_id, hook_voice_job_id, body_job_ids, voice_speed, transition_after_body, transition, expected_revision, replace_timeline, preview_only)
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
@@ -604,10 +612,20 @@ def commerce_render_submit(project_id: str, preview: bool = True) -> dict[str, A
 @mcp.tool(annotations={"readOnlyHint": True})
 def commerce_delivery_get(project_id: str, render_job_id: str) -> dict[str, Any]:
     """Delivery gate for source-only workflow: valid current stages AND exact final artifact's complete v2 review. Missing/failed/stale checks never become delivery_ready. Preview is review-only."""
-    errors = commerce.preflight(project_id)
+    state = commerce.load(project_id)
+    errors = commerce.preflight(project_id, allow_pending=(state.get('selection') or {}).get('preview_only', False))
     result = delivery_review.get(project_id, render_job_id)
     if errors: result.update(status='needs_repair', delivery_ready=False, workflow_errors=errors)
-    result['next_tool'] = 'commerce_workflow_status' if errors else 'delivery_inspection_submit' if result['status'] == 'needs_review' else 'delivery_review_get'
+    selection = state.get('selection') or {}
+    pending = [job for job in selection.get('pictures', []) + ([selection['voice']] if selection.get('voice') else [])
+               if state['reviews'].get(job, {}).get('status') == 'pending']
+    if pending and not errors:
+        result.update(delivery_ready=False, pending_candidate_ids=pending)
+        if result['status'] not in ('needs_repair', 'stale'):
+            result['status'] = 'needs_review'
+    result['next_tool'] = ('commerce_workflow_status' if errors or pending or result['status'] in ('needs_repair', 'stale')
+                           else 'delivery_inspection_submit' if result['status'] == 'needs_review' and not result.get('inspection_job_id')
+                           else 'delivery_review_form' if result['status'] == 'needs_review' else 'delivery_review_get')
     return result
 
 

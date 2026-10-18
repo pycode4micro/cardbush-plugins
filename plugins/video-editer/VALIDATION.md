@@ -1,5 +1,14 @@
 # Validation
 
+## 0.5.1 real preview run and pending-review distinction — 2026-10-18
+
+43 targeted regressions pass: commerce workflow (23) and delivery review (20). New cases cover pending-only preview admission, blocked final delivery, known-defect/silent/rejected candidate exclusion, nonwaivable pending facts, pending status never hiding repair/stale evidence, wrong audio/image import rejected before queue submission, and compact main/support glyph spacing. Both bundled skills pass the skill validator. The 101-test 0.5.0 baseline remains separately recorded below; this patch did not rerun every historical suite.
+
+An authorized 42.56-second source-only review was rendered through actual MCP tools from an isolated project using existing customer footage. It uses a 3-second full-body display, independent original voice, five body units, three theme colors, seven designed effects and one decorative transition. Successful encoder events report h264_qsv; heavy concurrency stayed 1. The first output failed typography review and was revised through tools instead of relabelling the old failure. No video generation, speech synthesis or paid provider was invoked.
+
+This host explicitly lacks audio-input listening capability. Candidate unknowns stay pending; the output is an unapproved review copy, not an accepted creative sample. Decoded sound presence, cue comparisons, actual PTS images and software tests do not certify naturalness, hook emotion, continuity or final listening. Private source IDs, footage and run artifacts are retained locally, not included in the bundle.
+
+
 ## 0.5.0 staged source-only workflow — 2026-10-18
 
 Validation uses isolated fixtures and small synthetic audio, not customer footage. No new customer video or paid generation was submitted.

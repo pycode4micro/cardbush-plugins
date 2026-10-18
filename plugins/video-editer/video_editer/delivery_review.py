@@ -273,8 +273,15 @@ def record(project_id, render_job_id, checks, audio_review_job_ids=None, warning
                 raise ValueError('Passing check must cite this inspection, its media, or matching audio review: ' + check['id'])
     from . import commerce
     if commerce.path(project_id).is_file():
+        state = commerce.load(project_id)
+        selection = state.get('selection') or {}
+        pending_preview = identity['preview'] and selection.get('preview_only', False)
         findings.extend({'code': 'workflow:' + str(i), 'severity': 'fail', 'message': message}
-                        for i, message in enumerate(commerce.preflight(project_id, snapshot['project'])))
+                        for i, message in enumerate(commerce.preflight(project_id, snapshot['project'], allow_pending=pending_preview)))
+        for job in selection.get('pictures', []) + ([selection['voice']] if selection.get('voice') else []):
+            if state['reviews'].get(job, {}).get('status') == 'pending':
+                findings.append({'code': 'candidate_pending:' + job, 'severity': 'review',
+                                 'message': 'Candidate visual/listening review is incomplete; preview is not approval'})
     planned = {a['id'] for track in timeline['tracks'].values() for a in track if a.get('role') == 'sfx'}
     for cue in sorted(planned - covered):
         findings.append({'code': 'sfx_unmeasured:' + cue, 'severity': 'review', 'message': 'No matching rendered cue review'})
@@ -282,7 +289,7 @@ def record(project_id, render_job_id, checks, audio_review_job_ids=None, warning
     if warning_resolutions is not None and (not isinstance(warning_resolutions, list) or len(warning_resolutions) > 128):
         raise ValueError('warning_resolutions must contain up to 128 specific resolutions')
     known = {f['code'] for f in findings if f['severity'] == 'review' and f['code'] != 'missing_render_inspection'
-             and not f['code'].startswith('sfx_unmeasured:')}
+             and not f['code'].startswith(('sfx_unmeasured:', 'candidate_pending:'))}
     for resolution in warning_resolutions or []:
         if (not isinstance(resolution, dict) or set(resolution) != {'code', 'note', 'evidence_paths'}
                 or resolution['code'] not in known or not isinstance(resolution['note'], str)

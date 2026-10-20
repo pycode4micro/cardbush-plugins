@@ -69,11 +69,11 @@ not_applicable 仅用于插件依据实际时间线判定不存在的钩子/音�
 ## 交付状态与返修闭环
 
 1. 保存素材资格、候选钩子及取舍、卖点区间表、花字/音效表。可用候选多时比较至少两条原声；不要为了凑候选虚构素材。未找到全身展示或足够细节，明确缺口。
-2. 队列预览后连续检查钩子接正文、每个主题切换和结尾；检查花字峰值位置/原字幕/衣服。对发现的问题调用 `delivery_review_record` 保存 `fail`、证据路径和具体 `repair_action`。未看的项目用 `not_checked`。
+2. 队列正式质量渲染后，连续检查钩子接正文、每个主题切换和结尾；检查花字峰值位置/原字幕/衣服。对发现的问题调用 `delivery_review_record` 保存 `fail`、证据路径和具体 `repair_action`。未看的项目用 `not_checked`。
 3. 内容不合格应修改时间线后提交**新渲染任务**。`render_retry` 仅处理执行失败，仍使用旧快照，不能修复难看的剪辑。所有重试继续走并发1队列。
 4. 新成片上运行源区间/最终无声检查、`audio_review_submit(render_job_id=...)`；检查返回的真实 warning，而不是仅看任务 succeeded。未试听不可把 `sfx_audibility` / `final_speech` 标为 pass。
 5. `delivery_review_record` 记录14项固定检查：`source_audio`、`source_frame_timestamps`、`hook_picture`、`hook_voice`、`hook_body_continuity`、`selling_point_evidence`、`body_continuity`、`typography`、`safe_layout`、`text_overlap`、`transition`、`final_picture`、`final_speech`、`sfx_audibility`。每项提供 status、note、evidence_paths；失败加 repair_action。检查范围和秒数写在 note/证据里。
-6. 每项另记 `method`：measurement、frame_review、continuous_review、listening 或 user_feedback；确实不适用才用 not_applicable，并附本次需求依据。hook_voice、final_speech、sfx_audibility 的通过必须有实际 listening/user_feedback，测量或 ASR 不能代替试听。插件绑定渲染 ID、revision、成片 SHA-256、证据 SHA-256，保留历次记录。`delivery_review_get` 给出 `needs_review` / `needs_repair` / `stale` / `preview_reviewed` / `ready`。缺项不能通过；已失败的内容检查必须修改时间线并取得新版渲染，不能改填 pass/not_checked 清除失败；换文件、改时间线或证据后旧结论失效；预览通过也不是最终成片通过。
+6. 0.7.0 起，感知检查还需引用实际收到的 [视听审阅记录](efficient-execution.md#审阅记录)，只有方法标签不能通过；同一审阅记录可供它实际覆盖的多项检查复用。每项另记 `method`：measurement、frame_review、continuous_review、listening 或 user_feedback；确实不适用才用 not_applicable，并附本次需求依据。hook_voice、final_speech、sfx_audibility 的通过必须有实际 listening/user_feedback，测量或 ASR 不能代替试听。插件绑定渲染 ID、revision、成片 SHA-256、证据 SHA-256，保留历次记录。`delivery_review_get` 对当前正式质量成片给出 `needs_review` / `needs_repair` / `stale` / `ready`；旧版 `preview_reviewed` 不再属于新流程。缺项不能通过；已失败的内容检查必须修改时间线并取得新版渲染，不能改填 pass/not_checked 清除失败；换文件、改时间线或证据后旧结论失效。
 7. 信号缺失必须修复。其他检测警告只有经过具体检查才能通过 `warning_resolutions` 单条说明解决，不能批量写“忽略”。音效遮蔽警告尚未试听不能豁免。合格样例只是比较基准，不能直接复制 pass。
 
 允许交付明确标注“待试听/待复核”的可播放版本，不把未完成项写成全通过。无需因主观听感待确认而停止已经授权的备料、渲染和技术修复；最终说明实际完成范围。若返修多次仍无可用素材，保留缺口和失败证据，按既有授权补料，不重复导出同一失败方案。

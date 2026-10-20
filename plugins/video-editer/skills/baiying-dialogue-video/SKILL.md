@@ -7,7 +7,7 @@ description: 编排百应主播商品视频，从选账号商品、备料校验�
 
 先确定终点：`plan` 只规划；`materials` 只备料；`handoff` 导入异步队列后停止；`produce` 才编辑和渲染。已有授权及明确参数直接沿用，不能将“先不实际剪辑”升级为 produce。
 
-按 [组件](references/components.md) 发现实际工具 schema。编辑器为 `video-editer@cardbush-plugins`，服务名 `video_editer`。本流程使用 0.6.1+：修复零时长词、数值断句及过小花字；缺工具或仍为旧版时报告版本缺口，不临时写脚本替代转写、验收或启动另一套平台。
+按 [组件](references/components.md) 发现实际工具 schema。编辑器为 `video-editer@cardbush-plugins`，服务名 `video_editer`。本流程使用 0.7.0+；先读 [批量执行与实际审阅](references/efficient-execution.md)，按工作素材池批量 ASR、批量候选分析、一次目标画质导出。缺工具或仍为旧版时报告版本缺口，不临时写脚本替代转写、验收或启动另一套平台。
 
 ## 选择唯一执行路线
 
@@ -21,11 +21,11 @@ description: 编排百应主播商品视频，从选账号商品、备料校验�
 
 1. **锁定账号商品并备料。** 账号/商品 ID 来自实际查询；指定登录身份时显式传入。下载用 baiying-replay，保存源哈希与任务 ID。只有用户允许择品才换商品。数量够不等于镜头角色够，详见 [素材与恢复](references/workflow.md)。
 2. **创建或恢复阶段状态。** 创建编辑器项目、排队导入视频，随后 `commerce_workflow_start`。恢复工作先 `commerce_workflow_status`；按返回的 `stage`、`next_tool` 和缺项继续，不从头重复提交。
-3. **先转写再选候选。** 按 [ASR 与完整句证据](references/speech-evidence.md) 完成内置 `speech_transcribe_submit` → `speech_candidates_get` → `speech_range_validate`，使用真实完整候选句及上下文。配音/正文通过 `commerce_speech_candidate_submit` 以句子 ID 提交，禁止跳过转写手填秒数；展示通过 `commerce_candidate_submit` 检查。等待任务成功后实际看/听，再 `commerce_candidate_review`。ASR 不认证情绪和句意；已知不合格填 false，缺少视听能力时用 `commerce_candidate_defer` 将未知事实留为 null，仅制作待审阅版本。
-4. **先排成立的正文。** `commerce_timeline_apply` 用通过检查的候选一次组装：独立配音、钩子源声静音、画面与正文原速、完整正文单元、一个段落转场。读取返回的实际时间表后再装饰。仅视听审阅未完成时显式 `preview_only=true` 可组装审阅片；已知不合格或无声正文仍禁止。正式输出必须完成候选与成片检查。
+3. **先转写再选候选。** 按 [ASR 与完整句证据](references/speech-evidence.md) 完成内置 `speech_transcribe_submit` → `speech_candidates_get` → `speech_range_validate`，使用真实完整候选句及上下文。配音/正文通过 `commerce_speech_candidate_submit` 以句子 ID 提交，禁止跳过转写手填秒数；展示通过 `commerce_candidate_submit` 检查。等待任务成功后实际看/听，再 `commerce_candidate_review`。ASR 不认证情绪和句意；已知不合格填 false，缺少视听能力时用 `commerce_candidate_defer` 将未知事实留为 null，并明确保留未验项目，不虚报通过。
+4. **先排成立的正文。** `commerce_timeline_apply` 用通过检查的候选一次组装：独立配音、钩子源声静音、画面与正文原速、完整正文单元、一个段落转场。读取返回的实际时间表后再装饰。候选未完成真实审阅时保持待验；需要审阅片可明确 `preview_only=true` 组装并导出目标画质，交付前补齐实际审阅记录。已知不合格或无声正文仍禁止。
 5. **再加花字和声音。** 读 [布局](references/typography-layout.md) 与 [音效](references/typography-sound.md)。优先 `commerce_typography_add` 生成透明字和短动效；实际看图提供脸、动作、原字幕避让框。添加 role=sfx 音轨后，用 `commerce_presentation_record` 登记真实事件 ID 和本片配色。
-6. **预览及返修。** `commerce_render_submit(preview=true)` → 成功后 `delivery_inspection_submit` → 等检查任务成功。审阅实际连续画面和声音，音效另做 `audio_review_submit`。用 `delivery_review_record(inspection_job_id=...)` 登记证据。失败修内容、生成新版本；执行失败才重试旧任务。
-7. **最终交付。** 审阅版通过后提交 `preview=false`，对最终文件重新检查并记录。`commerce_delivery_get` 返回 delivery_ready=true 才称合格交付。缺能力/未试听/缺检查只交待审阅版并列明缺项。
+6. **正式质量渲染及返修。** `commerce_render_submit(preview=false)` → 成功后 `delivery_inspection_submit` → 等检查任务成功。审阅这份成片的实际连续画面和声音，音效另做 `audio_review_submit`。用 `delivery_review_record(inspection_job_id=...)` 登记证据。失败修内容、生成新版本；执行失败才重试旧任务。
+7. **交付。** 对同一份正式质量成片完成检查与登记后调用 `commerce_delivery_get`；不再低清预览后再转一次 final，也不要求二次审批。`delivery_ready=true` 才称合格交付。缺能力/未试听/缺检查时明确列出未验项，不把文件说成已通过。
 
 选钩子先比较完整原声的吸引力，再找能容纳它的全身展示；普通穿法说明不能因为短、容易装入三秒就入选。画面和独立配音成对复查烧录字幕的意思，位置不重叠仍可能冲突。具体淘汰例见 [样例与返修](references/quality-and-repair.md#纯剪辑选材的反例)。
 

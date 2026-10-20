@@ -10,7 +10,10 @@ Use this plugin when an agent needs to execute a concrete video-editing plan.
 For source-only commerce edits, first use the staged workflow in
 [Source-only stages](../baiying-dialogue-video/references/source-only-stages.md).
 Start/resume with commerce_workflow_start / commerce_workflow_status and follow
-its next_tool and next_arguments. Use 0.6.1+ for this workflow; first complete local ASR with
+its next_tool and next_arguments. Use 0.7.0+ and read
+[Efficient execution and review receipts](../baiying-dialogue-video/references/efficient-execution.md).
+Prefer commerce_materials_prepare, commerce_candidates_submit and media_jobs_wait
+for batches on the existing single-heavy-task queue. First complete local ASR with
 speech_transcribe_submit, speech_candidates_get and speech_range_validate; read
 [Speech evidence](../baiying-dialogue-video/references/speech-evidence.md).
 Use commerce_speech_candidate_submit with consecutive sentence IDs for voice/body,
@@ -30,8 +33,19 @@ supports two explicit lines; shorten copy or review another safe box instead of
 shrinking into a label. Known source-caption/voice conflicts cannot be deferred.
 In 0.5.1+, missing visual/listening capability may be recorded honestly using
 commerce_candidate_defer (unknown=null). Explicit preview_only timeline assembly
-permits an unapproved review copy; rejected/silent candidates and final delivery
+permits an unapproved review copy at target quality (preview=false); rejected/silent candidates and final delivery
 remain blocked. Never change unknown into a passing observation to obtain output.
+
+Render target quality once, inspect that exact file and deliver it only when
+commerce_delivery_get passes; a reviewed target-quality file needs no second
+render. Actual tool/user review receipts bind media hashes, modalities and time
+coverage; method labels alone leave candidates/checks pending. Do not fabricate
+receipts from ASR, signal measurements or frame availability. Missing custom
+commerce_text/layout is explicitly unchecked. Review internal source-cut flags.
+After an audio-only repair, a new render reuses picture stages automatically;
+check reused_stages rather than assuming reuse or inheriting old approval.
+Use media_convert_submit for necessary transcode/cadence repair; interpolation
+is opt-in. It and failed retries share the existing queue.
 
 For commerce edits, read [examples and repair](../baiying-dialogue-video/references/quality-and-repair.md)
 and [demonstration editing](../baiying-dialogue-video/references/demonstration-editing.md)

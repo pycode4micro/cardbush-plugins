@@ -3,6 +3,7 @@ import copy
 from pathlib import Path
 import tempfile
 import unittest
+from review_fixtures import receipt
 from unittest.mock import patch
 
 from video_editer import delivery_review as review, engine, jobs, media_jobs, media_ops, resources
@@ -31,6 +32,9 @@ class DeliveryReviewTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def make_job(self, preview=False, warnings=None):
+        proof = receipt(self.root, self.video)
+        for check in self.checks:
+            check['review_receipt_paths'] = [proof]
         attempt = jobs.Attempt(self.pid, m._read(self.pid), preview)
         attempt.succeed({'path': str(self.video), 'has_audio': True, 'warnings': warnings or []})
         return attempt.job_id
@@ -42,6 +46,13 @@ class DeliveryReviewTests(unittest.TestCase):
         self.assertEqual(len(r['pending_checks']), len(review.CHECKS)-1)
         bad = copy.deepcopy(self.checks); bad[0]['evidence_paths'] = []
         with self.assertRaises(ValueError): review.record(self.pid, self.job, bad)
+
+    def test_method_labels_without_actual_receipts_stay_unchecked(self):
+        checks=copy.deepcopy(self.checks)
+        for row in checks: row.pop('review_receipt_paths')
+        result=review.record(self.pid,self.job,checks)
+        self.assertFalse(result['delivery_ready'])
+        self.assertTrue(all(c['status']=='not_checked' for c in result['checks']))
 
     def test_failure_and_repair_are_retained(self):
         bad = copy.deepcopy(self.checks); bad[3].update(status='fail', repair_action='Use a complete original sentence')
@@ -61,6 +72,8 @@ class DeliveryReviewTests(unittest.TestCase):
     def test_changes_make_review_stale_and_new_render_is_unreviewed(self):
         for change in ('evidence', 'output', 'revision'):
             with self.subTest(change=change):
+                proof = receipt(self.root, self.video)
+                for check in self.checks: check['review_receipt_paths'] = [proof]
                 review.record(self.pid, self.job, self.checks)
                 if change == 'evidence': self.evidence.write_text('{"changed":1}')
                 elif change == 'output': self.video.write_bytes(b'changed output')
@@ -177,7 +190,10 @@ class DeliveryReviewTests(unittest.TestCase):
     def test_even_with_inspection_unrelated_json_cannot_certify_checks(self):
         inspect=self.inspection();unrelated=self.root/'unrelated.json';unrelated.write_text('{"pass":true}')
         checks=copy.deepcopy(self.checks)
-        for row in checks: row['evidence_paths']=[str(unrelated)]
+        proof=receipt(self.root, unrelated)
+        for row in checks:
+            row['evidence_paths']=[str(unrelated)]
+            row['review_receipt_paths']=[proof]
         with patch.object(review,'inspection_findings',side_effect=REAL_INSPECTION_FINDINGS):
             with self.assertRaisesRegex(ValueError,'must cite'):
                 review.record(self.pid,self.job,checks,inspection_job_id=inspect)

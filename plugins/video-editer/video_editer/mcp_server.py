@@ -31,7 +31,7 @@ mcp = FastMCP(
     "video_editer",
     instructions=(
         "Deterministic video-editing execution tools. Never infer editorial intent: "
-        "inspect media, make explicit timeline edits, validate, preview, then render. "
+        "inspect media, make explicit timeline edits, validate, then render; review the exact output before delivery. "
         "Timeline edits return a revision and undo snapshot; render jobs return an immutable job ID."
     ),
 )
@@ -556,6 +556,37 @@ def speech_runtime_status() -> dict[str, Any]:
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def commerce_materials_prepare(project_id: str, asset_ids: list[str], language: str = 'zh', device: Literal['auto','cuda','cpu'] = 'auto') -> dict[str, Any]:
+    """Preferred batch ASR entry: select 1–16 registered source videos as a working pool, validate all windows, deduplicate and dispatch once on the shared single-heavy queue. Model must already be prepared. Returns job IDs for media_jobs_wait. Existing source/range/model analysis is reused without copying approvals. No render or generation."""
+    from . import batch
+    return batch.materials_prepare(project_id, asset_ids, language, device)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def commerce_candidates_submit(project_id: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    """Batch candidate evidence (1–32). Each row: role=hook_picture with asset_id/start/end, or role=hook_voice/body with transcript_job_id/consecutive sentence_ids. Validates all first, then queues audio/source frames/internal-cut analysis; no candidate is accepted automatically. Poll media_jobs_wait."""
+    from . import batch
+    return batch.candidates_submit(project_id, candidates)
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+def media_jobs_wait(project_id: str, job_ids: list[str], timeout_seconds: float = 20) -> dict[str, Any]:
+    """Wait up to 30s for a batch to finish or need recovery, returning compact statuses and paginated sentence previews instead of repeated full job reports. No worker is started by this read; failure retries use media_job_retry on the same queue."""
+    from . import batch
+    return batch.wait(project_id, job_ids, timeout_seconds)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def media_convert_submit(project_id: str, asset_id: str, start: float, end: float, max_edge: int = 1920, fps: int = 25, interpolate: bool = False) -> dict[str, Any]:
+    """Queue a bounded transcode/frame-cadence repair as NEW derived media. Preserve source sound, prefer GPU encoding under shared policy, heavy concurrency 1. Motion interpolation is expensive and only enabled by explicit interpolate=true; do not apply speculatively. Max 600s. Retry through media_job_retry; import/reanalyse output before selection. No terminal FFmpeg needed."""
+    options = {'start': start, 'end': end, 'max_edge': max_edge, 'fps': fps, 'interpolate': interpolate}
+    media_ops.validate_options(project_id, asset_id, 'convert', options)
+    asset = media_ops.asset(project_id, asset_id)
+    request = {'operation': 'convert', 'asset_id': asset_id, 'source_sha256': asset['identity']['sha256'], 'options': options}
+    return media_jobs.submit_unique(project_id, request)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def speech_model_prepare(project_id: str, source_model_dir: str | None = None) -> dict[str, Any]:
     """Queue local ASR model preparation. Reuse VIDEO_EDITER_ASR_MODEL_DIR, copy an offline source_model_dir, or download the pinned small model from Hugging Face (no footage upload). Existing different files are never overwritten. Shares heavy concurrency 1. Poll media_job_status; retry failure with media_job_retry. No generation/editing."""
     from . import speech
@@ -608,9 +639,9 @@ def commerce_candidate_submit(project_id: str, asset_id: str, start: float, end:
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
-def commerce_candidate_review(project_id: str, job_id: str, facts: dict[str, bool], method: Literal['continuous_review','listening','continuous_review_and_listening'], note: str) -> dict[str, Any]:
-    """Review succeeded candidate evidence; supply exactly the observed booleans returned by commerce_candidate_submit. Unobserved facts use commerce_candidate_defer with null, never guessed true. Hook picture requires continuous_review; voice requires listening; body requires both. Sustained talking picture, missing full body, silent body or unresolved sound are rejected. Rejected candidates need new source evidence, not relabelling."""
-    return commerce.candidate_review(project_id, job_id, facts, method, note)
+def commerce_candidate_review(project_id: str, job_id: str, facts: dict[str, bool], method: Literal['continuous_review','listening','continuous_review_and_listening'], note: str, review_receipt_paths: list[str] | None = None) -> dict[str, Any]:
+    """Review succeeded candidate evidence with observed facts AND review_receipt_paths exported from actual tool/user observations (see bundled efficient-execution.md). Method labels alone remain pending. Receipts bind candidate preview bytes, modality and time coverage; do not manufacture them from ASR or signal levels. Hook picture requires continuous review, voice listening, body both. Known rejected/silent defects cannot be relabelled."""
+    return commerce.candidate_review(project_id, job_id, facts, method, note, review_receipt_paths)
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
@@ -645,15 +676,15 @@ def commerce_typography_add(project_id: str, text: str, emphasis: str, support: 
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
-def commerce_render_submit(project_id: str, preview: bool = True) -> dict[str, Any]:
-    """Preflight the saved commerce stages and queue preview/final. No bypass through raw render entrypoints for enrolled projects. Successful rendering remains unreviewed; inspect/review exact output before commerce_delivery_get."""
+def commerce_render_submit(project_id: str, preview: bool = False) -> dict[str, Any]:
+    """Preflight the saved commerce stages and queue one delivery-quality render. preview=true remains only for an explicit legacy review copy; successful rendering is still unreviewed. Inspect and review this exact output before commerce_delivery_get."""
     commerce.load(project_id)
     return render_submit(project_id, preview)
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
 def commerce_delivery_get(project_id: str, render_job_id: str) -> dict[str, Any]:
-    """Delivery gate for source-only workflow: valid current stages AND exact final artifact's complete v2 review. Missing/failed/stale checks never become delivery_ready. Preview is review-only."""
+    """Delivery gate for source-only workflow: valid current stages AND the exact delivery-quality artifact's complete artifact-bound review. Missing/failed/stale checks never become delivery_ready. Legacy preview artifacts remain review-only."""
     state = commerce.load(project_id)
     errors = commerce.preflight(project_id, allow_pending=(state.get('selection') or {}).get('preview_only', False))
     result = delivery_review.get(project_id, render_job_id)
@@ -673,7 +704,7 @@ def commerce_delivery_get(project_id: str, render_job_id: str) -> dict[str, Any]
 
 @mcp.tool(annotations={"readOnlyHint": True})
 def delivery_review_get(project_id: str, render_job_id: str) -> dict[str, Any]:
-    """Recheck delivery review and evidence hashes. Returns needs_review/needs_repair/stale/preview_reviewed/ready. A render success alone is never delivery_ready. Does not prevent exporting a clearly labelled review copy."""
+    """Recheck delivery review and evidence hashes. Returns needs_review/needs_repair/stale/ready for the exact artifact; legacy previews may still report preview_reviewed. A render success alone is never delivery_ready."""
     return delivery_review.get(project_id, render_job_id)
 
 
@@ -1434,23 +1465,39 @@ def _execute_attempt(attempt):
     diagnostics=preflight.inspect(project,timeline)
     try:
         with attempt.running(), processes.cancellation(attempt.root/'cancel.json'):
-            commerce.render_guard(project_id, project)
+            commerce.render_guard(project_id, project, preview=preview)
             attempt.bind_media()
+            def dependencies(value):
+                used = set()
+                def walk(item):
+                    if isinstance(item, dict):
+                        used.update(v for k, v in item.items() if k in ('asset_id', 'bed_asset_id') and v)
+                        for v in item.values(): walk(v)
+                    elif isinstance(item, list):
+                        for v in item: walk(v)
+                walk(value)
+                return {'settings': value, 'media': {i: attempt.manifest[i] for i in sorted(used)}}
+            plan = _plan(project)
             def base():
-                value = engine.render_project(project_id, _plan(project), render_job=attempt.job_id,
+                value = engine.render_project(project_id, plan, render_job=attempt.job_id,
                                               project_snapshot=project, job_prepared=True)
                 return Path(value["path"]), value
-            current, result = attempt.stage("base", base)
+            current, result = attempt.stage("base", base, dependencies(plan))
             result = copy.deepcopy(result)
             graphics = [{**item, "path": _asset(project, item["asset_id"])["path"],
                          "kind": _asset(project, item["asset_id"])["kind"]}
                         for item in _entries_by_kind(timeline, "overlay")]
-            current, _ = attempt.stage("graphics", lambda: (_apply_graphics(current, attempt.root / "mcp-graphics.mp4", graphics), {}))
-            current, _ = attempt.stage("captions", lambda: (_apply_captions(current, attempt.root / "mcp-captions.mp4", _entries_by_kind(timeline, "caption")), {}))
+            current, _ = attempt.stage("graphics", lambda: (_apply_graphics(current, attempt.root / "mcp-graphics.mp4", graphics), {}),
+                                       {'base': attempt.state['stages']['base']['sha256'], **dependencies(graphics)})
+            captions = _entries_by_kind(timeline, "caption")
+            current, _ = attempt.stage("captions", lambda: (_apply_captions(current, attempt.root / "mcp-captions.mp4", captions), {}),
+                                       {'graphics': attempt.state['stages']['graphics']['sha256'], 'captions': captions})
             def soundtrack():
                 path = attempt.root / 'soundtrack.wav'
                 return path, audio_engine.render(project, timeline, path)
-            sound, audio_settings = attempt.stage('audio', soundtrack)
+            sound, audio_settings = attempt.stage('audio', soundtrack, dependencies({
+                'main': timeline['tracks']['main'], 'audio': _entries_by_kind(timeline, 'audio'),
+                'bed': timeline.get('audio', {}), 'config': timeline.get('audio_config', {})}))
             output = attempt.root / ('preview.mp4' if preview else 'delivery.mp4')
             command = [engine.ffmpeg_bin(), '-nostdin', '-y', '-i', str(current), '-i', str(sound),
                        '-map', '0:v:0', '-map', '1:a:0']

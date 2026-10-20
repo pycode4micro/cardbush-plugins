@@ -3,6 +3,7 @@ import hashlib
 import subprocess
 import time
 import uuid
+from pathlib import Path
 from . import engine, media_ops, processes, task_queue, resources, audio_review
 from .locking import file_lock
 
@@ -63,6 +64,29 @@ def submit(project_id, request, retry_of=None, start=True):
                 engine.write_json(directory/'state.json',state)
                 raise
     return state
+
+
+def submit_unique(project_id, request):
+    """Idempotent preparation; failures return their existing retry target."""
+    with file_lock(engine.project_dir(project_id) / 'media-submit.lock'):
+        for row in reversed(records(project_id)):
+            if row['operation'] != request['operation']:
+                continue
+            path = folder(project_id, row['job_id'])
+            if engine.read_json(path / 'request.json') != request:
+                continue
+            saved = status(project_id, row['job_id'])
+            if saved['status'] == 'succeeded':
+                try:
+                    if media_ops.digest(path / 'result.json')[0] != saved.get('result_sha256'):
+                        continue
+                    if any(media_ops.digest(Path(f['path']))[0] != f['sha256'] for f in saved['result']['files']):
+                        continue
+                except (OSError, ValueError, KeyError):
+                    continue
+            return {**saved, 'reused': True,
+                    'next_tool': 'media_job_retry' if saved['status'] in ('failed','cancelled','interrupted') else 'media_job_status'}
+        return submit(project_id, request)
 
 
 def cancel(project_id,job_id):

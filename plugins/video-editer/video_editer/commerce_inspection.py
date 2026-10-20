@@ -1,8 +1,9 @@
 """Queued evidence for the commerce workflow. Never infers speech or visual meaning."""
 import copy
+import wave
 from pathlib import Path
 
-from . import engine, media_ops, media_store, audio, processes
+from . import engine, media_ops, media_store, audio, processes, analysis_cache, scene_analysis
 
 
 def range_evidence(project_id, asset_id, start, end, directory, progress):
@@ -11,6 +12,15 @@ def range_evidence(project_id, asset_id, start, end, directory, progress):
     start, end = media_store.bounds(start, end, asset['probe']['duration'])
     if end - start > 60:
         raise ValueError('Review one complete unit at a time, at most 60 seconds')
+    identity = {'source': asset['identity']['sha256'], 'probe': asset['probe'], 'start': start, 'end': end,
+                'runtime': media_ops.cache_key(asset, 'source_range', {}),
+                'implementation': analysis_cache.implementation('commerce_inspection.py', 'scene_analysis.py', 'audio.py')}
+    cached = analysis_cache.read('source_range', identity)
+    if cached:
+        cached.update(asset_id=asset_id, cache_hit=True)
+        for name in ('preview', 'frames'):
+            cached[name]['asset_id'] = asset_id
+        return cached
     preview_dir = directory / 'preview'; preview_dir.mkdir()
     preview = media_ops.prepare(project_id, {'asset_id': asset_id, 'operation': 'preview',
         'options': {'start': start, 'end': end, 'max_edge': 640}}, preview_dir, progress)
@@ -22,10 +32,16 @@ def range_evidence(project_id, asset_id, start, end, directory, progress):
     peak = levels.get('sample_peak_db')
     eligibility = ('silent' if not asset['probe'].get('has_audio') or peak is None else
                    'pending' if peak < -50 else 'audible_signal')
-    return {'asset_id': asset_id, 'source_sha256': asset['identity']['sha256'],
+    scenes = scene_analysis.inspect(asset['path'], start, end, progress)
+    if media_ops.stat_signature(Path(asset['path'])) != asset['identity']['stat']:
+        raise ValueError('Source changed during candidate analysis')
+    result = {'asset_id': asset_id, 'source_sha256': asset['identity']['sha256'],
             'source_start': start, 'source_end': end, 'preview': preview,
             'frames': frames, 'audio': levels, 'audio_eligibility': eligibility,
+            'internal_cuts': scenes, 'cache_hit': False,
             'scope': 'Decoded signal and source timestamps only. Review the continuous preview and listen; no semantic approval.'}
+    analysis_cache.write('source_range', identity, result, preview['files'] + frames['files'])
+    return result
 
 
 def execute(project_id, request, directory, progress):
@@ -74,9 +90,15 @@ def execute(project_id, request, directory, progress):
     if imported['probe'].get('has_audio'):
         for index, interval in enumerate(intervals):
             path = directory / ('segment-%02d.wav' % index)
-            processes.run([engine.ffmpeg_bin(), '-nostdin', '-n', '-ss', str(interval['start']),
-                '-i', rendered['path'], '-t', str(interval['end'] - interval['start']),
-                '-vn', '-c:a', 'pcm_s16le', str(path)], capture_output=True, check=True, timeout=180)
+            # Decode the output once; all segment checks use this exact PCM clock.
+            with wave.open(str(soundtrack), 'rb') as source:
+                rate = source.getframerate()
+                first = min(source.getnframes(), round(interval['start'] * rate))
+                count = max(0, round(interval['end'] * rate) - first)
+                source.setpos(first)
+                with wave.open(str(path), 'wb') as output:
+                    output.setparams(source.getparams())
+                    output.writeframes(source.readframes(count))
             final_segments.append({'clip_id': interval['clip_id'], 'start': interval['start'],
                                    'end': interval['end'], 'levels': audio.measure(path),
                                    'file': delivery_review.fingerprint(path)})
@@ -85,7 +107,10 @@ def execute(project_id, request, directory, progress):
     for row in source_ranges:
         files.extend(delivery_review.fingerprint(Path(f['path'])) for kind in ('preview', 'frames') for f in row[kind]['files'])
     files.extend(row['file'] for row in final_segments)
+    from . import commerce
+    presentation = commerce.load(project_id).get('presentation') if commerce.path(project_id).is_file() else None
     return {'operation': 'delivery_inspect', 'project_id': project_id, 'artifact': identity,
+            'typography_findings': commerce.presentation_findings(timeline, presentation),
             'frames': frames, 'listening_path': str(soundtrack) if soundtrack.exists() else None,
             'levels': levels, 'source_ranges': source_ranges, 'final_segments': final_segments,
             'files': files, 'report_path': str(directory / 'result.json'),

@@ -1,5 +1,26 @@
 # Validation
 
+## 0.6.2 single-render commerce flow — 2026-10-20
+
+Full discovery passed 190 tests on Windows/Python 3.12 with FFmpeg 7.1;
+`test_commerce_workflow.py` also passed 25/25 in a focused run. The new cases
+advance a completed presentation directly to `stage=render`, submit the default
+render with `preview=false`, and verify the resulting job is not marked as a
+preview. The old preview-then-final gate is no longer exercised as a required
+route.
+
+The product flow now renders once at the project canvas size, then binds
+delivery inspection, listening, audio cue review and delivery review to that
+same artifact. `preview=true` remains available only as a legacy/review-copy
+branch and cannot satisfy the normal final-delivery route by itself. Skill
+steps, reference documents, the workflow plan, README, MCP descriptions and
+plugin metadata now all describe this single-artifact flow at version 0.6.2.
+
+This was a code/documentation change; no customer project was edited and no new
+render was submitted. The existing r155 artifact remains a 540x960 review copy,
+not a 1080x1920 delivery. Passing tests and render completion still do not
+replace continuous viewing, listening, or the `commerce_delivery_get` decision.
+
 ## 0.6.1 source selection repair — 2026-10-18
 
 82 targeted regressions passed: speech (18), speech clock (1), commerce (25),
@@ -294,3 +315,12 @@ The new audio path avoids repeated lossy encoding and reports every control
 and final measured LUFS/true peak. PCM prediction and final AAC peaks can
 differ. Cadence analysis is a luma sample, not a guarantee about animation or
 speech quality. No automatic motion interpolation is performed.
+
+## 0.7.0 — batch, incremental rendering and review evidence (2026-10-20)
+
+- Preserved installed 0.6.2 target-quality export changes; decoupled preview quality from pending candidate review. The same output is inspected and delivered.
+- Added batch ASR, batch candidates, bounded compact waiting, cross-project source analysis reuse, dependency-based render-stage reuse and queued transcode/interpolation. Existing resource/encoder policy and one-heavy-task gate remain in force.
+- New synthetic regressions verify actual audio-only stage reuse, subtitle-only reuse, corrupt-cache misses, positive/silent ASR cache rebinding and model invalidation, source-internal flash cuts, derived-media sound retention, receipt coverage and missing-evidence pending status. No customer media, paid generation or real recognition inference was run.
+- Full suite: 201 cases; two outdated/single-source resume expectations exposed the route change. Corrected initial batch arguments and preserved partial-transcript resume from its uncovered boundary. Post-fix focused suite: 77 cases passed, including the added coverage. Other full-suite cases passed.
+- Synthetic 3-second output measurements are local smoke timings, not an end-to-end 45-second workflow benchmark. Cache assertions check reused stage hashes and changed audio, not a fragile time threshold.
+- Both Skill entrypoints pass quick_validate in UTF-8 mode; MCP discovery exposes 114 tools and preview defaults false. Actual semantic video/listening quality still requires received review evidence or explicit user feedback; portable receipts are not authenticated host attestations.

@@ -1,5 +1,7 @@
 """Artifact-bound editorial review. Measurements never certify editorial judgement."""
 from datetime import datetime, timezone
+import contextvars
+from functools import wraps
 import hashlib
 import json
 from pathlib import Path
@@ -15,10 +17,29 @@ CHECKS = (
     'final_picture', 'final_speech', 'sfx_audibility',
 )
 
+_hashes = contextvars.ContextVar('review_hashes', default=None)
+
+
+def scoped_hashes(function):
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        if _hashes.get() is not None:
+            return function(*args, **kwargs)
+        token = _hashes.set({})
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _hashes.reset(token)
+    return wrapped
+
 
 def fingerprint(path):
     path = Path(path).expanduser().resolve()
     before = path.stat()
+    cache = _hashes.get()
+    key = (str(path), before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+    if cache is not None and key in cache:
+        return dict(cache[key])
     h = hashlib.sha256()
     with path.open('rb') as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b''):
@@ -26,7 +47,10 @@ def fingerprint(path):
     after = path.stat()
     if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
         raise ValueError('Review artifact changed while hashing')
-    return {'path': str(path), 'sha256': h.hexdigest(), 'size': after.st_size}
+    result = {'path': str(path), 'sha256': h.hexdigest(), 'size': after.st_size}
+    if cache is not None:
+        cache[key] = result
+    return result
 
 
 def artifact(project_id, render_job_id):
@@ -59,7 +83,7 @@ def normalize_checks(checks, required=None, pure_display=False):
         raise ValueError('checks must be a list of named commerce review checks')
     rows = {}
     for item in checks:
-        if not isinstance(item, dict) or set(item) - {'id', 'status', 'note', 'evidence_paths', 'repair_action', 'method', 'observations'}:
+        if not isinstance(item, dict) or set(item) - {'id', 'status', 'note', 'evidence_paths', 'repair_action', 'method', 'observations', 'review_receipt_paths'}:
             raise ValueError('Unexpected review check fields')
         name = item.get('id')
         if name not in CHECKS or name in rows:
@@ -98,8 +122,14 @@ def normalize_checks(checks, required=None, pure_display=False):
             raise ValueError('A pass/fail judgement requires inspectable evidence')
         if status == 'fail' and (not isinstance(repair, str) or not repair.strip()):
             raise ValueError('Failed checks require a concrete repair_action')
+        from . import review_evidence
+        receipts, receipt_files = review_evidence.load(item.get('review_receipt_paths', []))
+        if status == 'pass' and method in ('continuous_review', 'listening', 'user_feedback', 'frame_review') and not receipts:
+            status = 'not_checked'
+            note = 'Actual review receipt missing. Requested conclusion: ' + note
         rows[name] = {'id': name, 'status': status, 'note': note, 'method': method,
-                      'observations': observations, 'repair_action': repair, 'evidence': [fingerprint(p) for p in paths]}
+                      'observations': observations, 'repair_action': repair, 'receipts': receipts,
+                      'evidence': [fingerprint(p) for p in paths] + receipt_files}
     return [rows.get(name, {'id': name, 'status': 'not_checked', 'note': 'No review supplied',
                             'repair_action': '', 'evidence': []}) for name in CHECKS]
 
@@ -137,6 +167,11 @@ def inspection_findings(project_id, identity, job_id):
     if report['levels'].get('sample_peak_db') is None:
         findings.append({'code': 'silent_final_audio', 'severity': 'fail', 'message': 'Final output has no decoded audio signal'})
     for row in report['source_ranges']:
+        scenes = row.get('internal_cuts')
+        if scenes and scenes.get('requires_review'):
+            findings.append({'code': 'internal_cuts:' + row['clip_id'], 'severity': 'review',
+                             'message': 'Review short shots inside the selected source range',
+                             'source_ranges': scenes['short_shots']})
         if row.get('role') == 'hook_picture': continue
         if row['audio_eligibility'] != 'audible_signal':
             findings.append({'code': 'source_audio:' + row['clip_id'], 'severity': 'fail',
@@ -145,10 +180,12 @@ def inspection_findings(project_id, identity, job_id):
         if row['levels'].get('sample_peak_db') is None:
             findings.append({'code': 'silent_final_segment:' + row['clip_id'], 'severity': 'fail',
                              'message': 'This rendered segment is silent; whole-output average is insufficient'})
+    findings.extend(report.get('typography_findings', []))
     return findings, evidence
 
 
 @resources.heavy_operation
+@scoped_hashes
 def form(project_id, render_job_id, inspection_job_id):
     identity, _ = artifact(project_id, render_job_id)
     findings, _ = inspection_findings(project_id, identity, inspection_job_id)
@@ -162,7 +199,7 @@ def form(project_id, render_job_id, inspection_job_id):
                   'measurement' if name in ('source_audio','source_frame_timestamps') else
                   'continuous_review' if name in ('hook_picture','hook_body_continuity','body_continuity','final_picture') else 'frame_review')
         row = {'id': name, 'status': 'not_checked', 'method': method if name in required else 'not_applicable',
-               'note': 'Not reviewed yet', 'evidence_paths': [evidence_path], 'repair_action': ''}
+               'note': 'Not reviewed yet', 'evidence_paths': [evidence_path], 'review_receipt_paths': [], 'repair_action': ''}
         if name == 'hook_picture' and any(c.get('role') == 'hook_picture' for c in timeline['tracks']['main']):
             row['observations'] = {k: False for k in ('full_body_visible','natural_display','no_continuous_speaking','burned_captions_compatible')}
         rows.append(row)
@@ -246,6 +283,7 @@ def verdict(record):
 
 
 @resources.heavy_operation
+@scoped_hashes
 def record(project_id, render_job_id, checks, audio_review_job_ids=None, warning_resolutions=None, inspection_job_id=None):
     identity, result = artifact(project_id, render_job_id)
     snapshot = engine.read_json(jobs.folder(project_id, render_job_id) / 'input.json')
@@ -275,13 +313,37 @@ def record(project_id, render_job_id, checks, audio_review_job_ids=None, warning
     if commerce.path(project_id).is_file():
         state = commerce.load(project_id)
         selection = state.get('selection') or {}
-        pending_preview = identity['preview'] and selection.get('preview_only', False)
+        pending_preview = selection.get('preview_only', False)
         findings.extend({'code': 'workflow:' + str(i), 'severity': 'fail', 'message': message}
                         for i, message in enumerate(commerce.preflight(project_id, snapshot['project'], allow_pending=pending_preview)))
         for job in selection.get('pictures', []) + ([selection['voice']] if selection.get('voice') else []):
             if state['reviews'].get(job, {}).get('status') == 'pending':
                 findings.append({'code': 'candidate_pending:' + job, 'severity': 'review',
-                                 'message': 'Candidate visual/listening review is incomplete; preview is not approval'})
+                                 'message': 'Candidate visual/listening review is incomplete; target-quality export is not approval'})
+        findings.extend(commerce.presentation_findings(timeline, state.get('presentation')))
+    # A receipt must cover this actual output, not a source, ASR report or another
+    # render. Matching audio-only inspection files use the same output clock.
+    from . import review_evidence
+    picture_hashes = {identity['output']['sha256']}
+    sound_hashes = set(picture_hashes)
+    if inspection_job_id:
+        report = media_jobs.status(project_id, inspection_job_id)['result']
+        if report.get('listening_path'):
+            sound_hashes.add(fingerprint(report['listening_path'])['sha256'])
+    intervals = timing.time_map(timeline)
+    duration = intervals['duration']
+    hook_end = intervals['clips'][0]['end'] if intervals['clips'] else duration
+    for check in checked:
+        if check['status'] != 'pass' or check['method'] not in ('continuous_review', 'listening', 'user_feedback', 'frame_review'):
+            continue
+        end = hook_end if check['id'] in ('hook_picture', 'hook_voice') else duration
+        start = hook_end if check['id'] == 'body_continuity' else 0
+        hashes = sound_hashes if check['method'] == 'listening' else picture_hashes
+        if not review_evidence.covers(check.get('receipts', []), check['method'], hashes, start, end):
+            check.update(status='not_checked', note='Review receipt does not cover this output/range: ' + check['note'])
+    if any(f['code'].startswith('typography_unchecked:') for f in findings):
+        next(c for c in checked if c['id'] == 'typography').update(status='not_checked',
+            note='Typography size/theme checks are incomplete: missing metadata')
     planned = {a['id'] for track in timeline['tracks'].values() for a in track if a.get('role') == 'sfx'}
     for cue in sorted(planned - covered):
         findings.append({'code': 'sfx_unmeasured:' + cue, 'severity': 'review', 'message': 'No matching rendered cue review'})
@@ -289,7 +351,7 @@ def record(project_id, render_job_id, checks, audio_review_job_ids=None, warning
     if warning_resolutions is not None and (not isinstance(warning_resolutions, list) or len(warning_resolutions) > 128):
         raise ValueError('warning_resolutions must contain up to 128 specific resolutions')
     known = {f['code'] for f in findings if f['severity'] == 'review' and f['code'] != 'missing_render_inspection'
-             and not f['code'].startswith(('sfx_unmeasured:', 'candidate_pending:'))}
+             and not f['code'].startswith(('sfx_unmeasured:', 'candidate_pending:', 'typography_unchecked:'))}
     for resolution in warning_resolutions or []:
         if (not isinstance(resolution, dict) or set(resolution) != {'code', 'note', 'evidence_paths'}
                 or resolution['code'] not in known or not isinstance(resolution['note'], str)
@@ -300,10 +362,16 @@ def record(project_id, render_job_id, checks, audio_review_job_ids=None, warning
         # Masking warnings cannot be waived while listening remains unchecked.
         if resolution['code'].startswith('sfx_warning:') and next(c for c in checked if c['id'] == 'sfx_audibility')['status'] != 'pass':
             raise ValueError('Review cue audibility before resolving an audio warning')
+        if resolution['code'].startswith('internal_cuts:') and next(c for c in checked if c['id'] == 'body_continuity')['status'] != 'pass':
+            raise ValueError('Actual continuous review is required before resolving internal-cut signals')
         resolutions.append({'code': resolution['code'], 'note': resolution['note'],
                             'evidence': [fingerprint(p) for p in resolution['evidence_paths']]})
     subjects = subject_signatures(snapshot['project'])
-    item = {'schema_version': 2, 'profile': 'commerce-v2', 'id': 'review_' + uuid.uuid4().hex[:16],
+    # Keep receipts by fingerprint/reference, not repeated full payloads in
+    # every check and every subsequent status response.
+    for check in checked:
+        check.pop('receipts', None)
+    item = {'schema_version': 3, 'profile': 'commerce-v3', 'id': 'review_' + uuid.uuid4().hex[:16],
             'created_at': datetime.now(timezone.utc).isoformat(), 'artifact': identity,
             'inspection_job_id': inspection_job_id, 'inspection_evidence': inspection_files, 'check_subjects': subjects,
             'checks': checked, 'technical_findings': findings, 'audio_evidence': audio_files,
@@ -328,6 +396,7 @@ def record(project_id, render_job_id, checks, audio_review_job_ids=None, warning
 
 
 @resources.heavy_operation
+@scoped_hashes
 def get(project_id, render_job_id):
     identity, _ = artifact(project_id, render_job_id)
     folder = engine.project_dir(project_id) / 'delivery_reviews'
@@ -337,9 +406,9 @@ def get(project_id, render_job_id):
         return {'status': 'needs_review', 'delivery_ready': False, 'artifact': identity,
                 'pending_checks': list(CHECKS), 'history_count': len(history)}
     item = matching[-1]
-    if item.get('schema_version', 1) < 2:
+    if item.get('schema_version', 1) < 3:
         return {**item, 'status': 'needs_review', 'delivery_ready': False,
-                'pending_checks': ['legacy_review_requires_bound_inspection'], 'history_count': len(history)}
+                'pending_checks': ['legacy_review_requires_actual_review_receipts'], 'history_count': len(history)}
     stale = identity != item['artifact']
     current = engine.read_json(engine.project_dir(project_id) / 'project.json')
     stale |= current['mcp_timeline']['revision'] != identity['revision']

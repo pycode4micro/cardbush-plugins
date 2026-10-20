@@ -48,7 +48,7 @@ def runtime_status():
             'scope': 'File/dependency discovery only; the queued worker validates model, audio and actual device. No model download on this read.'}
 
 
-def _submit(project_id, request):
+def _submit(project_id, request, start_worker=True):
     # Serialize deduplication with other callers, but do not hold a heavy slot.
     from .locking import file_lock
     with file_lock(engine.project_dir(project_id) / 'speech-submit.lock'):
@@ -69,7 +69,7 @@ def _submit(project_id, request):
             else:
                 return {**current, 'reused': True, 'next_tool': 'media_job_retry',
                         'required_action': 'Fix the reported execution failure, then retry this job through media_job_retry; do not loop new submissions.'}
-        return {**media_jobs.submit(project_id, request), 'next_tool': 'media_job_status'}
+        return {**media_jobs.submit(project_id, request, start=start_worker), 'next_tool': 'media_job_status'}
 
 
 def model_prepare(project_id, source_model_dir=None):
@@ -85,7 +85,7 @@ def model_prepare(project_id, source_model_dir=None):
         'model_repo': MODEL_REPO, 'model_revision': MODEL_REVISION})
 
 
-def submit(project_id, asset_id, start=0, end=None, language='zh', device='auto'):
+def transcription_request(project_id, asset_id, start=0, end=None, language='zh', device='auto'):
     asset = media_ops.asset(project_id, asset_id)
     if asset['kind'] != 'video': raise ValueError('Transcribe a registered source video')
     if not isinstance(language, str) or not re.fullmatch(r'[a-z]{2,3}', language): raise ValueError('Use an explicit language code, e.g. zh or en')
@@ -96,9 +96,13 @@ def submit(project_id, asset_id, start=0, end=None, language='zh', device='auto'
         runtime = runtime_status()
         if runtime['missing_dependencies']: raise ValueError('Install plugin requirements.txt; ASR is now a bundled dependency')
         if not runtime['model_files_present']: raise ValueError('Call speech_model_prepare, then wait for its media_job_status to succeed')
-    return _submit(project_id, {'operation': 'speech_transcribe', 'version': VERSION, 'asset_id': asset_id,
+    return {'operation': 'speech_transcribe', 'version': VERSION, 'asset_id': asset_id,
         'source_sha256': asset['identity']['sha256'], 'start': start, 'end': end, 'language': language,
-        'device': device, 'model_path': str(model_dir())})
+        'device': device, 'model_path': str(model_dir())}
+
+
+def submit(project_id, asset_id, start=0, end=None, language='zh', device='auto'):
+    return _submit(project_id, transcription_request(project_id, asset_id, start, end, language, device))
 
 
 def _numeric_continuation(left, right):
@@ -309,13 +313,20 @@ def workflow_progress(project_id):
     """Cheap restart discovery; no new work and no historical media mutation."""
     project = engine.read_json(engine.project_dir(project_id) / 'project.json')
     jobs = media_jobs.records(project_id)
+    # Read each request once rather than once per asset. Explicitly selected
+    # working pools prevent unused imports from forcing more ASR before editing.
+    requests = {j['job_id']: engine.read_json(media_jobs.folder(project_id, j['job_id']) / 'request.json')
+                for j in jobs if j['operation'] == 'speech_transcribe'}
+    from . import commerce
+    pool = commerce.load(project_id).get('analysis_asset_ids') if commerce.path(project_id).is_file() else None
     transcripts, first_missing = [], None
     for asset in project.get('materials', []):
         if asset.get('kind') != 'video': continue
+        if pool is not None and asset['id'] not in pool: continue
         duration = asset['probe']['duration']; coverage = []
         for job in jobs:
             if job['operation'] != 'speech_transcribe': continue
-            request = engine.read_json(media_jobs.folder(project_id, job['job_id']) / 'request.json')
+            request = requests[job['job_id']]
             if request.get('asset_id') != asset['id']: continue
             if job['status'] == 'succeeded':
                 try:
@@ -333,7 +344,7 @@ def workflow_progress(project_id):
         relevant = []
         for job in jobs:
             if job['operation'] != 'speech_transcribe': continue
-            req = engine.read_json(media_jobs.folder(project_id, job['job_id']) / 'request.json')
+            req = requests[job['job_id']]
             if req.get('asset_id') == asset['id'] and req.get('start') == args['start'] and req.get('end') == args['end']:
                 relevant.append(media_jobs.status(project_id, job['job_id']))
         last = relevant[-1] if relevant else None
@@ -368,6 +379,7 @@ def extract_audio(source_path, audio_path, container_start, start, end):
 
 
 def execute(project_id, request, directory, progress):
+    cache_identity = None
     if request['operation'] == 'speech_model_prepare':
         progress('preparing_asr_model', 0, 1)
         child_request = {**request, 'action': 'prepare'}
@@ -375,6 +387,27 @@ def execute(project_id, request, directory, progress):
         asset = media_ops.asset(project_id, request['asset_id'], strong=True, progress=progress)
         if asset['identity']['sha256'] != request['source_sha256']: raise ValueError('ASR source changed since submission')
         a, b = request['start'], request['end']
+        from . import analysis_cache
+        from importlib.metadata import version, PackageNotFoundError
+        # Bind the model bytes as well as recognizer/clock logic. This lookup is
+        # in the queued worker, never a synchronous MCP hashing operation.
+        model_files = {n: media_ops.digest(Path(request['model_path']) / n)[0] for n in MODEL_FILES
+                       if asset['probe'].get('has_audio')}
+        cache_identity = {'request': {k: v for k, v in request.items() if k not in ('asset_id', 'model_path')},
+                          'model': model_files, 'probe': asset['probe'],
+                          'audio_runtime': media_ops.cache_key(asset, 'speech_audio', {}),
+                          'implementation': analysis_cache.implementation('speech.py', 'speech_worker.py')}
+        cache_identity['backend_versions'] = {}
+        for package in ('faster-whisper', 'ctranslate2'):
+            try:
+                cache_identity['backend_versions'][package] = version(package)
+            except PackageNotFoundError:
+                cache_identity['backend_versions'][package] = None
+        cached = analysis_cache.read('speech', cache_identity)
+        if cached:
+            cached.update(request=copy.deepcopy(request), asset_id=request['asset_id'], cache_hit=True,
+                          human_listened=False)
+            return cached
         if not asset['probe'].get('has_audio'):
             child_result = {'segments': [], 'device': None, 'reason': 'no_audio_stream'}
             audio_path = None
@@ -412,4 +445,7 @@ def execute(project_id, request, directory, progress):
         'audio_evidence': {'path': str(audio_path), 'sha256': media_ops.digest(audio_path)[0]} if audio_path else None,
         'human_listened': False, 'scope': 'Automatic transcript and structural sentence proposals; word times are estimates, meaning/emotion/listening are unreviewed.'}
     resources.record({'event': 'asr', **result['backend'], 'heavy_concurrency': 1})
+    if cache_identity is not None:
+        analysis_cache.write('speech', cache_identity, result,
+                             [result['audio_evidence']] if result['audio_evidence'] else [])
     return result

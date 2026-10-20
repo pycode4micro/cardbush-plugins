@@ -2,12 +2,13 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
+import json
 from pathlib import Path
 import re
 import shutil
 import uuid
 
-from . import engine, timing, processes
+from . import engine, timing, processes, resources
 from .locking import file_lock
 
 
@@ -144,37 +145,67 @@ class Attempt:
         obj.prior=folder(project_id,state['retry_of']) if state.get('retry_of') else None
         return obj
 
-    def reuse(self, stage):
-        if not self.prior:
+    def reuse(self, stage, signature=None):
+        try:
+            return self._reuse(stage, signature)
+        except (OSError, ValueError, KeyError, TypeError):
+            return None  # Missing/corrupt cache is a miss; do not weaken source validation.
+
+    def _reuse(self, stage, signature=None):
+        origin = self.prior
+        if signature:
+            index = engine.project_dir(self.state['project_id']) / 'render_cache' / (signature + '.json')
+            cached = engine.read_json(index, {})
+            if cached.get('job_id'):
+                try:
+                    origin = folder(self.state['project_id'], cached['job_id'])
+                except ValueError:
+                    pass
+        if not origin:
             return None
-        previous = engine.read_json(self.prior / 'state.json')
+        previous = engine.read_json(origin / 'state.json')
         if previous.get('runtime') != self.state['runtime']:
             return None
         record = previous.get('stages', {}).get(stage)
-        if not record:
+        if not record or (signature and record.get('signature') != signature):
             return None
-        source = (self.prior / record['path']).resolve()
-        if not source.is_relative_to(self.prior.resolve()) or not source.is_file() or digest(source) != record['sha256']:
+        if digest(origin / 'input.json') != previous.get('input_sha256'):
             return None
-        target = self.root / f'reused-{stage}.mp4'
+        source = (origin / record['path']).resolve()
+        if not source.is_relative_to(origin.resolve()) or not source.is_file() or digest(source) != record['sha256']:
+            return None
+        target = self.root / ('reused-' + stage + source.suffix)
         shutil.copy2(source, target)
-        self.checkpoint(stage, target, record.get('metadata', {}), reused=True)
+        self.checkpoint(stage, target, record.get('metadata', {}), reused=True, signature=signature)
+        self.state['stages'][stage]['reused_from'] = previous['job_id']
+        self.save()
         return target, record.get('metadata', {})
 
-    def checkpoint(self, stage, path, metadata=None, reused=False):
+    def checkpoint(self, stage, path, metadata=None, reused=False, signature=None):
         self.state['stages'][stage] = {'path': Path(path).relative_to(self.root).as_posix(),
-                                       'sha256': digest(path), 'metadata': metadata or {}, 'reused': reused}
+                                       'sha256': digest(path), 'metadata': metadata or {}, 'reused': reused,
+                                       'signature': signature}
         self.save()
+        if signature:
+            cache = engine.project_dir(self.state['project_id']) / 'render_cache'
+            cache.mkdir(exist_ok=True)
+            engine.write_json(cache / (signature + '.json'), {'job_id': self.job_id, 'stage': stage})
 
-    def stage(self, name, execute):
+    def stage(self, name, execute, inputs=None):
         processes.check()
+        signature = None
+        if inputs is not None:
+            # Caller supplies the actual stage inputs, not the whole revision.
+            signature = hashlib.sha256(json.dumps(
+                [1, name, self.state['runtime'], resources.current_policy(), inputs], sort_keys=True, allow_nan=False
+            ).encode()).hexdigest()
         self.state['current_stage'] = name
         self.save()
-        reused = self.reuse(name)
+        reused = self.reuse(name, signature)
         if reused:
             return reused
         path, metadata = execute()
-        self.checkpoint(name, path, metadata)
+        self.checkpoint(name, path, metadata, signature=signature)
         return path, metadata
 
     @contextmanager

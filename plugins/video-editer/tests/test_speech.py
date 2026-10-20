@@ -48,8 +48,8 @@ class SpeechTests(unittest.TestCase):
 
     def test_no_asr_blocks_all_candidate_roles_and_points_to_step(self):
         state=m.commerce_workflow_status(self.pid)
-        self.assertEqual(state['next_tool'],'speech_transcribe_submit')
-        self.assertEqual(state['next_arguments']['asset_id'],self.asset['id'])
+        self.assertEqual(state['next_tool'],'commerce_materials_prepare')
+        self.assertEqual(state['next_arguments']['asset_ids'],[self.asset['id']])
         for role in ('hook_picture','hook_voice','body'):
             with self.assertRaises(ValueError):m.commerce_candidate_submit(self.pid,self.asset['id'],0,3,role)
         self.assertEqual(media_jobs.records(self.pid),[])

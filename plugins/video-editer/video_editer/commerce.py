@@ -54,7 +54,7 @@ def start(project_id, account, product, target_seconds=45):
     return status(project_id)
 
 
-def candidate_submit(project_id, asset_id, start, end, role, transcript_job_id=None, sentence_ids=None):
+def candidate_request(project_id, asset_id, start, end, role, transcript_job_id=None, sentence_ids=None):
     state = load(project_id)
     if role not in FACTS: raise ValueError('role must be hook_picture, hook_voice or body')
     asset = media_ops.asset(project_id, asset_id)
@@ -73,6 +73,11 @@ def candidate_submit(project_id, asset_id, start, end, role, transcript_job_id=N
     request = {'operation': 'commerce_inspect', 'asset_id': asset_id,
         'start': start, 'end': end, 'role': role, 'scope': [state['account'], state['product']],
         'speech_binding': binding}
+    return request
+
+
+def candidate_submit(project_id, asset_id, start, end, role, transcript_job_id=None, sentence_ids=None, *, start_worker=True):
+    request = candidate_request(project_id, asset_id, start, end, role, transcript_job_id, sentence_ids)
     job = None
     for saved in reversed(media_jobs.records(project_id)):
         if saved['operation'] == 'commerce_inspect' and saved['status'] in ('queued', 'running', 'succeeded'):
@@ -84,7 +89,7 @@ def candidate_submit(project_id, asset_id, start, end, role, transcript_job_id=N
                     except (ValueError, OSError):
                         continue
                 job = {**media_jobs.status(project_id, saved['job_id']), 'reused': True}; break
-    if job is None: job = media_jobs.submit(project_id, request)
+    if job is None: job = media_jobs.submit(project_id, request, start=start_worker)
     return {**job, 'next_tool': 'media_job_status', 'required_facts': list(FACTS[role]),
             'selection_guidance': {
                 'hook_picture': 'Review this display WITH the chosen independent quote. Burned source captions about a different sentence are incompatible even without geometric overlap; known conflicts cannot be deferred.',
@@ -123,7 +128,7 @@ def candidate_report(project_id, job_id):
 
 
 @project_write
-def candidate_review(project_id, job_id, facts, method, note):
+def candidate_review(project_id, job_id, facts, method, note, review_receipt_paths=None):
     report, evidence = candidate_report(project_id, job_id)
     role = report['role']
     if not isinstance(facts, dict) or set(facts) != set(FACTS[role]) or any(type(v) is not bool for v in facts.values()):
@@ -133,12 +138,19 @@ def candidate_review(project_id, job_id, facts, method, note):
     failed = [key for key, value in facts.items() if not value]
     if role != 'hook_picture' and report['audio_eligibility'] != 'audible_signal':
         failed.append('source_audio_' + report['audio_eligibility'])
+    from . import review_evidence
+    receipts, receipt_files = review_evidence.load(review_receipt_paths or [])
+    observed = review_evidence.covers(receipts, method,
+        {f['sha256'] for f in report['preview']['files']}, 0, report['source_end'] - report['source_start'])
     state = load(project_id)
     row = {'job_id': job_id, 'role': role, 'facts': facts, 'method': method, 'note': note,
            'evidence': evidence, 'source_sha256': report['source_sha256'],
-           'status': 'rejected' if failed else 'accepted', 'failed': failed}
+           'status': 'rejected' if failed else 'accepted' if observed else 'pending', 'failed': failed,
+           'review_evidence_version': 1, 'review_receipts': receipt_files,
+           'pending_facts': [] if observed else ['actual_review_evidence'],
+           'scope': 'Caller supplied source-bound review records; not host-authenticated perception.'}
     previous = state['reviews'].get(job_id)
-    if previous and previous['status'] == 'rejected' and row['status'] == 'accepted':
+    if previous and previous['status'] == 'rejected' and row['status'] != 'rejected':
         raise ValueError('Rejected candidate cannot be relabelled; inspect a new source range and save new evidence')
     state['reviews'][job_id] = row
     save(project_id, state)
@@ -175,6 +187,13 @@ def accepted(project_id, state, job_id, role, allow_pending=False):
         raise ValueError('An accepted ' + role + ' candidate is required: ' + str(job_id))
     report, evidence = candidate_report(project_id, job_id)
     if row['evidence'] != evidence: raise ValueError('Candidate review is stale')
+    if row.get('status') == 'accepted':
+        from .delivery_review import fingerprint
+        if row.get('review_evidence_version') != 1 or not row.get('review_receipts'):
+            raise ValueError('Candidate requires actual review receipts; legacy method labels cannot approve it')
+        for file in row['review_receipts']:
+            if fingerprint(file['path']) != file:
+                raise ValueError('Candidate review receipt changed')
     return report
 
 
@@ -309,6 +328,21 @@ def validate_presentation(timeline, plan):
     return errors
 
 
+def presentation_findings(timeline, plan):
+    """Missing metadata is an explicit unchecked measurement, not a size pass."""
+    entries = {e['id']: e for kind, e in timing.entries(timeline) if kind in ('overlay', 'callout', 'caption')}
+    result = []
+    for ident in (plan or {}).get('hook_text_ids', []) + (plan or {}).get('body_text_ids', []):
+        item = entries.get(ident, {})
+        meta = item.get('commerce_text', {})
+        layout = meta.get('layout', {})
+        if not meta or not all(k in layout for k in ('main_font_px', 'raster_width', 'raster_height')):
+            result.append({'code': 'typography_unchecked:' + ident, 'severity': 'review',
+                           'status': 'not_checked', 'message': 'Missing commerce_text/layout: size and theme were NOT checked. '
+                           'Use commerce_typography_add or provide measured editable typography metadata.'})
+    return result
+
+
 def preflight(project_id, project=None, presentation_required=True, allow_pending=False):
     state = load(project_id)
     project = project or engine.read_json(engine.project_dir(project_id) / 'project.json')
@@ -331,15 +365,11 @@ def preflight(project_id, project=None, presentation_required=True, allow_pendin
 def render_guard(project_id, project, preview=True):
     if path(project_id).is_file():
         state = load(project_id)
-        pending_preview = preview and (state.get('selection') or {}).get('preview_only', False)
-        errors = preflight(project_id, project, allow_pending=pending_preview)
+        # preview controls resolution only. Explicit pending assembly is an
+        # unapproved review copy at either resolution; delivery has its own gate.
+        review_copy = (state.get('selection') or {}).get('preview_only', False)
+        errors = preflight(project_id, project, allow_pending=review_copy)
         if errors: raise ValueError('Commerce preflight: ' + '; '.join(errors))
-        if not preview:
-            from . import delivery_review
-            candidates = [engine.read_json(p) for p in (engine.project_dir(project_id) / 'mcp_renders').glob('*/state.json')]
-            previews = [r for r in candidates if r['preview'] and r['status'] == 'succeeded' and r['revision'] == project['mcp_timeline']['revision']]
-            if not any(delivery_review.get(project_id, r['job_id'])['status'] == 'preview_reviewed' for r in previews):
-                raise ValueError('Review a succeeded preview of this revision before final submission')
 
 
 def status(project_id):
@@ -351,17 +381,17 @@ def status(project_id):
         todo = ['Find and continuously review full-body display with no sustained speaking', 'Choose a complete emotional source sentence independently', 'Review complete body explanation/action units with audible source speech']
         if counts['hook_picture']+len(pending['hook_picture']) and counts['hook_voice']+len(pending['hook_voice']) and counts['body']+len(pending['body']) >= 2:
             stage, tool = 'candidate_review_pending', 'commerce_timeline_apply'
-            todo = ['Complete pending reviews for normal production, or explicitly use preview_only=true to produce an unapproved review copy; never claim approval']
+            todo = ['Complete pending candidate reviews before assembling the delivery edit; do not use an unapproved preview as delivery']
     elif not state['selection']:
         stage, tool, todo = 'timeline', 'commerce_timeline_apply', ['Order accepted body units; supply one topic-boundary transition']
     elif not state['presentation']:
         stage, tool, todo = 'presentation', 'commerce_typography_add', ['Review source safe boxes; add hook_center and body keyword_stack/detail_underline with one palette', 'Add selected short role=sfx sounds, then commerce_presentation_record with actual IDs']
     else:
         errors = preflight(project_id, allow_pending=(state['selection'] or {}).get('preview_only', False))
-        stage, tool = ('repair', 'commerce_timeline_apply') if errors else ('preview', 'commerce_render_submit')
+        stage, tool = ('repair', 'commerce_timeline_apply') if errors else ('render', 'commerce_render_submit')
         if errors and any('Candidate' in error or 'candidate' in error or 'source changed' in error for error in errors):
             tool = 'commerce_candidate_submit'
-        todo = errors or ['Queue preview, then delivery_inspection_submit and delivery_review_record; final delivery requires review of the final artifact']
+        todo = errors or ['Queue one delivery-quality render, then inspect and review that exact output; no separate preview artifact']
     recovery = {}
     if stage == 'candidates':
         candidates = []
@@ -380,7 +410,7 @@ def status(project_id):
             else:
                 stage, tool, todo = 'candidate_failed', 'media_job_retry', ['Inspect failure; retry the existing request only for execution failure, otherwise select another source range']
                 recovery['alternative_tool'] = 'commerce_candidate_skip'
-    if stage == 'preview':
+    if stage == 'render':
         project = engine.read_json(engine.project_dir(project_id) / 'project.json')
         renders = [engine.read_json(p) for p in (engine.project_dir(project_id) / 'mcp_renders').glob('*/state.json')]
         renders = sorted([r for r in renders if r['revision'] == project['mcp_timeline']['revision']], key=lambda r: r['created_at'])
@@ -399,7 +429,7 @@ def status(project_id):
                 if review.get('delivery_ready'):
                     stage, tool, todo = 'delivery', 'commerce_delivery_get', ['Read the final gate result and deliver its reviewed artifact']
                 elif review['status'] == 'preview_reviewed':
-                    stage, tool, todo = 'final_render', 'commerce_render_submit', ['Submit preview=false, then inspect/review that final output']
+                    stage, tool, todo = 'final_render', 'commerce_render_submit', ['Legacy preview only: submit preview=false once, then inspect/review that final output']
                 elif review['status'] == 'needs_repair':
                     stage = 'repair'
                     failed = review.get('failed_checks', [])
@@ -410,7 +440,7 @@ def status(project_id):
                     recovery['repair_actions'] = [{'id': c['id'], 'note': c['note'], 'repair_action': c['repair_action']}
                                                   for c in review.get('checks', []) if c['status'] == 'fail']
                     recovery['technical_findings'] = review.get('technical_findings', [])
-                    todo = ['Repair the failed subject, apply a new reviewed plan if footage/voice changes, then submit a new preview; do not resubmit pass or render_retry for a content failure']
+                    todo = ['Repair the failed subject, apply a new reviewed plan if footage/voice changes, then submit a new delivery-quality render; do not resubmit pass or render_retry for a content failure']
                 elif review['status'] == 'stale':
                     stage, tool, todo = 'inspection', 'delivery_inspection_submit', ['Rebuild and review current bound evidence; stale approval cannot certify delivery']
                 elif inspections:
@@ -432,6 +462,12 @@ def status(project_id):
         missing = speech_progress['missing']
         stage, tool = missing['stage'], missing['next_tool']
         recovery['next_arguments'] = missing['next_arguments']
+        if tool == 'speech_transcribe_submit' and state.get('analysis_asset_ids') is None and not speech_progress['transcripts']:
+            project = engine.read_json(engine.project_dir(project_id) / 'project.json')
+            initial = [a['id'] for a in project.get('materials', []) if a.get('kind') == 'video'][:4]
+            tool = 'commerce_materials_prepare'
+            recovery['next_arguments'] = {'project_id': project_id, 'asset_ids': initial}
+            recovery['pool_note'] = 'Suggested first four imports; caller may choose a different working pool and add material if insufficient.'
         todo = ['Complete source transcription before selecting material. Poll queued work; retry failures through media_job_retry. Do not invent ASR text/times or bypass this stage.']
     elif stage == 'candidates':
         usable = [t for t in speech_progress['transcripts'] if t['speech_status'] == 'speech_detected']
@@ -455,4 +491,6 @@ def status(project_id):
             'must_keep': ['Source-only: no video generation or speech synthesis', 'Display picture is not talking footage with its sound muted',
                           'ASR first: source-bound transcript, complete consecutive sentence IDs and word-boundary validation; ASR is not listening approval',
                           'Original picture/body speed; independent voice speed is explicit', 'GPU first; all heavy operations use the shared single queue'],
+            'presentation_findings': presentation_findings(
+                engine.read_json(engine.project_dir(project_id) / 'project.json')['mcp_timeline'], state.get('presentation')),
             'scope': 'Caller visual/listening observations are recorded, not independently certified by this plugin.'}

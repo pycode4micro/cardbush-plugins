@@ -4,6 +4,17 @@ A standalone MCP plugin with local ASR, its own Python/FFmpeg execution core
 and bundled graphics, for Codex and other MCP-compatible agents. The caller
 decides what to edit; the plugin exposes deterministic atomic execution tools.
 
+## 0.6.2: one delivery-quality render
+
+- Enrolled commerce projects no longer require a separate low-resolution
+  preview before final submission. `commerce_render_submit()` defaults to
+  `preview=false` and queues the delivery artifact at the real canvas size.
+- Delivery inspection and audio review bind to that exact artifact;
+  `commerce_delivery_get` still requires complete current checks. A repair
+  creates a new version, not a preview/final pair.
+- `preview=true` remains only as a legacy compatibility option for an explicit
+  review copy; the Baiying workflow no longer uses it.
+
 ## 0.6.1: source evidence and readable commerce lettering
 
 - Preserve touching zero-duration ASR tokens in an indivisible timed group, with
@@ -626,3 +637,13 @@ Remaining limits: 25fps and two speed choices; sequential main track rather than
 arbitrary multitrack video editing; no arbitrary animated masks, tracking,
 chroma key, advanced audio mastering, per-clip render cache, distributed queue
 or automatic semantic quality review. The agent remains responsible for intent.
+
+## 0.7.0 — 批量分析与增量返修
+
+- `commerce_materials_prepare` / `commerce_candidates_submit` 批量提交，`media_jobs_wait` 返回精简结果；全部沿用重任务并发 1。
+- `preview=false` 默认一次目标画质导出；待验状态与画质分离，检查同一文件后直接交付。
+- 音效返修自动复用画面阶段；素材分析按哈希、范围、模型和实现版本跨项目复用。新输出不会继承旧验收通过记录。
+- 实际审阅记录绑定媒体与覆盖范围；缺记录保持待验，自定义花字缺元数据明确未检查。新增素材内部短镜头检测。
+- `media_convert_submit` 提供排队转码及显式可选补帧，失败重试继续排队。
+
+执行方法及跨宿主审阅格式见 [批量执行与实际审阅](skills/baiying-dialogue-video/references/efficient-execution.md)。本次改变验收约束，旧方法标签不能自动追认为已审阅。

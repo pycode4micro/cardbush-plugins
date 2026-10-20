@@ -179,22 +179,28 @@ def prepare(project_id, request, directory, progress, *, evidence_asset=None):
         if a['id'] != request['asset_id'] or digest(Path(a['path']),progress)[0] != a['identity']['sha256']:
             raise ValueError('Inspection-only source identity mismatch')
     info=a['probe']; options=request['options']; source=Path(a['path'])
+    if request.get('source_sha256') and request['source_sha256'] != a['identity']['sha256']:
+        raise ValueError('Preparation source changed since submission')
     key=cache_key(a,operation,options); prior=cached(project_id,a,key)
     if prior: return prior
     check_space(directory,32*1024*1024)
     common={'cache_key':key,'operation':operation,'time_origin':info['time_origin'],'source_container_start':info['container_start'],
             'files':[],'agent_reviewed':False,'cache_hit':False,'options':options}
-    if operation in ('preview', 'reference'):
+    if operation in ('preview', 'reference', 'convert'):
         start,end=store.bounds(options['start'],options['end'],info['duration'])
         edge=options['max_edge']; output=directory/'preview.mp4'
         vf=f"scale=w='min({edge},iw)':h='min({edge},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1"
         progress('encoding_'+operation,0,end-start)
-        keep_audio = operation == 'preview' or options['include_audio']
+        keep_audio = operation in ('preview', 'convert') or options['include_audio']
+        fps = options.get('fps', 25)
+        if operation == 'convert':
+            vf += (f',minterpolate=fps={fps}:mi_mode=mci' if options['interpolate'] else f',fps={fps}')
+            vf += f',tpad=stop_mode=clone:stop_duration=1,trim=duration={end-start:.9f}'
         audio_args = ['-map','0:a:0?','-c:a','aac','-b:a','128k'] if keep_audio else ['-an']
         processes.run([engine.ffmpeg_bin(),'-nostdin','-n','-ss',f'{start:.9f}','-i',str(source),
                        '-t',f'{end-start:.9f}','-map','0:v:0','-vf',vf,
-                       '-r','25','-c:v','libx264','-preset','medium' if operation=='reference' else 'ultrafast',
-                       '-crf','20' if operation=='reference' else '29','-pix_fmt','yuv420p',
+                       '-r',str(fps),'-c:v','libx264','-preset','medium' if operation in ('reference','convert') else 'ultrafast',
+                       '-crf','20' if operation in ('reference','convert') else '29','-pix_fmt','yuv420p',
                        *audio_args,'-movflags','+faststart',str(output)],capture_output=True,check=True,timeout=max(180,30*(end-start)))
         actual=metadata(output)
         if keep_audio and info['has_audio'] and not actual['has_audio']: raise ValueError('Export lost the requested source audio stream')
@@ -204,6 +210,10 @@ def prepare(project_id, request, directory, progress, *, evidence_asset=None):
                       source_mapping={'scale':1.0,'offset':start,'output_frame_grid_seconds':.04,
                                       'source_frame_precision_seconds':None,'note':'Nominal viewing map, not a frame-exact inverse. VFR/low-fps boundaries require actual source PTS from media_frames_at'},
                       files=[{'path':str(output),'sha256':digest(output)[0]}])
+        if operation == 'convert':
+            common.update(next_tool='media_register', derived_media=True, requires_new_source_analysis=True,
+                          interpolation=options['interpolate'],
+                          note='New derived file; source unchanged. Import/reanalyse before use. No review approvals are inherited.')
     elif operation=='frames':
         frames=[]
         for i,stamp in enumerate(options['timestamps']):
@@ -266,8 +276,10 @@ def validate_options(project_id, asset_id, operation, options):
         if options: raise ValueError('Fingerprint/verify takes no options')
         return
     a=asset(project_id,asset_id); duration=a['probe']['duration']
-    if operation in ('preview','reference','scan'):
-        allowed={'start','end','max_edge','include_audio'} if operation=='reference' else {'start','end','max_edge'} if operation=='preview' else {'start','end'}
+    if operation in ('preview','reference','scan','convert'):
+        allowed=({'start','end','max_edge','fps','interpolate'} if operation=='convert' else
+                 {'start','end','max_edge','include_audio'} if operation=='reference' else
+                 {'start','end','max_edge'} if operation=='preview' else {'start','end'})
         if set(options)-allowed or not {'start','end'}<=options.keys(): raise ValueError('Unexpected or missing range options')
         start,end=store.bounds(options['start'],options['end'],duration)
         if end-start>600: raise ValueError('One evidence window may be at most 600s; use paginated windows')
@@ -282,7 +294,10 @@ def validate_options(project_id, asset_id, operation, options):
         if not isinstance(options.get('include_audio', False), bool):
             raise ValueError('include_audio must be an explicit boolean')
         options.setdefault('include_audio', False)
-    if operation in ('preview','reference','frames'):
+    if operation == 'convert':
+        if type(options.get('fps')) is not int or options['fps'] not in (24,25,30,50,60) or type(options.get('interpolate')) is not bool:
+            raise ValueError('convert requires fps=24/25/30/50/60 and an explicit interpolate boolean')
+    if operation in ('preview','reference','frames','convert'):
         edge=options.get('max_edge',640)
         if not isinstance(edge,int) or isinstance(edge,bool) or edge%2 or not 160<=edge<=1920:
             raise ValueError('max_edge must be even, 160..1920')

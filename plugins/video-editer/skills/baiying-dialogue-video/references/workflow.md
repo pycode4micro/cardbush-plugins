@@ -47,8 +47,8 @@ flowchart TD
 | generate | 免费预览→`hook_request_prepare`→`hook_generation_begin`→授权的一次 create | `may_submit=true` 才创建；保存 task ID、请求指纹、结果哈希，轮询原任务 |
 | hook_review | 人物、服装、动作、接缝、事实、音频实物审阅 | `hook_output_review` 逐项证据；失败不能 attach，不以 provider succeeded 替代审阅 |
 | compose | 生成钩子在最新 revision 上 `hook_attach`，已有开场按源区间编排；添加音轨、花字及至少 1 处、默认 1 处、最多 2 处低频转场动画 | 所有正文事件只偏移一次；全局静音下显式补回钩子声音；效果计数包含叠加层，重叠转场后重新核对时间映射 |
-| cue_review | 成功 preview/final 的 ID → `audio_review_submit` → `media_job_status` → 逐落点对照与试听记录 | 保存该版渲染 ID、音轨 ID、检查 job/report、有/无音效同电平样本；信号存在、可能掩蔽与听感分开；新版本改声后提交新检查，不复用旧结论 |
-| deliver | validate→队列 preview→连续检查钩子后 8–10 秒及整片→队列 final→实物检查 | 本地视频、项目/任务、实际编码器、时长/尺寸/声音、源清单；实际成片至少 1 处可见转场动画，记录数量、时间点及画面证据；源音频资格、逐段混音掉声、逐音效检查和承接体验分别记录检查范围与限制 |
+| cue_review | 成功正式质量 render 的 ID → `audio_review_submit` → `media_job_status` → 逐落点对照与试听记录 | 保存该版渲染 ID、音轨 ID、检查 job/report、有/无音效同电平样本；信号存在、可能掩蔽与听感分开；新版本改声后提交新检查，不复用旧结论 |
+| deliver | validate→队列正式质量 render→对同一成片连续检查钩子后 8–10 秒及整片→音效检查与记录→`commerce_delivery_get` | 本地视频、项目/任务、实际编码器、时长/尺寸/声音、源清单；实际成片至少 1 处可见转场动画，记录数量、时间点及画面证据；源音频资格、逐段混音掉声、逐音效检查和承接体验分别记录检查范围与限制 |
 
 ## 素材足量的两层判断
 

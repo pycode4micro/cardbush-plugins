@@ -1,4 +1,6 @@
-# 纯剪辑分阶段操作（video-editer 0.6.1+）
+# 纯剪辑分阶段操作（video-editer 0.7.0+）
+
+先用 [批量执行与实际审阅](efficient-execution.md) 的入口减少逐文件调用；下文单项工具保留用于定点检查和返修。批量执行不提高重任务并发。
 
 本路线固定为原片全身展示配独立原声，不调用生成，不读取生成钩子工具。先把用户要求带入 account、product、target_seconds；不会看/听时保留待审阅，不猜测事实。返回字段是操作依据，旧聊天里的阶段描述不是。
 
@@ -26,7 +28,7 @@
 
 candidate_review 的 facts 必须来自真实观察：符合为 true，已知不符合为 false，note 说明现象与时间点。未能观察的项目用下面的 defer/null 分支，不把未知写成通过或已确认失败。首中尾截图帮助定位，不证明三秒内一直没有讲话。自然微笑、转身不等于持续讲话；连续口型与讲解手势应选另段。
 
-0.5.1+ 的审阅片分支：当前环境不能真实看/听时，不调用 candidate_review 冒充通过；用 commerce_candidate_defer，观察到的事实为 true，未知为 null，note 写明缺失能力与待查项。pending 与 rejected 不同：已知 false、无声正文/配音和已被拒绝的候选不能转成 pending。只有明确 preview_only=true 的 commerce_timeline_apply 与 preview=true 渲染可使用 pending；正式渲染和 delivery_ready 仍阻断。用户批准或具备能力后需对真实证据正常 review，不能用 warning_resolutions 豁免。
+候选未审阅分支：当前环境不能真实看/听时，用 commerce_candidate_defer，观察到的事实为 true，未知为 null，note 写明缺失能力与待查项。candidate_review 只有方法标签而没有实际审阅记录时也保持 pending。已知 false、无声正文/配音和被拒绝的候选不能转成 pending。需提供审阅片时明确 `preview_only=true` 组片，再以 `preview=false` 导出一次目标画质；文件仍待验。合格交付前补实际审阅记录，不能用 warning_resolutions 豁免。
 
 先选有吸引力的完整原声，再按其实际时长找 2–4 秒展示。存在多个候选时，比较至少两句原文、上下文、吸引人的原因和正文接法，淘汰普通穿法说明；候选不足就写明，不为填表编句。不要先固定一段展示，再为塞进时间窗挑最短、最平淡的台词。完整原声优先，换展示区间比换成弱钩子更合理。
 
@@ -72,18 +74,18 @@ commerce_timeline_apply 的参数：
 
 最后 commerce_presentation_record(theme_colors,hook_text_ids,body_text_ids,sfx_audio_ids)，传已存在的真实事件 ID。图层几何成立不代表视觉效果或听感合格，下一阶段检查实际输出。
 
-## 5. 预览与验收
+## 5. 正式质量渲染与验收
 
-commerce_render_submit(preview=true) → render_job_status 成功 → delivery_inspection_submit(project_id,render_job_id) → media_job_status 成功。检查任务与其他重任务共享并发 1；它提供绑定本输出的画面、试听 WAV、逐源选区与逐成片段声音信息。
+commerce_render_submit(preview=false) → render_job_status 成功 → delivery_inspection_submit(project_id,render_job_id) → media_job_status 成功。该输出同时是验收和交付对象，不另生成低清预览。检查任务与其他重任务共享并发 1；它提供绑定本输出的画面、试听 WAV、逐源选区与逐成片段声音信息。
 
 调用 delivery_review_form 得到完整检查表，初始 not_checked。实际连续看 3 秒钩子、接缝到正文前 8–10 秒以及整片；实际听原声与最终混音。音效单独 audio_review_submit(render_job_id=...)，保存每处对照样本并试听。按事实填写 delivery_review_record，传 inspection_job_id 和已成功的音效检查 job_id。
 
 听不见、看不懂或没有能力审阅时保持 not_checked/false，给出缺口。不是换一个 method 名字就算听过。插件核验证据身份与技术结果，不独立判断自然度。
 
-## 6. 返修与最终交付
+## 6. 返修与交付
 
 失败检查有具体 repair_action：换画面/换原声、延长完整讲解单元、修复文字遮挡或修音效。内容失败必须实际改变相应内容；增加 revision、换无关花字、把 fail 改 pass 都不能清除。执行失败的 render_retry 只重跑旧剪法。
 
-预览检查通过后 commerce_render_submit(preview=false)。最终输出重新 delivery_inspection_submit、必要音效检查、delivery_review_form/record，再 commerce_delivery_get。只有该工具 delivery_ready=true 才称合格成片；preview_reviewed 只表示预览通过。
+检查通过后直接对同一份成片调用 commerce_delivery_get，不重新渲染 preview→final。若检查失败，修改内容并提交新的正式质量渲染；不能只重试旧任务或改写 pass。只有该工具 delivery_ready=true 才称合格成片。
 
-检查不可用时交待审阅版并列出未验项目，不另写 delivery_ready=true，不用自制 FFmpeg 输出替代登记成片。素材不足按用户已授权来源补料；无可用素材则报告缺口，不擅自换账号、换商品或调用生成。
+检查不可用时明确列出未验项目并保留现有文件，不称合格交付，不另写 delivery_ready=true，不用自制 FFmpeg 输出替代登记成片。素材不足按用户已授权来源补料；无可用素材则报告缺口，不擅自换账号、换商品或调用生成。

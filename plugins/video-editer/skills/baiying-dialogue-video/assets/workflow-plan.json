@@ -550,8 +550,7 @@
     "import_mapping": [],
     "project_id": null,
     "timeline_revision": null,
-    "preview_job_id": null,
-    "final_render_job_id": null,
+    "delivery_render_job_id": null,
     "audio_review_job_ids": [],
     "audio_review_report_paths": [],
     "cue_signal_review": [],
@@ -601,5 +600,15 @@
       "listening_pending_is_not_pass": true
     }
   },
-  "execution_note": "Advanced planning reference only. For pure-source produce use commerce_workflow_start/status and references/source-only-stages.md; this JSON is not a tool request."
+  "execution_note": "Advanced planning reference only. For pure-source produce use commerce_workflow_start/status and references/source-only-stages.md; this JSON is not a tool request.",
+  "execution_efficiency": {
+    "plugin_min_version": "0.7.0",
+    "batch_asr_tool": "commerce_materials_prepare",
+    "batch_candidates_tool": "commerce_candidates_submit",
+    "wait_tool": "media_jobs_wait",
+    "render_target_quality_once": true,
+    "preview_controls_quality_only": true,
+    "reuse_does_not_transfer_review_approval": true,
+    "review_reference": "../references/efficient-execution.md"
+  }
 }

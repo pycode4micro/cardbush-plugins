@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from video_editer import commerce, engine, media_jobs, media_ops, resources, speech
 from video_editer import mcp_server as m
+from review_fixtures import receipt
 
 
 class CommerceTests(unittest.TestCase):
@@ -54,7 +55,8 @@ class CommerceTests(unittest.TestCase):
         engine.write_json(folder/'result.json',result)
         state=engine.read_json(folder/'state.json');state['status']='succeeded';engine.write_json(folder/'state.json',state)
         if approve:
-            m.commerce_candidate_review(self.pid,job['job_id'],{k:True for k in commerce.FACTS[role]},commerce.METHODS[role],'Synthetic observed fixture facts')
+            proof = receipt(folder, preview, 'audiovisual', end-start)
+            m.commerce_candidate_review(self.pid,job['job_id'],{k:True for k in commerce.FACTS[role]},commerce.METHODS[role],'Synthetic observed fixture facts',[proof])
         return job['job_id']
 
     def plan(self):
@@ -91,6 +93,56 @@ class CommerceTests(unittest.TestCase):
         b=m.commerce_candidate_submit(self.pid,'mat_source',0,3,'hook_picture')
         self.assertEqual(a['job_id'],b['job_id']);self.assertTrue(b['reused'])
 
+    def test_method_label_without_received_evidence_stays_pending(self):
+        job=self.candidate('hook_picture',0,3,approve=False)
+        result=m.commerce_candidate_review(self.pid,job,{k:True for k in commerce.FACTS['hook_picture']},
+                                           'continuous_review','Claim without actual review record')
+        self.assertEqual(result['candidate']['status'],'pending')
+        self.assertIn('actual_review_evidence',result['candidate']['pending_facts'])
+
+    def test_batch_validates_all_before_submitting_and_wait_is_compact(self):
+        with patch.object(media_jobs,'submit') as submit:
+            with self.assertRaises(ValueError):
+                m.commerce_candidates_submit(self.pid,[
+                    {'asset_id':'mat_source','start':0,'end':3,'role':'hook_picture'},
+                    {'asset_id':'mat_source','start':10,'end':11,'role':'hook_picture'}])
+            submit.assert_not_called()
+        with patch.object(media_jobs,'start',return_value={}) as worker:
+            result=m.commerce_candidates_submit(self.pid,[
+                {'asset_id':'mat_source','start':0,'end':3,'role':'hook_picture'},
+                {'asset_id':'mat_source','start':10,'end':13,'role':'hook_picture'}])
+            self.assertEqual(worker.call_count,1)
+        report=m.media_jobs_wait(**result['next_arguments'],timeout_seconds=0)
+        self.assertFalse(report['complete'])
+        self.assertEqual(len(report['jobs']),2)
+
+    def test_missing_custom_typography_is_explicitly_unchecked(self):
+        self.apply()
+        timeline=m._read(self.pid)['mcp_timeline']
+        timeline['tracks']['overlays']=[{'id':'custom','start':0,'end':3}]
+        findings=commerce.presentation_findings(timeline,{'hook_text_ids':['custom'],'body_text_ids':[]})
+        self.assertEqual(findings[0]['status'],'not_checked')
+
+    def test_batch_asr_dispatches_once_and_pool_excludes_unused_imports(self):
+        project=m._read(self.pid)
+        project['materials'].append({**copy.deepcopy(self.asset),'id':'mat_unused'})
+        m._write(self.pid,project)
+        with patch.object(speech,'runtime_status',return_value={'missing_dependencies':[],'model_files_present':True}), \
+                patch.object(media_jobs,'start',return_value={}) as worker:
+            result=m.commerce_materials_prepare(self.pid,['mat_source'])
+            self.assertEqual(worker.call_count,1)
+        self.assertEqual(commerce.load(self.pid)['analysis_asset_ids'],['mat_source'])
+        self.assertNotIn('mat_unused',str(result))
+        self.assertIsNone(speech.workflow_progress(self.pid)['missing'])
+
+    def test_conversion_deduplication_and_failure_retry_target(self):
+        a=m.media_convert_submit(self.pid,'mat_source',0,3,640,25)
+        b=m.media_convert_submit(self.pid,'mat_source',0,3,640,25)
+        self.assertEqual(a['job_id'],b['job_id'])
+        folder=media_jobs.folder(self.pid,a['job_id'])
+        state=engine.read_json(folder/'state.json'); state['status']='failed'; engine.write_json(folder/'state.json',state)
+        self.assertEqual(m.media_convert_submit(self.pid,'mat_source',0,3,640,25)['next_tool'],'media_job_retry')
+
     def test_deferred_candidate_is_preview_only_and_not_accepted(self):
         picture, voice, body = self.plan()
         facts={k:None for k in commerce.FACTS['hook_voice']}
@@ -104,8 +156,8 @@ class CommerceTests(unittest.TestCase):
         with patch.object(commerce,'validate_presentation',return_value=[]):
             state=commerce.load(self.pid);state['presentation']={'fixture':True};commerce.save(self.pid,state)
             commerce.render_guard(self.pid,m._read(self.pid),preview=True)
-            with self.assertRaisesRegex(ValueError,'accepted'):
-                commerce.render_guard(self.pid,m._read(self.pid),preview=False)
+            commerce.render_guard(self.pid,m._read(self.pid),preview=False)
+            self.assertEqual(commerce.load(self.pid)['reviews'][voice]['status'], 'pending')
 
     def test_deferral_cannot_mask_known_defect_or_silent_body(self):
         job=self.candidate('body',10,20,audio='silent',approve=False)
@@ -223,12 +275,11 @@ class CommerceTests(unittest.TestCase):
         body=m.commerce_typography_add(self.pid,'细节','细节','看得清','detail_underline',4,6,[.1,.1,.65,.24],palette,[])['overlay']['id']
         cue=m.audio_track_add(self.pid,'mat_source',start=.4,duration=.2,role='sfx')['audio']['id']
         result=m.commerce_presentation_record(self.pid,palette,[hook],[body],[cue])
-        self.assertEqual(result['stage'],'preview')
-        with self.assertRaisesRegex(ValueError,'Review a succeeded preview'):
-            m.commerce_render_submit(self.pid,preview=False)
+        self.assertEqual(result['stage'],'render')
         with patch('video_editer.render_queue.start_worker',return_value={}):
             job=m.commerce_render_submit(self.pid)
         self.assertEqual(job['status'],'queued')
+        self.assertFalse(job['preview'])
         status=m.commerce_workflow_status(self.pid)
         self.assertEqual(status['next_tool'],'render_job_status');self.assertEqual(status['render_job_id'],job['job_id'])
         from video_editer import jobs

@@ -647,3 +647,7 @@ or automatic semantic quality review. The agent remains responsible for intent.
 - `media_convert_submit` 提供排队转码及显式可选补帧，失败重试继续排队。
 
 执行方法及跨宿主审阅格式见 [批量执行与实际审阅](skills/baiying-dialogue-video/references/efficient-execution.md)。本次改变验收约束，旧方法标签不能自动追认为已审阅。
+
+## 0.7.1 — 用户花字原图参考
+
+随 Skill 携带 8 张用户提供的原始 PNG，主流程及编辑器 Skill 要求设计花字前直接查看图片，再借鉴字幕式强调和卖点式主辅排版。图片、查看要求与逐图说明见 [用户花字原图](skills/baiying-dialogue-video/references/typography-examples.md)；现有安全区、片内三色、字幕互斥及声音验收规则继续适用。

@@ -1,6 +1,6 @@
 {
   "name": "video-editer",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Local ASR, source-bound sentence selection and deterministic video editing tools for agents.",
   "author": {
     "name": "Local developer"

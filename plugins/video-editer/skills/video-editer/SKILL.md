@@ -23,6 +23,11 @@ lettering and commerce_presentation_record for the real event IDs. Render via
 commerce_render_submit. Queue delivery_inspection_submit for the actual output,
 fill delivery_review_form only after reviewing its evidence, then record and
 check commerce_delivery_get. Missing or uncertain facts do not pass.
+Before designing commerce lettering, open all eight original PNGs listed in
+[User typography images](../baiying-dialogue-video/references/typography-examples.md)
+with an image-viewing tool. Filenames, Markdown source and OCR do not substitute
+for viewing the pixels. Use their hierarchy and styling with the current video's
+copy, palette and safe areas; do not paste the reference screenshots into output.
 ASR uses a local recognition model; it never generates speech or independently
 certifies visual meaning, sentence meaning or emotional delivery.
 Touching zero-duration tokens are preserved in indivisible estimated groups,

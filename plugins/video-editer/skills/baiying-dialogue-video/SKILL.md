@@ -23,7 +23,7 @@ description: 编排百应主播商品视频，从选账号商品、备料校验�
 2. **创建或恢复阶段状态。** 创建编辑器项目、排队导入视频，随后 `commerce_workflow_start`。恢复工作先 `commerce_workflow_status`；按返回的 `stage`、`next_tool` 和缺项继续，不从头重复提交。
 3. **先转写再选候选。** 按 [ASR 与完整句证据](references/speech-evidence.md) 完成内置 `speech_transcribe_submit` → `speech_candidates_get` → `speech_range_validate`，使用真实完整候选句及上下文。配音/正文通过 `commerce_speech_candidate_submit` 以句子 ID 提交，禁止跳过转写手填秒数；展示通过 `commerce_candidate_submit` 检查。等待任务成功后实际看/听，再 `commerce_candidate_review`。ASR 不认证情绪和句意；已知不合格填 false，缺少视听能力时用 `commerce_candidate_defer` 将未知事实留为 null，并明确保留未验项目，不虚报通过。
 4. **先排成立的正文。** `commerce_timeline_apply` 用通过检查的候选一次组装：独立配音、钩子源声静音、画面与正文原速、完整正文单元、一个段落转场。读取返回的实际时间表后再装饰。候选未完成真实审阅时保持待验；需要审阅片可明确 `preview_only=true` 组装并导出目标画质，交付前补齐实际审阅记录。已知不合格或无声正文仍禁止。
-5. **再加花字和声音。** 读 [布局](references/typography-layout.md) 与 [音效](references/typography-sound.md)。优先 `commerce_typography_add` 生成透明字和短动效；实际看图提供脸、动作、原字幕避让框。添加 role=sfx 音轨后，用 `commerce_presentation_record` 登记真实事件 ID 和本片配色。
+5. **再加花字和声音。** 先按 [用户花字原图](references/typography-examples.md) 用图片查看工具打开全部 8 张 PNG，再读 [布局](references/typography-layout.md) 与 [音效](references/typography-sound.md)。只读文件名、文字说明或 OCR 不算看过参考；依据实际图像借鉴主辅层级、拆色、描边和装饰，不能只套一个字幕模板。优先 `commerce_typography_add` 生成透明字和短动效；实际看图提供脸、动作、原字幕避让框。添加 role=sfx 音轨后，用 `commerce_presentation_record` 登记真实事件 ID 和本片配色。
 6. **正式质量渲染及返修。** `commerce_render_submit(preview=false)` → 成功后 `delivery_inspection_submit` → 等检查任务成功。审阅这份成片的实际连续画面和声音，音效另做 `audio_review_submit`。用 `delivery_review_record(inspection_job_id=...)` 登记证据。失败修内容、生成新版本；执行失败才重试旧任务。
 7. **交付。** 对同一份正式质量成片完成检查与登记后调用 `commerce_delivery_get`；不再低清预览后再转一次 final，也不要求二次审批。`delivery_ready=true` 才称合格交付。缺能力/未试听/缺检查时明确列出未验项，不把文件说成已通过。
 

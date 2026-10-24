@@ -93,7 +93,7 @@ def wait(project_id, job_ids, timeout_seconds=20):
                 report = job['result']
                 row.update(role=report['role'], preview_path=report['preview']['path'],
                            audio_eligibility=report['audio_eligibility'], internal_cuts=report.get('internal_cuts'),
-                           required_facts=list(commerce.FACTS[report['role']]),
+                           required_facts=list(commerce.hook_framing.keys(project_id, report['role'])),
                            next_tool='commerce_candidate_review')
         if job in failed:
             row.update(next_tool='media_job_retry',

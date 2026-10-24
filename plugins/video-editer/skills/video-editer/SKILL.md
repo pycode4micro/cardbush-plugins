@@ -159,8 +159,10 @@ events by the actual hook length. Do not add an unsolicited decorative AI-openin
 2. Make one explicit change per `clip_*`, `transition_apply`, `callout_*`,
    `overlay_*`, `subtitle_*`, or `audio_*` call.
 3. Call `timeline_validate` before rendering.
-4. Submit `render_submit(preview=true)` for review, then submit the final render.
-   Poll `render_job_status`; only a succeeded job's `result` is a usable output.
+4. Submit `render_submit(preview=false)` at target quality, or use
+   `commerce_render_submit` for this commerce workflow. Inspect that same output;
+   use a lower-resolution preview only when explicitly useful. Poll
+   `render_job_status`; only a succeeded job's `result` is a usable output.
 5. Use returned `undo_snapshot` values to recover from an unwanted mutation.
 
 The plugin is an execution layer, not a director. It must not choose clips,

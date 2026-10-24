@@ -77,7 +77,8 @@ def applicable_checks(timeline):
     return required
 
 
-def normalize_checks(checks, required=None, pure_display=False):
+def normalize_checks(checks, required=None, pure_display=False, framing_rule=None):
+    from . import hook_framing
     required = set(CHECKS) if required is None else required
     if not isinstance(checks, list) or len(checks) > len(CHECKS):
         raise ValueError('checks must be a list of named commerce review checks')
@@ -105,7 +106,7 @@ def normalize_checks(checks, required=None, pure_display=False):
         observations = item.get('observations', {})
         if not isinstance(observations, dict): raise ValueError('observations must be an object')
         if pure_display and status == 'pass' and name == 'hook_picture' and method != 'not_applicable':
-            needed = ('full_body_visible', 'natural_display', 'no_continuous_speaking', 'burned_captions_compatible')
+            needed = (hook_framing.fact(framing_rule), 'natural_display', 'no_continuous_speaking', 'burned_captions_compatible')
             if any(observations.get(key) is not True for key in needed):
                 raise ValueError('Pure display requires observed true facts: ' + ', '.join(needed))
         if (status == 'pass' and name in ('hook_voice', 'final_speech', 'sfx_audibility')
@@ -191,6 +192,7 @@ def form(project_id, render_job_id, inspection_job_id):
     findings, _ = inspection_findings(project_id, identity, inspection_job_id)
     snapshot = engine.read_json(jobs.folder(project_id, render_job_id) / 'input.json')
     timeline = snapshot['project']['mcp_timeline']; required = applicable_checks(timeline)
+    from . import hook_framing
     evidence_path = str(media_jobs.folder(project_id, inspection_job_id) / 'result.json')
     report = media_jobs.status(project_id, inspection_job_id)['result']
     rows = []
@@ -201,7 +203,7 @@ def form(project_id, render_job_id, inspection_job_id):
         row = {'id': name, 'status': 'not_checked', 'method': method if name in required else 'not_applicable',
                'note': 'Not reviewed yet', 'evidence_paths': [evidence_path], 'review_receipt_paths': [], 'repair_action': ''}
         if name == 'hook_picture' and any(c.get('role') == 'hook_picture' for c in timeline['tracks']['main']):
-            row['observations'] = {k: False for k in ('full_body_visible','natural_display','no_continuous_speaking','burned_captions_compatible')}
+            row['observations'] = {k: False for k in (hook_framing.fact(timeline.get('commerce_hook_framing')),'natural_display','no_continuous_speaking','burned_captions_compatible')}
         rows.append(row)
     return {'project_id': project_id, 'render_job_id': render_job_id, 'inspection_job_id': inspection_job_id,
             'checks': rows, 'technical_findings': findings, 'frames': report.get('frames'),
@@ -229,6 +231,8 @@ def subject_signatures(project):
     sound = {'main': sound_main, 'audio': timeline['tracks'].get('audio'), 'config': timeline.get('audio_config')}
     subjects = {name: {'picture': picture, 'sound': sound} for name in CHECKS}
     subjects['hook_picture'] = {'first_clip': visual_main[:1], 'canvas': timeline.get('canvas')}
+    if 'commerce_hook_framing' in timeline:
+        subjects['hook_picture']['framing'] = timeline['commerce_hook_framing']
     hook_end = timing.time_map(timeline)['clips'][0]['end'] if main else 0
     hook_audio = [a for a in timeline['tracks'].get('audio', [])
                   if a.get('start', 0) < hook_end and a.get('start', 0) + a.get('duration', 0) > 0]
@@ -289,7 +293,7 @@ def record(project_id, render_job_id, checks, audio_review_job_ids=None, warning
     snapshot = engine.read_json(jobs.folder(project_id, render_job_id) / 'input.json')
     timeline = snapshot['project']['mcp_timeline']
     checked = normalize_checks(checks, applicable_checks(timeline),
-        any(c.get('role') == 'hook_picture' for c in timeline['tracks']['main']))
+        any(c.get('role') == 'hook_picture' for c in timeline['tracks']['main']), timeline.get('commerce_hook_framing'))
     findings = []
     if not result.get('has_audio'):
         findings.append({'code': 'no_final_audio', 'severity': 'fail', 'message': 'Rendered audio stream missing'})

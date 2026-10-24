@@ -8,6 +8,7 @@ from pathlib import Path
 
 from . import engine, media_jobs, media_ops, media_store, timing, speech
 from .locking import project_write
+from . import hook_framing
 
 FACTS = {
     'hook_picture': ('same_person', 'same_garment', 'full_body_visible', 'natural_display',
@@ -90,7 +91,7 @@ def candidate_submit(project_id, asset_id, start, end, role, transcript_job_id=N
                         continue
                 job = {**media_jobs.status(project_id, saved['job_id']), 'reused': True}; break
     if job is None: job = media_jobs.submit(project_id, request, start=start_worker)
-    return {**job, 'next_tool': 'media_job_status', 'required_facts': list(FACTS[role]),
+    return {**job, 'next_tool': 'media_job_status', 'required_facts': list(hook_framing.keys(project_id, role)),
             'selection_guidance': {
                 'hook_picture': 'Review this display WITH the chosen independent quote. Burned source captions about a different sentence are incompatible even without geometric overlap; known conflicts cannot be deferred.',
                 'hook_voice': 'A short complete sentence is not automatically an attention hook. Compare quotes/context for a real attention reason, then fit display duration; listen for emotion instead of approving plain styling narration.',
@@ -131,8 +132,8 @@ def candidate_report(project_id, job_id):
 def candidate_review(project_id, job_id, facts, method, note, review_receipt_paths=None):
     report, evidence = candidate_report(project_id, job_id)
     role = report['role']
-    if not isinstance(facts, dict) or set(facts) != set(FACTS[role]) or any(type(v) is not bool for v in facts.values()):
-        raise ValueError('Supply exactly these observed boolean facts: ' + ', '.join(FACTS[role]))
+    if not isinstance(facts, dict) or set(facts) != set(hook_framing.keys(project_id, role)) or any(type(v) is not bool for v in facts.values()):
+        raise ValueError('Supply exactly these observed boolean facts: ' + ', '.join(hook_framing.keys(project_id, role)))
     if method != METHODS[role]: raise ValueError('This candidate requires ' + METHODS[role])
     note = media_store.text(note, 'observed facts and source time locations')
     failed = [key for key, value in facts.items() if not value]
@@ -162,7 +163,7 @@ def candidate_defer(project_id, job_id, facts, note):
     """Preserve unknowns for a review copy, never turn them into approval."""
     report, evidence = candidate_report(project_id, job_id)
     role = report['role']; state = load(project_id)
-    if not isinstance(facts, dict) or set(facts) != set(FACTS[role]) or any(v is not None and type(v) is not bool for v in facts.values()):
+    if not isinstance(facts, dict) or set(facts) != set(hook_framing.keys(project_id, role)) or any(v is not None and type(v) is not bool for v in facts.values()):
         raise ValueError('Supply every required fact as true, false or null (unreviewed)')
     if any(v is False for v in facts.values()):
         raise ValueError('Known defects cannot be deferred into a preview; reject and replace this candidate')
@@ -185,6 +186,8 @@ def accepted(project_id, state, job_id, role, allow_pending=False):
     row = state['reviews'].get(job_id, {})
     if row.get('status') not in (('accepted', 'pending') if allow_pending else ('accepted',)) or row.get('role') != role:
         raise ValueError('An accepted ' + role + ' candidate is required: ' + str(job_id))
+    if set(row.get('facts', {})) != set(hook_framing.keys(project_id, role)):
+        raise ValueError('Candidate framing facts do not match this workflow; inspect a new candidate')
     report, evidence = candidate_report(project_id, job_id)
     if row['evidence'] != evidence: raise ValueError('Candidate review is stale')
     if row.get('status') == 'accepted':
@@ -246,6 +249,7 @@ def timeline_apply(project_id, hook_picture_job_id, hook_voice_job_id, body_job_
         raise ValueError('Timeline is not empty. Explicit replace_timeline=true preserves an undo snapshot')
     undo = server._snapshot(project, 'before commerce_timeline_apply')
     fresh = server._default_timeline()
+    fresh['commerce_hook_framing'] = copy.deepcopy(state.get('hook_framing', {'mode': 'full_body'}))
     fresh.update(canvas=copy.deepcopy(timeline['canvas']), revision=timeline['revision'], history=timeline['history'])
     ids = [hook_picture_job_id] + body_job_ids
     for index, (candidate, job_id) in enumerate(zip([picture] + body, ids)):
@@ -253,7 +257,7 @@ def timeline_apply(project_id, hook_picture_job_id, hook_voice_job_id, body_job_
                 'start': candidate['source_start'], 'end': candidate['source_end'],
                 'role': 'hook_picture' if index == 0 else 'body', 'playback_speed': 1.0,
                 'transition': transition if index == transition_after_body else 'none',
-                'shot_type': 'full_body' if index == 0 else 'reviewed_body',
+                'shot_type': hook_framing.mode(state.get('hook_framing')) if index == 0 else 'reviewed_body',
                 'audio_gain_db': 0, 'audio_fade_in_ms': 25, 'audio_fade_out_ms': 25,
                 'audio_mute': index == 0, 'frame_alignment': 'cover', 'commerce_candidate_id': job_id}
         fresh['tracks']['main'].append(clip)
@@ -281,7 +285,11 @@ def base_signature(timeline):
     main = [{k: c[k] for k in keys if k in c} for c in timeline['tracks']['main']]
     voice = [{k: a.get(k) for k in ('asset_id', 'start', 'duration', 'source_start', 'playback_speed', 'commerce_candidate_id')}
              for a in timeline['tracks'].get('audio', []) if a.get('role') == 'voiceover']
-    return signature({'main': main, 'voice': voice, 'canvas': timeline.get('canvas')})
+    payload = {'main': main, 'voice': voice, 'canvas': timeline.get('canvas')}
+    # Legacy full-body timelines had no framing marker; preserve their signatures.
+    if 'commerce_hook_framing' in timeline:
+        payload['hook_framing'] = timeline['commerce_hook_framing']
+    return signature(payload)
 
 
 @project_write
@@ -406,7 +414,7 @@ def status(project_id):
                 stage, tool, todo = 'candidate_wait', 'media_job_status', ['Wait for existing candidate job; do not resubmit']
             elif candidate['status'] == 'succeeded':
                 stage, tool, todo = 'candidate_review', 'commerce_candidate_review', ['Open continuous preview/listening evidence; fill only observed facts']
-                recovery.update(required_facts=list(FACTS[candidate['role']]), required_method=METHODS[candidate['role']])
+                recovery.update(required_facts=list(hook_framing.keys(project_id, candidate['role'])), required_method=METHODS[candidate['role']])
             else:
                 stage, tool, todo = 'candidate_failed', 'media_job_retry', ['Inspect failure; retry the existing request only for execution failure, otherwise select another source range']
                 recovery['alternative_tool'] = 'commerce_candidate_skip'
@@ -486,6 +494,7 @@ def status(project_id):
             'reference_files': [str(reference_root / name) for name in ('source-only-stages.md', 'speech-evidence.md', 'quality-and-repair.md')
                                 if (reference_root / name).is_file()],
             'next_tool': tool, 'required_actions': todo, 'accepted_counts': counts,
+            'hook_framing': state.get('hook_framing', {'mode': 'full_body'}),
             'pending_candidate_ids': pending, 'preview_only': (state.get('selection') or {}).get('preview_only', False),
             'candidate_ids': {role: [j for j, r in state['reviews'].items() if r['role'] == role and r['status'] == 'accepted'] for role in FACTS},
             'must_keep': ['Source-only: no video generation or speech synthesis', 'Display picture is not talking footage with its sound muted',

@@ -633,6 +633,13 @@ def commerce_workflow_start(project_id: str, account: str, product: str, target_
     return commerce.start(project_id, account, product, target_seconds)
 
 
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def commerce_hook_framing_set(project_id: str, framing: Literal['full_body','garment_display'], user_instruction: str) -> dict[str, Any]:
+    """Only on an explicit user composition request, record a project-specific framing choice before hook review/timeline. Default is full body. Garment display changes that composition fact only; natural non-speaking same-person/same-garment display, independent voice, caption and review gates stay required. Never use to relabel rejected candidates. Save the user's actual instruction, not an agent-created waiver."""
+    from . import hook_framing
+    return hook_framing.configure(project_id, framing, user_instruction)
+
+
 @mcp.tool(annotations={"readOnlyHint": True})
 def commerce_workflow_status(project_id: str) -> dict[str, Any]:
     """Resume staged pure editing after interruption/compaction. Returns accepted IDs, missing stage and next tool. State persists outside chat history."""

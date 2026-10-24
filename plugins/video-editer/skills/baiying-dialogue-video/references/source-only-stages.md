@@ -30,6 +30,8 @@
 
 candidate_review 的 facts 必须来自真实观察：符合为 true，已知不符合为 false，note 说明现象与时间点。未能观察的项目用下面的 defer/null 分支，不把未知写成通过或已确认失败。首中尾截图帮助定位，不证明三秒内一直没有讲话。自然微笑、转身不等于持续讲话；连续口型与讲解手势应选另段。
 
+表中 full_body_visible 是默认构图。用户明确改变本次构图时，按 [原片选材的构图选择](original-source-selection.md#用户明确改变本次构图时) 先记录实际指示，再使用工具返回的 required_facts；不要把非全身镜头写成 full_body_visible=true，也不要自行放宽默认要求。
+
 候选未审阅分支：当前环境不能真实看/听时，用 commerce_candidate_defer，观察到的事实为 true，未知为 null，note 写明缺失能力与待查项。candidate_review 只有方法标签而没有实际审阅记录时也保持 pending。已知 false、无声正文/配音和被拒绝的候选不能转成 pending。需提供审阅片时明确 `preview_only=true` 组片，再以 `preview=false` 导出一次目标画质；文件仍待验。合格交付前补实际审阅记录，不能用 warning_resolutions 豁免。
 
 先选有吸引力的完整原声，再按其实际时长找 2–4 秒展示。存在多个候选时，比较至少两句原文、上下文、吸引人的原因和正文接法，淘汰普通穿法说明；候选不足就写明，不为填表编句。不要先固定一段展示，再为塞进时间窗挑最短、最平淡的台词。完整原声优先，换展示区间比换成弱钩子更合理。

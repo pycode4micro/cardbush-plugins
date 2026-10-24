@@ -655,3 +655,9 @@ or automatic semantic quality review. The agent remains responsible for intent.
 ## 原始回放选材补充（2026-10-24）
 
 新增 `speech_timeline_get`：从已有且校验通过的 ASR 证据返回原片句子、实际转写覆盖和字词未覆盖空档，不额外推理。空档不认证静音、闭嘴或全身展示，候选仍走真实视听检查。商品纯剪辑默认通过同仓库 baiying-replay 0.3.0 只取一段原回放，再在这一段上完整转写、选材。图文规则及8张原始PNG完整包含在安装包中。
+
+### 百应完整流程：千川素材入库
+
+`baiying-dialogue-video` 的完整 `produce` 在成片验收后继续上传对应主播的千川素材库，名称统一带 `Ai`，官方回查匹配后结束，不自动绑定或开启投放。此阶段需额外安装同仓库 `qianchuan` 插件及随包的 `qianchuan-mcp-operator` Skill，并配置有效账户与 `material_upload` 权限；通用编辑器及仅本地剪辑不增加这个运行依赖。
+
+具体账户匹配、命名与真实 AIGC 来源区分、签名去重、结果未知时对账及可恢复回执见 [千川上传规则](skills/baiying-dialogue-video/references/qianchuan-upload.md)。既有用户授权直接沿用；待验文件仅在用户明确要求上传该文件时入库，上传成功不改写编辑验收结果。该更新是 Skill 编排，不新增编辑器上传工具，也不替代千川服务端权限控制。

@@ -1,11 +1,13 @@
 ---
 name: baiying-dialogue-video
-description: 编排百应主播商品视频，从选账号商品、备料校验到分阶段纯剪辑、花字音效与成片验收。默认全身纯展示配独立原声；仅在用户明确要求时采用生成钩子。已有本地素材可直接进入剪辑；只查下载链接时用 baiying-replay。
+description: 编排百应主播商品视频，从选账号商品、备料校验到分阶段纯剪辑、花字音效、成片验收及对应主播的千川素材库入库回查。默认全身纯展示配独立原声，素材名称带 Ai，不自动开启投放；仅在用户明确要求时生成钩子。已有本地素材可直接进入剪辑；只查下载链接时用 baiying-replay。
 ---
 
 # 百应商品视频流程
 
 先确定终点：`plan` 只规划；`materials` 只备料；`handoff` 导入异步队列后停止；`produce` 才编辑和渲染。已有授权及明确参数直接沿用，不能将“先不实际剪辑”升级为 produce。
+
+完整 `produce` 默认包含验收后上传到对应主播的千川素材库：名称统一带 `Ai`，官方回查确认后结束，不自动开启投放。用户要求仅本地成片、先审阅或指定更早终点时按该终点停止；单独要求上传已有文件时直接进入入库阶段，不重剪。上传权限来自用户任务及实际账户策略，Skill 不自行授予写权限。
 
 按 [组件](references/components.md) 发现实际工具 schema。编辑器为 `video-editer@cardbush-plugins`，服务名 `video_editer`。本流程使用 0.7.0+；先读 [批量执行与实际审阅](references/efficient-execution.md)，按工作素材池批量 ASR、批量候选分析、一次目标画质导出。缺工具或仍为旧版时报告版本缺口，不临时写脚本替代转写、验收或启动另一套平台。
 
@@ -26,6 +28,7 @@ description: 编排百应主播商品视频，从选账号商品、备料校验�
 5. **再加花字和声音。** 先按 [用户花字原图](references/typography-examples.md) 用图片查看工具打开全部 8 张 PNG，再读 [布局](references/typography-layout.md) 与 [音效](references/typography-sound.md)。只读文件名、文字说明或 OCR 不算看过参考；依据实际图像借鉴主辅层级、拆色、描边和装饰，不能只套一个字幕模板。优先 `commerce_typography_add` 生成透明字和短动效；实际看图提供脸、动作、原字幕避让框。添加 role=sfx 音轨后，用 `commerce_presentation_record` 登记真实事件 ID 和本片配色。
 6. **正式质量渲染及返修。** `commerce_render_submit(preview=false)` → 成功后 `delivery_inspection_submit` → 等检查任务成功。审阅这份成片的实际连续画面和声音，音效另做 `audio_review_submit`。用 `delivery_review_record(inspection_job_id=...)` 登记证据。失败修内容、生成新版本；执行失败才重试旧任务。
 7. **交付。** 对同一份正式质量成片完成检查与登记后调用 `commerce_delivery_get`；不再低清预览后再转一次 final，也不要求二次审批。`delivery_ready=true` 才称合格交付。缺能力/未试听/缺检查时明确列出未验项，不把文件说成已通过。
+8. **千川素材入库并回查。** 读取 [千川上传](references/qianchuan-upload.md) 和实际安装的 `qianchuan-mcp-operator` Skill，核对本次主播与 `advertiser_id`，按 `{款号}_{主播}_{短主题}_Ai_{YYYYMMDD}.mp4` 命名。复用已授权范围，先去重再上传；通过官方素材查询核对 ID、名称和文件签名后才报告入库成功。编辑器交付完成不等于此步已完成；只到素材库，不绑定计划、不启用投放。待验文件仅在用户明确要求上传该文件时入库，仍保留待验状态。
 
 选钩子先比较完整原声的吸引力，再找能容纳它的全身展示；普通穿法说明不能因为短、容易装入三秒就入选。画面和独立配音成对复查烧录字幕的意思，位置不重叠仍可能冲突。具体淘汰例见 [样例与返修](references/quality-and-repair.md#纯剪辑选材的反例)。
 

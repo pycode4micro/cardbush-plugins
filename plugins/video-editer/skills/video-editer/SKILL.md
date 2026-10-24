@@ -23,6 +23,11 @@ lettering and commerce_presentation_record for the real event IDs. Render via
 commerce_render_submit. Queue delivery_inspection_submit for the actual output,
 fill delivery_review_form only after reviewing its evidence, then record and
 check commerce_delivery_get. Missing or uncertain facts do not pass.
+For the complete Baiying workflow, continue with the orchestration Skill's
+[Qianchuan material upload](../baiying-dialogue-video/references/qianchuan-upload.md)
+after delivery: match the anchor's advertiser, include `Ai` in the name and verify
+the official library record. This uses the separate Qianchuan plugin, never enables
+ads and does not apply to local-only edits. Upload success never changes review status.
 Before designing commerce lettering, open all eight original PNGs listed in
 [User typography images](../baiying-dialogue-video/references/typography-examples.md)
 with an image-viewing tool. Filenames, Markdown source and OCR do not substitute

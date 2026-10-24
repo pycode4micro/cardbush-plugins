@@ -9,3 +9,4 @@
 5. 只在已有授权范围内提交，保存原 task ID，恢复时查询原任务。short-video-prompts 只用于脚本及生成提示词，不覆盖正文约 45 秒要求。
 6. 审阅人物、衣服、动作、音色、台词、尾字和接缝。只有生成结果成功导入并经过 hook_output_review，才在最新 revision 上 hook_attach。对话音画默认 1.0x；用户要求变速时同步处理对口型声音。
 7. 保留已要求的花字、音效、低频转场与源音频标准。生成开头不豁免正文资格或最终声音检查。最终依然 delivery_inspection_submit → delivery_review_form/record/get；生成钩子的 hook_picture 按本路线审阅，不套用纯展示不讲话的事实表。
+8. 完整流程验收后同样执行 [千川上传与回查](qianchuan-upload.md)，名称带 `Ai`；`is_aigc` 根据最终文件实际包含的生成内容和工具契约填写，不能仅凭文件名判断。入素材库后结束，不自动投放；明确的仅本地/先审阅终点优先。

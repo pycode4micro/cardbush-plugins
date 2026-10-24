@@ -544,6 +544,25 @@
     "external_heavy_task_policy": "shared_slot_or_explicit_exclusive_serialization",
     "restore_temporary_policy": true
   },
+  "qianchuan_upload": {
+    "scope": "complete_produce_unless_user_requests_local_only_or_earlier_stop",
+    "plugin": "qianchuan",
+    "operator_skill": "qianchuan-mcp-operator",
+    "reference": "../references/qianchuan-upload.md",
+    "advertiser_id": null,
+    "account_match_evidence": null,
+    "filename_template": "{款号}_{主播}_{短主题}_Ai_{YYYYMMDD}.mp4",
+    "is_aigc": null,
+    "is_aigc_source": "actual_content_provenance_not_filename",
+    "review_pending_requires_user_instruction_for_that_file": true,
+    "deduplicate_in_target_account_by_signature": true,
+    "unknown_upload_result_requires_reconciliation": true,
+    "require_matching_official_readback": true,
+    "bind_to_product_or_plan": false,
+    "enable_delivery": false,
+    "status": "not_started",
+    "receipt_path": null
+  },
   "records": {
     "materials_manifest": null,
     "editor_handoff": null,

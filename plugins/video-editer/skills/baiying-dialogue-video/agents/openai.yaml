@@ -1,4 +1,4 @@
 interface:
   display_name: "百应切片与开场钩子成片"
-  short_description: "分阶段完成账号选品、纯展示配独立原声、花字音效与单版正式渲染验收"
-  default_prompt: "用 $baiying-dialogue-video 按当前账号和商品要求走分阶段纯剪辑，按指定终点执行并保留未验项目；只有明确要求时才用生成钩子。"
+  short_description: "分阶段完成原声纯剪辑、花字音效与验收，上传主播千川素材库并回查，不自动投放"
+  default_prompt: "用 $baiying-dialogue-video 按当前账号和商品要求走分阶段纯剪辑，完整流程验收后以带 Ai 的名称上传对应主播千川素材库并回查，不开启投放；遵守指定终点并保留未验项目，只有明确要求时才生成钩子。"

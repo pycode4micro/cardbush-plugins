@@ -93,3 +93,7 @@ commerce_render_submit(preview=false) → render_job_status 成功 → delivery_
 检查通过后直接对同一份成片调用 commerce_delivery_get，不重新渲染 preview→final。若检查失败，修改内容并提交新的正式质量渲染；不能只重试旧任务或改写 pass。只有该工具 delivery_ready=true 才称合格成片。
 
 检查不可用时明确列出未验项目并保留现有文件，不称合格交付，不另写 delivery_ready=true，不用自制 FFmpeg 输出替代登记成片。素材不足按用户已授权来源补料；无可用素材则报告缺口，不擅自换账号、换商品或调用生成。
+
+## 7. 千川素材入库
+
+完整 produce 在编辑器交付后继续 [千川上传与回查](qianchuan-upload.md)：核实本次主播对应的广告账户、名称带 `Ai`、先查重复、上传后读取官方素材记录。`commerce_workflow_status` / `commerce_delivery_get` 不记录外部千川入库状态，恢复时还要读取本项目的上传回执。仅本地成片或更早终点不上传；待验文件须有用户针对该文件的明确上传要求，上传不改变待验结论。确认入库后停止，不自动绑定计划或开启投放。

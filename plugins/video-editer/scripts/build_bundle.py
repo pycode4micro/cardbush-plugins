@@ -46,6 +46,9 @@ def main():
                             ('skills/baiying-dialogue-video/assets/quality-examples', '*.mp4'),
                             ('skills/baiying-dialogue-video/assets/quality-examples', '*.json')]:
         files.extend(sorted((root / folder).glob(pattern)))
+    # Keep every relative skill reference, including supplied PNGs, in portable bundles.
+    for pattern in ('*.md', '*.yaml', '*.json', '*.png', '*.jpg'):
+        files.extend(sorted((root / 'skills').rglob(pattern)))
     files = sorted(set(files))
     if not all(path.is_file() for path in files):
         raise ValueError('A required bundle file is missing')

@@ -4,6 +4,8 @@
 
 本路线固定为原片全身展示配独立原声，不调用生成，不读取生成钩子工具。先把用户要求带入 account、product、target_seconds；不会看/听时保留待审阅，不猜测事实。返回字段是操作依据，旧聊天里的阶段描述不是。
 
+先读 [原始回放选材](original-source-selection.md)：默认 original_only。成功转写后先用 speech_timeline_get 查真实源时间线与未识别讲话空档，再检查展示画面；空档不等于无声/闭嘴。缺少此工具时更新插件，不临时猜测静音时间。
+
 ## 1. 启动与恢复
 
 新项目：project_create → media_register 导入视频 → media_job_status 确认成功并保存 asset.id → commerce_workflow_start(project_id,account,product,target_seconds=45)。已有素材复用源哈希相同的已成功资产。

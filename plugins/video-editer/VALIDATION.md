@@ -324,3 +324,7 @@ speech quality. No automatic motion interpolation is performed.
 - Full suite: 201 cases; two outdated/single-source resume expectations exposed the route change. Corrected initial batch arguments and preserved partial-transcript resume from its uncovered boundary. Post-fix focused suite: 77 cases passed, including the added coverage. Other full-suite cases passed.
 - Synthetic 3-second output measurements are local smoke timings, not an end-to-end 45-second workflow benchmark. Cache assertions check reused stage hashes and changed audio, not a fragile time threshold.
 - Both Skill entrypoints pass quick_validate in UTF-8 mode; MCP discovery exposes 114 tools and preview defaults false. Actual semantic video/listening quality still requires received review evidence or explicit user feedback; portable receipts are not authenticated host attestations.
+
+## 2026-10-24 原片 ASR 时间线
+
+新增 speech_timeline_get 的 5 项回归与现有 speech 的 18 项回归通过（共23项）：限定实际转写窗口、重叠字词合并、句内停顿、分页、证据损坏拒绝和非法参数。仅输出选材提示，不把空档认证为无声或自然全身展示。同仓库百应0.3.0独立测试95项通过，覆盖一段原片默认、关联切片不排除原片、来源策略恢复/收紧、空链接后续补齐与诊断。安装包已检查Skill相对引用及原始PNG完整性。

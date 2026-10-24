@@ -651,3 +651,7 @@ or automatic semantic quality review. The agent remains responsible for intent.
 ## 0.7.1 — 用户花字原图参考
 
 随 Skill 携带 8 张用户提供的原始 PNG，主流程及编辑器 Skill 要求设计花字前直接查看图片，再借鉴字幕式强调和卖点式主辅排版。图片、查看要求与逐图说明见 [用户花字原图](skills/baiying-dialogue-video/references/typography-examples.md)；现有安全区、片内三色、字幕互斥及声音验收规则继续适用。
+
+## 原始回放选材补充（2026-10-24）
+
+新增 `speech_timeline_get`：从已有且校验通过的 ASR 证据返回原片句子、实际转写覆盖和字词未覆盖空档，不额外推理。空档不认证静音、闭嘴或全身展示，候选仍走真实视听检查。商品纯剪辑默认通过同仓库 baiying-replay 0.3.0 只取一段原回放，再在这一段上完整转写、选材。图文规则及8张原始PNG完整包含在安装包中。

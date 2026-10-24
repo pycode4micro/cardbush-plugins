@@ -608,6 +608,13 @@ def speech_candidates_get(project_id: str, job_id: str, role: Literal['all','hoo
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
+def speech_timeline_get(project_id: str, job_id: str, min_gap_seconds: float = 2.0, offset: int = 0, limit: int = 40) -> dict[str, Any]:
+    """Inspect verified original-source ASR coverage, full sentence IDs and word-uncovered intervals. No inference/rerender. Gaps are search hints only: never certify silence, full-body display, closed mouth or clean captions. Review original footage, then bind independent quote and picture candidates. Only the actual transcribed window is covered."""
+    from . import speech_timeline
+    return speech_timeline.get(project_id, job_id, min_gap_seconds, offset, limit)
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
 def speech_range_validate(project_id: str, job_id: str, sentence_ids: list[str], start: float | None = None, end: float | None = None) -> dict[str, Any]:
     """Validate consecutive complete sentence IDs against source-bound ASR word times. Optional range cannot cut first/last word or include adjacent unselected words. Default adds only small handles inside existing pauses. Returns exact source range, quote and evidence hash for commerce_speech_candidate_submit; validation is structural, not listening approval."""
     from . import speech

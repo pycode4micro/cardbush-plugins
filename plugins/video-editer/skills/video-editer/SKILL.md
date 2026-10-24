@@ -256,3 +256,7 @@ not make a whole video understood simply by generating thumbnails or proxies.
   work automatically; `render_queue_start` also drains it. Neither retries terminal/interrupted
   jobs. `render_retry` queues a new attempt using the saved revision, not new edits;
   poll its new job ID. Never treat submission as a completed render.
+
+## 原片时间线辅助选材
+
+商品纯剪辑默认取原始回放，具体按同包 baiying-dialogue-video/references/original-source-selection.md。转写成功后用 `speech_timeline_get` 查看实际覆盖、完整句和 ASR 未覆盖空档；它不重新推理，也不代表画面/声音合格。配音和正文仍用句子 ID 及时间戳校验，展示仍需连续画面复查，保留原片停顿。

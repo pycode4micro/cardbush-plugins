@@ -8,7 +8,7 @@
 1. `commerce_workflow_status(project_id)` 返回 `next_tool`、`next_arguments`、`transcripts`。新导入视频先进入 `source_transcription`。照返回参数处理下一段；重连或上下文压缩后重新读取状态，不自行拼旧时间表。
 2. 首次用 `speech_runtime_status()` 查依赖与模型。模型缺失时调用 `speech_model_prepare(project_id)` 并等 `media_job_status` 成功；默认下载固定版本的本地 small 模型，不上传素材。离线迁移用 `source_model_dir` 导入完整的 faster-whisper 模型目录，或在宿主设置 `VIDEO_EDITER_ASR_MODEL_DIR`。Python 依赖随插件 requirements 安装；缺依赖是安装缺口，不临时编写 ASR 脚本。
 3. `speech_transcribe_submit(project_id,asset_id)` 默认从 0 秒转写，单任务最多 600 秒。长源由状态返回下一个未覆盖窗口；句子跨窗口时重新转写覆盖完整句的重叠窗口，不把不同任务的半句手拼。已排队任务只查原 ID；失败修环境后走 `media_job_retry`。语种默认 `zh`，其他语种显式指定。默认 `device=auto` 优先 CUDA，实际设备与 CPU 回退原因写入结果。
-4. 成功后用 `speech_candidates_get(project_id,job_id,role="all")` 分页读取完整候选、前后文、时长、边界依据与低置信字词。状态查询只返回简短回执及转写文件路径，不反复塞入整批逐词 JSON；不要为了找一句话通读全部原始文件。选钩子可用 `role="hook_voice"` 筛 0.8–4 秒，但这只筛时长，不认证情绪。正文可以连接相邻句子 ID，组成一个完整卖点和动作单元，不能只挑一个孤立关键词。
+4. 成功后先用 `speech_timeline_get` 查原片完整句和 ASR 字词未覆盖空档，按 [原始回放选材](original-source-selection.md) 核实转写覆盖与展示画面；空档不是无声或闭嘴证明。再用 `speech_candidates_get(project_id,job_id,role="all")` 分页读取完整候选、前后文、时长、边界依据与低置信字词。状态查询只返回简短回执及转写文件路径，不反复塞入整批逐词 JSON；不要为了找一句话通读全部原始文件。选钩子可用 `role="hook_voice"` 筛 0.8–4 秒，但这只筛时长，不认证情绪。正文可以连接相邻句子 ID，组成一个完整卖点和动作单元，不能只挑一个孤立关键词。
 5. `speech_range_validate(project_id,job_id,sentence_ids)` 返回源区间及校验结果。默认保留句首尾很短的空隙；可选 start/end 也必须覆盖全部所选字词，不能侵入相邻未选字词或超出转写范围。
 6. 用 `commerce_speech_candidate_submit(project_id,transcript_job_id,sentence_ids,role)` 直接提交配音/正文证据检查，不手抄秒数。该工具再次执行时间校验；结果成功后，继续实际视听与 `commerce_candidate_review` / `defer`。展示画面仍用 `commerce_candidate_submit(...role="hook_picture")` 指定实际看过的 2–4 秒，工具查其转写覆盖；ASR 不能判断嘴是否在动。
 

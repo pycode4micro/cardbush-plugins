@@ -1,0 +1,22 @@
+{
+  "name": "baiying-replay",
+  "version": "0.3.0",
+  "description": "按百应账号和商品准备剪辑素材，处理素材不足、验证下载并交接剪辑。",
+  "author": {
+    "name": "兆君服饰"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "requires_local_executor": true,
+  "interface": {
+    "displayName": "巨量百应商品切片",
+    "shortDescription": "按账号和商品准备素材、补充来源、验证下载并交接剪辑",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "为兆君官方旗舰店的 ZSU1226 准备后续剪辑素材，先盘点可用数量和来源，下载验证后报告素材包与缺口。"
+    ]
+  }
+}

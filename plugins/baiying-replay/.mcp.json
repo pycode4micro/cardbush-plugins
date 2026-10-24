@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "baiying_replay": {
+      "command": "python",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server.py"],
+      "env_vars": ["BAIYING_COOKIE_CACHE_PATH", "BAIYING_REPLAY_STATE_PATH", "BAIYING_DATA_DIR", "FFMPEG_BIN", "FFPROBE_BIN"],
+      "startup_timeout_sec": 30,
+      "tool_timeout_sec": 180
+    }
+  }
+}

@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 import numpy as np
 import moderngl
+from .gpu_backend import renderer_backend
 
 VERTEX = '''#version 430
 out vec2 uv;
@@ -188,9 +189,11 @@ class GPUFrameOps:
     def __init__(self, width, height):
         self.w, self.h = width, height
         self.ctx = moderngl.create_standalone_context(require=430)
-        if 'intel' not in self.ctx.info['GL_RENDERER'].lower():
+        try:
+            self.backend = renderer_backend(self.ctx.info['GL_VENDOR'], self.ctx.info['GL_RENDERER'])
+        except Exception:
             self.ctx.release()
-            raise RuntimeError('This GPU backend requires a hardware Intel OpenGL renderer; software/non-Intel renderers are not enabled.')
+            raise
         self.programs = {}
         self.targets = {}
         self.source = self.ctx.texture((width, height), 4)

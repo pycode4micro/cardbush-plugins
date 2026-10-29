@@ -1,4 +1,4 @@
-"""Whole-task GPU execution: OpenVINO vision + OpenGL pixels/mesh + QSV video."""
+"""Whole-task Intel/NVIDIA GPU execution, without software fallback."""
 from __future__ import annotations
 
 import json
@@ -39,9 +39,16 @@ class GPUPipeline:
     def __init__(self, width, height, model_dir, options, cache_dir=None):
         self.w, self.h, self.options = width, height, options
         self.frames = GPUFrameOps(width, height)
+        self.backend = self.frames.backend
+        self.codec_device = 0
         self.vision = self.renderer = None
         try:
-            self.vision = GPUVision(model_dir, options, cache_dir)
+            if self.backend == 'nvidia':
+                from .nvidia_vision import NvidiaVision
+                self.vision = NvidiaVision(model_dir, options, self.frames)
+                self.codec_device = self.vision.adapter['cuda_id']
+            else:
+                self.vision = GPUVision(model_dir, options, cache_dir)
             self.renderer = PlasterRenderer(width, height, model_dir, self.frames.ctx)
         except Exception:
             self.close()
@@ -207,7 +214,6 @@ def run_gpu(args):
     count = min(total-round(args.start*fps), round(args.seconds*fps) if args.seconds else total)
     if count <= 0:
         raise ValueError('Requested time range contains no frames.')
-    decode = decoder_command(source, header['codec'], w, h, count, args.start)
     options = ProcessingOptions.model_validate(json.loads(args.settings))
     pipeline = GPUPipeline(w, h, Path(args.models), options, Path(args.models).parents[3]/'.gpu-cache')
     decoder = encoder = None
@@ -215,10 +221,13 @@ def run_gpu(args):
     decode_log = target.with_suffix('.decode.log')
     encode_log = target.with_suffix('.ffmpeg.log')
     try:
+        decode = decoder_command(source, header['codec'], w, h, count, args.start,
+                                 pipeline.backend, pipeline.codec_device)
         with decode_log.open('w', encoding='utf-8') as dlog, encode_log.open('w', encoding='utf-8') as elog:
             decoder = subprocess.Popen(decode, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                        stderr=dlog, **hidden_process_options())
-            encoder = subprocess.Popen(encoder_command(source, target, w, h, fps, count/fps, args.start),
+            encoder = subprocess.Popen(encoder_command(source, target, w, h, fps, count/fps, args.start,
+                                                       pipeline.backend, pipeline.codec_device),
                                        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=elog, **hidden_process_options())
             print(json.dumps({'stage': 'start', 'frames': count, 'fps': fps, 'size': [w, h],
                               'renderer': pipeline.renderer.renderer}), flush=True)
@@ -249,8 +258,10 @@ def run_gpu(args):
                  'wall_seconds': elapsed, 'processing_fps': processed/elapsed,
                  'normalized_30s_wall_seconds': elapsed*30/(processed/fps), 'stage_seconds': pipeline.timings,
                  'renderer': pipeline.renderer.renderer, 'renderer_mode': 'gpu', 'execution_mode': 'gpu',
-                 'inference_delegate': 'OpenVINO GPU', 'inference_device': pipeline.vision.device,
-                 'decoder_hardware_acceleration': 'QSV', 'encoder': 'h264_qsv', 'audio': 'packet copy',
+                 'gpu_backend': pipeline.backend,
+                 'inference_delegate': pipeline.vision.inference_delegate, 'inference_device': pipeline.vision.device,
+                 'decoder_hardware_acceleration': 'NVDEC' if pipeline.backend == 'nvidia' else 'QSV',
+                 'encoder': 'h264_nvenc' if pipeline.backend == 'nvidia' else 'h264_qsv', 'audio': 'packet copy',
                  'source_video_color': header['color'], 'output_video_color': 'BT.709 limited YUV; full RGB',
                  'pipeline_devices': {stage: 'gpu' for stage in ['decode', 'preprocess', 'inference', 'mask', 'temporal', 'render', 'composite', 'encode']},
                  'cpu_work': ['container header inspection', 'process control', 'frame transport', 'sparse landmark/box coordinates', 'packet muxing'],

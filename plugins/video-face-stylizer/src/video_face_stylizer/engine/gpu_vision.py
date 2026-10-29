@@ -47,6 +47,59 @@ def detection_model(model, boxes, scores, max_results=10, keypoints=None):
     return ov.Model(outputs, model.get_parameters())
 
 
+def model_data(model_dir, person_filter=True):
+    with zipfile.ZipFile(model_dir / 'face_landmarker.task') as archive:
+        files = {'face': archive.read('face_detector.tflite'),
+                 'landmarks': archive.read('face_landmarks_detector.tflite'),
+                 'segmentation': (model_dir/'selfie_multiclass.tflite').read_bytes()}
+    if person_filter:
+        files['person'] = (model_dir/'efficientdet_lite0.tflite').read_bytes()
+    return files
+
+
+def prepare_model(core, name, data, path, suppress=True):
+    """Identical inference/decoding graphs for Intel and exported NVIDIA models."""
+    path.write_bytes(data)
+    model = core.read_model(str(path))
+    if name == 'landmarks':
+        model.reshape([1, 256, 256, 3])
+    if name == 'person':
+        anchors, scales, exponential, sigmoid = detector_metadata(data)
+        scores, raw = [result.input_value(0) for result in model.get_results()]
+        # YXHW tensor order; metadata anchors are XYWH.
+        center = ops.add(ops.multiply(column(raw, [1, 0]) / constant(scales[:2]), anchors[None, :, 2:]), anchors[None, :, :2])
+        size = column(raw, [3, 2]) / constant(scales[2:])
+        if exponential:
+            size = ops.exp(size)
+        size = ops.multiply(size, anchors[None, :, 2:])
+        corners = ops.concat([center-size/constant(2), center+size/constant(2)], -1)
+        scores = ops.squeeze(column(scores, [0]), np.array([2], np.int64))
+        if sigmoid:
+            scores = ops.sigmoid(scores)
+        model = detection_model(model, corners, scores) if suppress else ov.Model([corners, scores], model.get_parameters())
+    elif name == 'face':
+        anchors = []
+        for grid, count in [(16, 2), (8, 6)]:
+            for y in range(grid):
+                for x in range(grid):
+                    anchors.extend([[(x+.5)/grid, (y+.5)/grid]] * count)
+        anchors = np.array(anchors, np.float32)[None]
+        raw, scores = [result.input_value(0) for result in model.get_results()]
+        center = column(raw, [0, 1]) / constant(128) + constant(anchors)
+        size = column(raw, [2, 3]) / constant(128)
+        corners = ops.concat([center-size/constant(2), center+size/constant(2)], -1)
+        points = ops.reshape(column(raw, list(range(4, 16))), [1, 896, 6, 2], False)
+        points = points / constant(128) + constant(anchors[:, :, None, :])
+        scores = ops.squeeze(ops.sigmoid(scores), np.array([2], np.int64))
+        model = detection_model(model, corners, scores, 8, points) if suppress else ov.Model([corners, scores, points], model.get_parameters())
+    elif name == 'segmentation':
+        # Bundled multiclass model emits logits; MediaPipe applies SOFTMAX.
+        # Keep semantic head/hair/body channels entirely on device.
+        output = column(ops.softmax(model.get_results()[0].input_value(0), 3), [1, 3, 2])
+        model = ov.Model([output], model.get_parameters())
+    return model
+
+
 class GPUVision:
     def __init__(self, model_dir, options, cache_dir=None):
         self.options = options
@@ -54,62 +107,17 @@ class GPUVision:
         if not any(device.startswith('GPU') for device in self.core.available_devices):
             raise RuntimeError('No supported Intel GPU found by OpenVINO. CPU mode is a separate explicit choice.')
         self.device = self.core.get_property('GPU', 'FULL_DEVICE_NAME')
+        self.inference_delegate = 'OpenVINO GPU'
         self.models = {}
         self.normalizations = {}
         self.shapes = {}
         self.previous_bounds = None
-        archive = zipfile.ZipFile(model_dir / 'face_landmarker.task')
-        files = {'face': archive.read('face_detector.tflite'),
-                 'landmarks': archive.read('face_landmarks_detector.tflite'),
-                 'segmentation': (model_dir/'selfie_multiclass.tflite').read_bytes()}
-        if options.person_filter:
-            files['person'] = (model_dir/'efficientdet_lite0.tflite').read_bytes()
-        self.model_files = tempfile.TemporaryDirectory(prefix='video-face-gpu-models-')
-        for name, data in files.items():
-            self.normalizations[name] = normalization(data)
-            model_file = Path(self.model_files.name)/(name+'.tflite')
-            model_file.write_bytes(data)
-            model = self.core.read_model(str(model_file))
-            if name == 'landmarks':
-                model.reshape([1, 256, 256, 3])
-            self.shapes[name] = tuple(model.input().shape[1:3])
-            if name == 'person':
-                anchors, scales, exponential, sigmoid = detector_metadata(data)
-                scores, raw = [result.input_value(0) for result in model.get_results()]
-                # YXHW tensor order; metadata anchors are XYWH.
-                center = ops.add(ops.multiply(column(raw, [1, 0]) / constant(scales[:2]), anchors[None, :, 2:]), anchors[None, :, :2])
-                size = column(raw, [3, 2]) / constant(scales[2:])
-                if exponential:
-                    size = ops.exp(size)
-                size = ops.multiply(size, anchors[None, :, 2:])
-                corners = ops.concat([center-size/constant(2), center+size/constant(2)], -1)
-                scores = ops.squeeze(column(scores, [0]), np.array([2], np.int64))
-                if sigmoid:
-                    scores = ops.sigmoid(scores)
-                scores = ops.select(ops.greater_equal(scores, np.float32(options.person_detection_confidence)), scores, np.float32(0))
-                model = detection_model(model, corners, scores)
-            elif name == 'face':
-                anchors = []
-                for grid, count in [(16, 2), (8, 6)]:
-                    for y in range(grid):
-                        for x in range(grid):
-                            anchors.extend([[(x+.5)/grid, (y+.5)/grid]] * count)
-                anchors = np.array(anchors, np.float32)[None]
-                raw, scores = [result.input_value(0) for result in model.get_results()]
-                center = column(raw, [0, 1]) / constant(128) + constant(anchors)
-                size = column(raw, [2, 3]) / constant(128)
-                corners = ops.concat([center-size/constant(2), center+size/constant(2)], -1)
-                points = ops.reshape(column(raw, list(range(4, 16))), [1, 896, 6, 2], False)
-                points = points / constant(128) + constant(anchors[:, :, None, :])
-                scores = ops.squeeze(ops.sigmoid(scores), np.array([2], np.int64))
-                scores = ops.select(ops.greater_equal(scores, np.float32(options.min_face_detection_confidence)), scores, np.float32(0))
-                model = detection_model(model, corners, scores, 8, points)
-            elif name == 'segmentation':
-                # Bundled multiclass model emits logits; MediaPipe applies SOFTMAX.
-                # Keep semantic head/hair/body channels entirely on device.
-                output = column(ops.softmax(model.get_results()[0].input_value(0), 3), [1, 3, 2])
-                model = ov.Model([output], model.get_parameters())
-            self.models[name] = gpu_compile(self.core, model, cache_dir)
+        with tempfile.TemporaryDirectory(prefix='video-face-gpu-models-') as directory:
+            for name, data in model_data(model_dir, options.person_filter).items():
+                model = prepare_model(self.core, name, data, Path(directory)/(name+'.tflite'))
+                self.normalizations[name] = normalization(data)
+                self.shapes[name] = tuple(model.input().shape[1:3])
+                self.models[name] = gpu_compile(self.core, model, cache_dir)
 
     def infer(self, name, pixels):
         result = self.models[name]([pixels])
@@ -186,4 +194,3 @@ class GPUVision:
 
     def close(self):
         self.models.clear()
-        self.model_files.cleanup()

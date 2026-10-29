@@ -24,7 +24,7 @@ def fixture(path):
     assert result.returncode==0,result.stderr
 
 
-async def main(root,plugin=None):
+async def main(root,plugin=None,executable=None,python_entry=False):
     root.mkdir(parents=True,exist_ok=False)
     source=root/'source video.mp4';fixture(source)
     digest=hashlib.sha256(source.read_bytes()).hexdigest()
@@ -32,7 +32,12 @@ async def main(root,plugin=None):
     plugin=plugin or Path(__file__).resolve().parents[1]
     env={**os.environ,'PYTHONUTF8':'1','PYTHONUNBUFFERED':'1'}
     # Exercise the portable manifest's actual PowerShell entrypoint, not just Python imports.
-    params=StdioServerParameters(command='powershell.exe',args=['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(plugin/'scripts/start.ps1')],env=env)
+    if executable:
+        params=StdioServerParameters(command=str(executable),args=[],env=env)
+    elif python_entry:
+        params=StdioServerParameters(command=sys.executable,args=['-m','video_face_stylizer'],env=env)
+    else:
+        params=StdioServerParameters(command='powershell.exe',args=['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(plugin/'scripts/start.ps1')],env=env)
     with (root/'mcp.stderr.log').open('w',encoding='utf-8') as err:
         async with stdio_client(params,errlog=err) as (reader,writer):
             async with ClientSession(reader,writer) as client:
@@ -104,5 +109,8 @@ async def main(root,plugin=None):
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--plugin-root',type=Path)
+    parser.add_argument('--executable',type=Path)
+    parser.add_argument('--python-entry',action='store_true')
     args=parser.parse_args()
-    asyncio.run(main(args.output.resolve(),args.plugin_root.resolve() if args.plugin_root else None))
+    asyncio.run(main(args.output.resolve(),args.plugin_root.resolve() if args.plugin_root else None,
+                     args.executable.resolve() if args.executable else None,args.python_entry))

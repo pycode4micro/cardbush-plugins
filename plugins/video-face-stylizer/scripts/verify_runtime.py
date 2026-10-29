@@ -14,6 +14,10 @@ def verify():
     for asset in json.loads((ROOT/'model_sources.json').read_text(encoding='utf-8')):
         if hashlib.sha256((ROOT/'models'/asset['file']).read_bytes()).hexdigest()!=asset['sha256']:
             raise RuntimeError('Bundled model checksum mismatch: '+asset['file'])
+    from video_face_stylizer.engine.nvidia_vision import verified_models
+    # Hashes are checked without initializing any GPU on CPU-only computers.
+    if len(list(verified_models(ROOT/'models'))) != 4:
+        raise RuntimeError('Bundled NVIDIA model set is incomplete.')
     pipeline=FacePipeline(64,64,ROOT/'models','cpu',ProcessingOptions(tiled_detection=False,tiled_segmentation=False))
     try:
         result,_=pipeline.process(np.zeros((64,64,3),np.uint8),0)

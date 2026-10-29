@@ -1,17 +1,21 @@
-# 视频生成去真人化处理 0.3.0
+# 视频生成去真人化处理 0.4.0
+
+0.4.0 增加 Windows NVIDIA 通用 GPU 后端：DirectML 模型推理、OpenGL 检测框筛选和像素处理、NVDEC 解码/缩放、NVENC 编码。根据实际显卡、驱动和编解码能力检测，不使用显卡型号白名单；RTX 3070 Ti 是实机验收设备，不是支持范围限制。运行环境包含所需 DirectML 依赖与转换模型，无需安装 CUDA/cuDNN 工具包。
 
 0.3.0 将 CPU、GPU 分成两套完整的视频流程，删除原来只有三维渲染走 GPU 的混合模式。Agent 通过能力检查选择整次任务的运行方式；GPU 任一阶段不支持时明确失败，不切换到 CPU。
 
 | 视频处理阶段 | CPU 模式 | GPU 模式 |
 | --- | --- | --- |
-| 解码、缩放、颜色转换 | 软件解码、OpenCV | Intel QSV 硬件解码、VPP 缩放、OpenGL 颜色转换 |
-| 人物、人脸、关键点、头部分割 | MediaPipe CPU | 同一批包内模型，OpenVINO GPU |
+| 解码、缩放、颜色转换 | 软件解码、OpenCV | Intel QSV/VPP 或 NVIDIA NVDEC，OpenGL 颜色转换 |
+| 人物、人脸、关键点、头部分割 | MediaPipe CPU | 同一批包内模型，Intel OpenVINO GPU 或 NVIDIA DirectML |
 | 掩膜、人工区域、时序补漏 | OpenCV / NumPy | OpenGL 计算着色器与纹理 |
 | 三维绘制、合成 | Numba / NumPy | OpenGL |
-| 视频编码 | libx264 | h264_qsv |
+| 视频编码 | libx264 | Intel h264_qsv 或 NVIDIA h264_nvenc |
 | 音频 | AAC 编码 | 原音频包直接复制 |
 
-GPU 模式仍需要 CPU 做进程调度、传输帧、少量框/关键点坐标计算和封装，这些不是软件视频处理回退。当前 GPU 后端支持 **Intel GPU + OpenVINO GPU + OpenGL 4.3 + QSV**，已在 UHD Graphics 730 核显验证；NVIDIA/AMD 后端尚未实现，不会把 OpenGL 可用误报为完整 GPU 可用。源视频编码/配置必须由硬件解码器支持；不支持时明确报错。原音频无法直接封装进 MP4 时也会明确报错。
+GPU 模式仍需要 CPU 做进程调度、帧和张量传输、少量框/关键点坐标计算和封装，这些不是软件视频处理回退。支持 **Intel OpenVINO GPU + QSV** 或 **NVIDIA DirectML + NVDEC/NVENC**，两者均要求硬件 OpenGL 4.3。AMD 尚未启用。NVIDIA 推理禁止 ONNX Runtime 的算子级和运行时 CPU 回退；不支持动态 NMS 的问题由 OpenGL 计算着色器处理。根据实际 OpenGL 设备匹配 DirectX 和 CUDA 适配器，避免错误地使用默认核显；无法唯一匹配时明确失败。
+
+不同显卡的编解码格式、分辨率和位深限制由驱动实际探测决定，不因属于某个 GTX/RTX 系列就直接判定可用。源视频编码/配置不受硬件支持时明确报错；原音频无法直接封装进 MP4 时也会明确报错。GPU 能力检查必须在已登录的 Windows 桌面会话执行；SSH 服务会话可能只有软件 OpenGL，不能据此判断桌面显卡是否可用。
 
 GPU 颜色转换读取 SDR BT.601/709 的输入范围和矩阵，由 OpenGL 着色器完成 NV12/RGB 转换；输出为明确标记的 BT.709 有限范围 H.264，内部 RGB 使用完整范围，避免硬件默认设置造成偏灰或偏色。能力检查也验证编解码往返后的颜色。当前不支持 HDR/广色域输入，会明确报错。
 
@@ -37,7 +41,7 @@ GPU 颜色转换读取 SDR BT.601/709 的输入范围和矩阵，由 OpenGL 着�
 
 ## 安装与依赖
 
-适用于 Windows x64 和本地 STDIO MCP 宿主。CPU 模式无需 GPU；GPU 模式需要上表列出的完整 Intel GPU 能力。视频处理在本地完成，无需 API 密钥。
+适用于 Windows 10/11 x64 和本地 STDIO MCP 宿主。CPU 模式无需 GPU；GPU 模式需要上表列出的完整 Intel 或 NVIDIA 能力及相应驱动，NVIDIA 推理需要 DirectX 12。视频处理在本地完成，无需 API 密钥。
 
 **CardBush：直接导入这个源码 ZIP。** 配置通过 `${PLUGIN_ROOT}/scripts/start.ps1` 启动。首次连接会自动准备 Python 3.12 和插件目录中的 `.venv`，安装锁文件里的完整依赖，校验包内模型，并验证真实模型推理、CPU 渲染编译和 FFmpeg。无需自行补装 Python 包或修改 site-packages。后续连接使用已准备的环境。
 
@@ -45,7 +49,11 @@ GPU 颜色转换读取 SDR BT.601/709 的输入范围和矩阵，由 OpenGL 着�
 
 也可先解压到长期保留目录，双击 `setup.cmd`。脚本会生成绑定该目录解释器的本机 ZIP；导入本机 ZIP 后必须保留原目录。不要把这种本机包复制到其他电脑。需要指定解释器时使用 `scripts/setup.ps1 -Python 'C:\Python312\python.exe'`。
 
-依赖在 `pyproject.toml` 声明，`uv.lock` 锁定所有直接和间接依赖及下载校验信息；`requirements.lock` 是带哈希的导出副本。Python 包含 MediaPipe、OpenVINO、OpenCV、NumPy、Numba、ModernGL、MCP、Pydantic、psutil 和 imageio-ffmpeg；FFmpeg 随其 wheel 提供，四个模型/网格资产随插件提供，无需另下载 GPU 模型。没有系统 Python 时由 uv 自动下载，不依赖 Windows Store 的 python 别名。安装脚本使用 uv 0.12.10；下载插件私有 uv 时校验官方 SHA256。
+依赖在 `pyproject.toml` 声明，`uv.lock` 锁定所有直接和间接依赖及下载校验信息；`requirements.lock` 是带哈希的导出副本。Python 包含 MediaPipe、OpenVINO、ONNX Runtime DirectML、OpenCV、NumPy、Numba、ModernGL、MCP、Pydantic、psutil 和 imageio-ffmpeg；FFmpeg 随其 wheel 提供，原始模型/网格及同源 NVIDIA ONNX 模型随插件提供，无需另下载 GPU 模型。没有系统 Python 时由 uv 自动下载，不依赖 Windows Store 的 python 别名。安装脚本使用 uv 0.12.10；下载插件私有 uv 时校验官方 SHA256。
+
+NVIDIA 模型来源与 SHA256 保存在 `src/video_face_stylizer/engine/models/nvidia/manifest.json`，沿用原始 MediaPipe 模型许可证。开发者使用 `scripts/requirements-export.txt` 创建独立转换环境，然后运行 `scripts/export_nvidia_models.py --output NEW_DIRECTORY`；导出过程对四个模型的全部输出进行数值对比，并拒绝输出顺序歧义。普通安装与运行不需要转换工具。
+
+实机验收入口为 `tests/hardware_validation.py --portrait PUBLIC_TEST_IMAGE --output NEW_DIRECTORY`，可加 `--executable INSTALLED_PLUGIN_EXE` 检查最终安装入口。它包含全部单元及实际 GPU 测试、CPU/GPU 视频与音频、人工区域时间边界、公开人像、断开重连、取消及异常输入；素材和回执不提交仓库。
 
 ## 工具与任务
 

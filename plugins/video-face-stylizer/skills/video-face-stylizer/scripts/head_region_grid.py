@@ -99,7 +99,8 @@ def main():
         result = extract_grid(args.input, args.seconds, args.output, args.grid_percent, args.box)
     except (ValueError, OSError, cv2.error) as exc:
         parser.exit(2, f'error: {exc}\n')
-    print(json.dumps(result, ensure_ascii=False, allow_nan=False))
+    # Machine-readable JSON must survive legacy Windows console code pages.
+    print(json.dumps(result, ensure_ascii=True, allow_nan=False))
 
 
 if __name__ == '__main__':

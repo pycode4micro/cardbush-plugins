@@ -1,0 +1,6 @@
+# Separate build environment; never needed by the end-user plugin runtime.
+numpy==2.1.3
+openvino==2026.4.1
+openvino2onnx==1.1.0
+onnx==1.17.0
+onnxruntime-directml==1.23.0

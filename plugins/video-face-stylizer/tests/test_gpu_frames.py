@@ -43,10 +43,16 @@ def test_gpu_nv12_primary_colors_and_range_are_preserved(frames, weights, full_r
     assert np.abs(restored[64, 8::16, :3].astype(float)-expected).max() <= 3
 
 
-def test_qsv_roundtrip_preserves_colors_and_signaling(tmp_path, frames):
+def test_hardware_roundtrip_preserves_colors_and_signaling(tmp_path):
     from video_face_stylizer.engine.gpu_video import probe_codecs
-    result = probe_codecs(tmp_path, frames)
-    assert result['encoder'] == 'h264_qsv'
+    from video_face_stylizer.engine.gpu_backend import nvidia_adapter
+    frames = GPUFrameOps(256, 256)
+    try:
+        device = nvidia_adapter(frames.ctx.info['GL_RENDERER'])['cuda_id'] if frames.backend == 'nvidia' else 0
+        result = probe_codecs(tmp_path, frames, frames.backend, device)
+        assert result['encoder'] == ('h264_nvenc' if frames.backend == 'nvidia' else 'h264_qsv')
+    finally:
+        frames.close()
 
 
 def test_gpu_component_hair_and_person_filters(frames):

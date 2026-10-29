@@ -9,6 +9,16 @@ from .models import VideoRequest
 JOB_FOLDER='.video-face-stylizer-jobs'
 TERMINAL={'succeeded','failed','cancelled','interrupted'}
 
+def read_json(path:Path):
+    # Windows can transiently deny opening a file during an atomic replacement.
+    # Retry metadata reads only; never resubmit or rerender the video job.
+    for attempt in range(8):
+        try:
+            return json.loads(path.read_text(encoding='utf-8'))
+        except PermissionError as exc:
+            if getattr(exc,'winerror',None) not in {5,32,33} or attempt==7:raise
+            time.sleep(min(.01*2**attempt,.1))
+
 def write_json(path:Path,data:dict):
     tmp=path.with_name(path.name+'.'+uuid.uuid4().hex+'.tmp')
     try:
@@ -36,12 +46,12 @@ def job_directory(job_id:str,output_directory:str)->Path:
 
 def get_job(job_id:str,output_directory:str)->dict:
     path=job_directory(job_id,output_directory)
-    record=json.loads((path/'status.json').read_text(encoding='utf-8'))
+    record=read_json(path/'status.json')
     if record.get('job_id')!=job_id or record.get('format')!='video-face-stylizer-job-v1':
         raise ValueError('Invalid job record.')
     process_record=record
     if not record.get('worker_pid') and (path/'process.json').is_file():
-        process_record=json.loads((path/'process.json').read_text(encoding='utf-8'))
+        process_record=read_json(path/'process.json')
     if record['state'] not in TERMINAL and process_record.get('worker_pid'):
         try:
             proc=psutil.Process(process_record['worker_pid'])
@@ -62,13 +72,13 @@ def reserved_job(request:VideoRequest,mode:str,reservation:Path,target:Path)->di
              'planned_output_path':str(target),'output_directory':request.output_directory,
              'requested_mode':mode,'next_poll_seconds':1}
     try:
-        lock=json.loads(reservation.read_text(encoding='utf-8'))
+        lock=read_json(reservation)
         if Path(lock['output']).resolve()!=target.resolve():raise ValueError('Mismatched reservation')
         job_id=lock['job_id']
         if not re.fullmatch(r'[a-f0-9]{32}',job_id):raise ValueError('Invalid reservation owner')
         receipt['job_id']=job_id
         record=get_job(job_id,request.output_directory)
-        saved=json.loads((job_directory(job_id,request.output_directory)/'request.json').read_text(encoding='utf-8'))
+        saved=read_json(job_directory(job_id,request.output_directory)/'request.json')
         same=saved.get('mode')==mode and saved.get('request')==request.model_dump()
         receipt={**record,**{k:v for k,v in receipt.items() if k not in {'state','next_poll_seconds'}},
                  'request_matches':same,'reused':same and record['state'] not in TERMINAL}

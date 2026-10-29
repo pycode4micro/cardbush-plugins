@@ -4,7 +4,7 @@ from .processes import hidden_process_options
 import json,os,queue,shutil,subprocess,sys,threading,time
 from pathlib import Path
 import psutil
-from .jobs import JOB_FOLDER,write_json
+from .jobs import JOB_FOLDER,write_json,read_json
 from .models import VideoRequest,ProcessingOptions
 
 def parse_event(line):
@@ -49,13 +49,13 @@ def publish_new(source:Path,target:Path):
 def work(directory:Path):
     directory=directory.resolve()
     if directory.parent.name!=JOB_FOLDER:raise ValueError('Invalid job directory.')
-    data=json.loads((directory/'request.json').read_text(encoding='utf-8'))
+    data=read_json(directory/'request.json')
     request=VideoRequest.model_validate(data['request'])
     target=Path(data['output_path']).resolve();out=Path(request.output_directory)
     if target.parent!=out or target.suffix.lower()!='.mp4' or target==Path(request.input_path):
         raise ValueError('Invalid output destination.')
     if data['mode'] not in {'cpu','gpu'}:raise ValueError('Invalid mode.')
-    state=json.loads((directory/'status.json').read_text(encoding='utf-8'))
+    state=read_json(directory/'status.json')
     proc=None
     def update(**values):
         state.update(values);state['updated_at']=time.time()
@@ -106,7 +106,7 @@ def work(directory:Path):
             detail=(directory/'engine.stderr.log').read_text(encoding='utf-8',errors='replace')[-4000:]
             raise RuntimeError(f'Render process failed ({proc.returncode}): {detail}')
         if (directory/'cancel.request').exists():update(state='cancelled');return
-        benchmark=json.loads(temporary.with_suffix('.benchmark.json').read_text(encoding='utf-8'))
+        benchmark=read_json(temporary.with_suffix('.benchmark.json'))
         validate_execution(benchmark,data['mode'])
         import cv2
         cap=cv2.VideoCapture(str(temporary),cv2.CAP_FFMPEG,[cv2.CAP_PROP_HW_ACCELERATION,cv2.VIDEO_ACCELERATION_NONE])
@@ -138,7 +138,7 @@ def work(directory:Path):
     finally:
         if reservation.exists():
             try:
-                lock=json.loads(reservation.read_text(encoding='utf-8'))
+                lock=read_json(reservation)
                 if lock.get('job_id')==state['job_id']:reservation.unlink()
             except (ValueError,OSError):pass
 
@@ -152,12 +152,12 @@ if __name__=='__main__':
         if directory.parent.name!=JOB_FOLDER:raise
         status_path=directory/'status.json'
         if not status_path.is_file():raise
-        status=json.loads(status_path.read_text(encoding='utf-8'))
+        status=read_json(status_path)
         if status.get('job_id')!=directory.name:raise
         status.update(state='failed',error=str(exc),updated_at=time.time())
         write_json(status_path,status)
         for reservation in (directory.parent/'reservations').glob('*.json'):
             try:
-                if json.loads(reservation.read_text(encoding='utf-8')).get('job_id')==directory.name:
+                if read_json(reservation).get('job_id')==directory.name:
                     reservation.unlink()
             except (OSError,ValueError):pass

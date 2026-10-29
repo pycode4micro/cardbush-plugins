@@ -1,0 +1,95 @@
+{
+  "format": 1,
+  "source_sha256": {
+    "face": "b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f",
+    "landmarks": "c7d54204ce0448474c7f3fa9af494787c0965cbdd6f20fc72867e43046bd43d5",
+    "segmentation": "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0",
+    "person": "4b59100025bea1235a84c1038879a6cccc9f6c49f5e41144e91e74d99e780993"
+  },
+  "models": {
+    "face": {
+      "file": "face.onnx",
+      "sha256": "dbb29b907ae40b1076e48ee5b46be2c3f3572428e6a42e429767ec2ffc3ee2e1",
+      "shape": [
+        1,
+        128,
+        128,
+        3
+      ],
+      "mean": [
+        127.5,
+        127.5,
+        127.5
+      ],
+      "std": [
+        127.5,
+        127.5,
+        127.5
+      ],
+      "conversion_max_absolute_error": 8.344650268554688e-07
+    },
+    "landmarks": {
+      "file": "landmarks.onnx",
+      "sha256": "1c5e75f6429ef4cbb6379748ff53175c5d38adcae0ca2f3e24a33b03b84678b5",
+      "shape": [
+        1,
+        256,
+        256,
+        3
+      ],
+      "mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "std": [
+        255.0,
+        255.0,
+        255.0
+      ],
+      "conversion_max_absolute_error": 0.001007080078125
+    },
+    "segmentation": {
+      "file": "segmentation.onnx",
+      "sha256": "5a02c065607eb6d089b643c3392b71959698b5563e3dacd281660340fc208b0a",
+      "shape": [
+        1,
+        256,
+        256,
+        3
+      ],
+      "mean": [
+        127.5,
+        127.5,
+        127.5
+      ],
+      "std": [
+        127.5,
+        127.5,
+        127.5
+      ],
+      "conversion_max_absolute_error": 2.0563602447509766e-06
+    },
+    "person": {
+      "file": "person.onnx",
+      "sha256": "645aa73fe3ab8915f514912a1386711f96dc4dc128f91e5f9a1e7b8624dbc6ac",
+      "shape": [
+        1,
+        320,
+        320,
+        3
+      ],
+      "mean": [
+        127.5,
+        127.5,
+        127.5
+      ],
+      "std": [
+        127.5,
+        127.5,
+        127.5
+      ],
+      "conversion_max_absolute_error": 9.238719940185547e-07
+    }
+  }
+}

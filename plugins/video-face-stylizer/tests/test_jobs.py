@@ -146,3 +146,35 @@ def test_permanent_status_write_failure_preserves_previous_record(tmp_path,monke
     with pytest.raises(PermissionError):jobs.write_json(path,{'state':'succeeded'})
     assert len(attempts)==8 and json.loads(path.read_text())['state']=='running'
     assert not list(tmp_path.glob('*.tmp'))
+
+
+@pytest.mark.parametrize('winerror', [5,32,33])
+def test_status_query_survives_transient_windows_replace_lock(request_data,monkeypatch,winerror):
+    launches=[]
+    monkeypatch.setattr(jobs.subprocess,'Popen',lambda *a,**kw:launches.append(a))
+    job=jobs.start_job(VideoRequest(**request_data),'gpu')
+    path=jobs.job_directory(job['job_id'],job['output_directory'])/'status.json'
+    original=path.read_bytes()
+    read=Path.read_text;attempts=[]
+    def temporary_lock(self,*args,**kwargs):
+        if self==path:
+            attempts.append(1)
+            if len(attempts)<3:
+                error=PermissionError('replacement in progress');error.winerror=winerror;raise error
+        return read(self,*args,**kwargs)
+    monkeypatch.setattr(Path,'read_text',temporary_lock)
+    monkeypatch.setattr(jobs.time,'sleep',lambda seconds:None)
+    assert jobs.get_job(job['job_id'],job['output_directory'])['state']=='queued'
+    assert len(attempts)==3 and len(launches)==1 and path.read_bytes()==original
+
+
+@pytest.mark.parametrize('winerror,expected_attempts', [(5,8),(None,1),(999,1)])
+def test_status_read_failure_is_bounded_and_does_not_hide_other_errors(tmp_path,monkeypatch,winerror,expected_attempts):
+    path=tmp_path/'status.json';path.write_text('{"state":"running"}')
+    attempts=[]
+    def denied(*args,**kwargs):
+        attempts.append(1);error=PermissionError('denied');error.winerror=winerror;raise error
+    monkeypatch.setattr(Path,'read_text',denied)
+    monkeypatch.setattr(jobs.time,'sleep',lambda seconds:None)
+    with pytest.raises(PermissionError):jobs.read_json(path)
+    assert len(attempts)==expected_attempts

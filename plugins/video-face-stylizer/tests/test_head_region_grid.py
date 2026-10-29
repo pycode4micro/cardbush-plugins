@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -25,11 +26,13 @@ def video(tmp_path):
     return source
 
 
-def test_cli_extracts_requested_frame_without_changing_source(video,tmp_path):
+@pytest.mark.parametrize('encoding', ['utf-8', 'gbk'])
+def test_cli_extracts_requested_frame_without_changing_source(video,tmp_path,encoding):
     digest=hashlib.sha256(video.read_bytes()).hexdigest()
     output=tmp_path/'检查 帧.png'
     result=subprocess.run([sys.executable,str(SCRIPT),'--input',str(video),'--seconds','.4',
-        '--output',str(output),'--box','.2','.2','.6','.7'],capture_output=True,encoding='utf-8',timeout=30)
+        '--output',str(output),'--box','.2','.2','.6','.7'],capture_output=True,encoding='utf-8',timeout=30,
+        env={**os.environ,'PYTHONIOENCODING':encoding})
     assert result.returncode==0,result.stderr
     report=json.loads(result.stdout)
     assert report['requested_seconds']==.4 and report['decoded_seconds']==pytest.approx(.4,abs=.05)

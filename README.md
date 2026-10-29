@@ -27,7 +27,7 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 | `qianchuan` | 1.0.0 | 自带运行代码的千川素材、报表及受控投放工具 | [千川配置](plugins/qianchuan/README.md) |
 | `baiying-replay` | 0.3.0 | 默认商品原回放备料，保留展示停顿、来源与字幕待查状态；可显式切换成品策略 | [百应插件配置](plugins/baiying-replay/README.md) |
 | `video-editer`（video_editer） | 0.6.1 | 110 项工具；内置 ASR，保留零时长词、禁止拆分小数选句，新增花字可读字号校验；附百应编排 skill、纯剪辑与证据验收，GPU 优先单重任务队列 | [剪辑插件配置](plugins/video-editer/README.md) |
-| `video-face-stylizer` | 0.3.0 | 独立的完整 CPU / Intel GPU 视频白模流程、Agent 设备选择、补漏与覆盖统计 | [去真人化处理配置](plugins/video-face-stylizer/README.md) |
+| `video-face-stylizer` | 0.4.0 | 完整 CPU / Intel / NVIDIA GPU 视频白模流程、运行时能力检测、补漏与覆盖统计 | [去真人化处理配置](plugins/video-face-stylizer/README.md) |
 | `minimax-music` | 1.0.0 | 主题曲、纯音乐 BGM、歌词创作与改写、参考翻唱；11 项工具、动画配乐技能和 Music 3 自部署连接 | [音乐插件配置](plugins/minimax-music/README.md) |
 | `feishu-bot` | 1.0.0 | 独立飞书机器人、电子表格、多维表格及账号分表；默认只读，环境变量和启动参数控制修改能力 | [飞书插件配置](plugins/feishu-bot/README.md) |
 | `douyin-video-download` | 0.2.0 | 获取 Cookie 文件后下载单条视频；1 个 MCP 工具、3 个参数，内部完成候选选择及落盘校验 | [抖音下载使用说明](plugins/douyin-video-download/README.md) |
@@ -116,9 +116,9 @@ FFmpeg 需支持 libx264/libass；已声明的 `imageio-ffmpeg` 提供二进制�
 
 `video-face-stylizer` 适用于 Windows x64，通过包内 PowerShell 脚本启动，无需 API 密钥。首次连接自动准备 Python 3.12 和插件独立运行环境，按 `uv.lock` 安装完整依赖，并检查模型、CPU 渲染与 FFmpeg；首次准备需要联网，后续连接复用已安装环境。
 
-源码包含四个模型/网格资产及来源、许可和 SHA256，依赖包含 FFmpeg 编码器。CPU 模式无需独显；GPU 模式需要支持 OpenGL 3.3 的驱动。0.2.2 修复 Python、FFmpeg 和依赖检查弹出终端窗口的问题，并保留原始 MCP 字节流。安装后也可在插件目录运行 `setup.cmd` 预先准备环境。
+源码包含原始模型/网格和同源 NVIDIA ONNX 模型及来源、许可和 SHA256，依赖包含 FFmpeg 编码器。CPU 模式无需独显；GPU 模式需要硬件 OpenGL 4.3 和对应的推理、编解码能力。后台启动保持无控制台窗口，并保留原始 MCP 字节流。安装后也可在插件目录运行 `setup.cmd` 预先准备环境。
 
-自动处理仍需抽查漏检时间段，白模效果不保证可靠身份匿名化。0.3.0 将 CPU / GPU 分为完整独立流程，GPU 使用 Intel OpenVINO、OpenGL 与 QSV，任一阶段不支持均明确失败、不回退；Agent 可按完整能力检查选择整次任务模式。功能、参数与实际处理验证记录见[插件说明](plugins/video-face-stylizer/README.md)和[验证记录](plugins/video-face-stylizer/VALIDATION.md)。
+自动处理仍需抽查漏检时间段，白模效果不保证可靠身份匿名化。0.4.0 的完整 GPU 流程支持 Intel OpenVINO/QSV 与 NVIDIA DirectML/NVDEC/NVENC，像素处理使用 OpenGL；不限定 NVIDIA 型号，按实际适配器和驱动能力检测，任一阶段不支持均明确失败、不回退。功能、参数与实际处理验证记录见[插件说明](plugins/video-face-stylizer/README.md)和[验证记录](plugins/video-face-stylizer/VALIDATION.md)。
 
 ### MiniMax 音乐创作
 

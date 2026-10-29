@@ -1,4 +1,4 @@
-"""Strict QSV video decoding, scaling and H.264 encoding.
+"""Strict QSV or NVIDIA NVDEC/NVENC decoding, scaling and H.264 encoding.
 
 The CPU transports raw frames and multiplexes packets; no software codec or
 software image filter is present in these video command lines.
@@ -58,9 +58,18 @@ def metadata(source):
         capture.release()
 
 
-def decoder_command(source, codec, width, height, frames, start=0):
+def decoder_command(source, codec, width, height, frames, start=0, backend='intel', device=0):
+    if backend not in {'intel', 'nvidia'}:
+        raise ValueError('Unsupported GPU video backend.')
     if codec not in CODECS:
         raise ValueError(f'Input codec {codec!r} has no configured GPU decoder. Choose CPU explicitly for this video.')
+    if backend == 'nvidia':
+        return [ffmpeg_executable(), '-hide_banner', '-loglevel', 'error', '-nostdin',
+                '-hwaccel', 'cuda', '-hwaccel_device', str(device), '-hwaccel_output_format', 'cuda',
+                '-c:v', CODECS[codec].replace('_qsv', '_cuvid'), '-gpu', str(device),
+                '-resize', f'{width}x{height}', '-ss', str(start), '-i', str(source), '-an', '-sn', '-dn',
+                '-vf', 'hwdownload,format=nv12', '-fps_mode', 'passthrough', '-frames:v', str(frames),
+                '-f', 'rawvideo', '-pix_fmt', 'nv12', 'pipe:1']
     return [ffmpeg_executable(), '-hide_banner', '-loglevel', 'error', '-nostdin',
             '-hwaccel', 'qsv', '-hwaccel_output_format', 'qsv', '-c:v', CODECS[codec],
             '-ss', str(start), '-i', str(source), '-an', '-sn', '-dn',
@@ -69,7 +78,19 @@ def decoder_command(source, codec, width, height, frames, start=0):
             '-f', 'rawvideo', '-pix_fmt', 'nv12', 'pipe:1']
 
 
-def encoder_command(source, target, width, height, fps, seconds, start=0):
+def encoder_command(source, target, width, height, fps, seconds, start=0, backend='intel', device=0):
+    if backend not in {'intel', 'nvidia'}:
+        raise ValueError('Unsupported GPU video backend.')
+    if backend == 'nvidia':
+        return [ffmpeg_executable(), '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
+                '-init_hw_device', f'cuda=hw:{device}', '-filter_hw_device', 'hw',
+                '-f', 'rawvideo', '-pix_fmt', 'nv12', '-s', f'{width}x{height}', '-r', str(fps),
+                '-color_range', 'tv', '-colorspace', 'bt709', '-i', 'pipe:0',
+                '-ss', str(start), '-i', str(source), '-map', '0:v:0', '-map', '1:a:0?',
+                '-vf', 'hwupload', '-c:v', 'h264_nvenc', '-gpu', str(device),
+                '-preset', 'p4', '-rc', 'vbr', '-cq', '18', '-b:v', '0', '-color_range', 'tv',
+                '-bsf:v', 'h264_metadata=video_full_range_flag=0:colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1',
+                '-c:a', 'copy', '-t', str(seconds), '-movflags', '+faststart', str(target)]
     return [ffmpeg_executable(), '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
             '-init_hw_device', 'qsv=hw', '-filter_hw_device', 'hw',
             '-f', 'rawvideo', '-pix_fmt', 'nv12', '-s', f'{width}x{height}',
@@ -99,50 +120,54 @@ def read_frame(stream, size):
     return result
 
 
-def probe_codecs(directory, pixels=None):
+def probe_codecs(directory, pixels=None, backend='intel', device=0):
     from .gpu_frames import GPUFrameOps
+    width, height = (pixels.w, pixels.h) if pixels is not None else (256, 256)
     source = directory/'codec-probe.mp4'
     encoded = directory/'codec-roundtrip.mp4'
     # Generating this tiny test pattern is setup, outside any video job.
+    encoder = 'h264_nvenc' if backend == 'nvidia' else 'h264_qsv'
+    label = 'NVIDIA' if backend == 'nvidia' else 'QSV'
     result = subprocess.run([ffmpeg_executable(), '-v', 'error', '-f', 'lavfi',
-                             '-i', 'color=c=navy:s=128x128:r=10', '-frames:v', '3',
-                             '-c:v', 'h264_qsv', '-y', str(source)],
+                             '-i', f'color=c=navy:s={width}x{height}:r=10', '-frames:v', '3',
+                             '-c:v', encoder, *(['-gpu', str(device)] if backend == 'nvidia' else []), '-y', str(source)],
                             capture_output=True, timeout=20, **hidden_process_options())
     if result.returncode:
-        raise RuntimeError('QSV encoder probe failed: '+result.stderr.decode(errors='replace')[-1200:])
-    result = subprocess.run(decoder_command(source, 'avc1', 128, 128, 3),
+        raise RuntimeError(label+' encoder probe failed: '+result.stderr.decode(errors='replace')[-1200:])
+    result = subprocess.run(decoder_command(source, 'avc1', width, height, 3, backend=backend, device=device),
                             capture_output=True, timeout=20, **hidden_process_options())
-    if result.returncode or len(result.stdout) != 128*128*3//2*3:
-        raise RuntimeError('QSV decoder/VPP probe failed: '+result.stderr.decode(errors='replace')[-1200:])
+    if result.returncode or len(result.stdout) != width*height*3//2*3:
+        raise RuntimeError(label+' hardware decoder/scale probe failed: '+result.stderr.decode(errors='replace')[-1200:])
     owned_pixels = pixels is None
     if owned_pixels:
-        pixels = GPUFrameOps(128, 128)
+        pixels = GPUFrameOps(width, height)
     try:
-        frame_size = 128*128*3//2
+        frame_size = width*height*3//2
         pixels.upload_nv12(result.stdout[:frame_size])
         pixels.empty_material()
         original_pixel = tuple(pixels.composite()[:3])
         if not (abs(original_pixel[0]-128) <= 5 and max(original_pixel[1:]) <= 4):
             raise RuntimeError(f'GPU NV12/RGB color probe failed: {original_pixel}')
         frame = pixels.composite(nv12=True)
-        result = subprocess.run(encoder_command(source, encoded, 128, 128, 10, .3), input=frame*3,
+        result = subprocess.run(encoder_command(source, encoded, width, height, 10, .3, backend=backend, device=device), input=frame*3,
                                 capture_output=True, timeout=20, **hidden_process_options())
         if result.returncode or not encoded.is_file():
-            raise RuntimeError('QSV GPU upload/encoding probe failed: '+result.stderr.decode(errors='replace')[-1200:])
+            raise RuntimeError(label+' GPU upload/encoding probe failed: '+result.stderr.decode(errors='replace')[-1200:])
         color = source_color(encoded)
         if color['matrix'] != 'bt709' or color['full_range']:
-            raise RuntimeError('QSV encoder did not preserve H.264 color signaling.')
-        result = subprocess.run(decoder_command(encoded, 'avc1', 128, 128, 3),
+            raise RuntimeError(label+' encoder did not preserve H.264 color signaling.')
+        result = subprocess.run(decoder_command(encoded, 'avc1', width, height, 3, backend=backend, device=device),
                                 capture_output=True, timeout=20, **hidden_process_options())
         if result.returncode or len(result.stdout) != frame_size*3:
-            raise RuntimeError('QSV roundtrip decode failed.')
+            raise RuntimeError(label+' roundtrip decode failed.')
         pixels.upload_nv12(result.stdout[:frame_size], color['weights'], color['full_range'])
         pixels.empty_material()
         if max(abs(a-b) for a, b in zip(pixels.composite()[:3], original_pixel)) > 5:
-            raise RuntimeError('QSV encode/decode did not preserve video colors.')
+            raise RuntimeError(label+' encode/decode did not preserve video colors.')
     finally:
         if owned_pixels:
             pixels.close()
-    return {'decoder': 'QSV hardware decoder', 'scaling_color_conversion': 'QSV VPP scaling + OpenGL NV12/RGB conversion',
-            'encoder': 'h264_qsv', 'color_range': 'BT.709 limited YUV, full RGB; explicit H.264 signaling',
+    return {'decoder': 'NVDEC hardware decoder' if backend == 'nvidia' else 'QSV hardware decoder',
+            'scaling_color_conversion': ('NVDEC scaling' if backend == 'nvidia' else 'QSV VPP scaling')+' + OpenGL NV12/RGB conversion',
+            'encoder': encoder, 'color_range': 'BT.709 limited YUV, full RGB; explicit H.264 signaling',
             'audio': 'original packets (no audio re-encoding)'}

@@ -1,2 +1,2 @@
 """视频生成去真人化处理 — local face material effects, CPU and GPU."""
-__version__ = "0.3.0"
+__version__ = "0.4.0"

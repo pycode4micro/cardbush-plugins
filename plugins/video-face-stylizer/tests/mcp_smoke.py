@@ -9,7 +9,8 @@ from mcp.client.stdio import stdio_client
 async def session():
     env=os.environ.copy();env['PYTHONUTF8']='1';env['PYTHONUNBUFFERED']='1'
     with open(os.devnull,'w') as err:
-        async with stdio_client(StdioServerParameters(command=sys.executable,args=['-m','video_face_stylizer'],env=env),errlog=err) as (read,write):
+        executable=os.environ.get('VFS_TEST_EXECUTABLE')
+        async with stdio_client(StdioServerParameters(command=executable or sys.executable,args=[] if executable else ['-m','video_face_stylizer'],env=env),errlog=err) as (read,write):
             async with ClientSession(read,write) as client:
                 await client.initialize()
                 yield client

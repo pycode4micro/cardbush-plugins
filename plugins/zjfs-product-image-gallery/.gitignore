@@ -1,0 +1,8 @@
+# Installation outputs and private connection files are not source.
+*.exe
+*.dll
+*.local.json
+portable-runtime/
+portable-runtime.json
+portable-build.json
+connections/

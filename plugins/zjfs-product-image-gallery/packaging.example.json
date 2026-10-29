@@ -1,0 +1,18 @@
+{
+  "output": "C:/private-build/product-gallery/plugins",
+  "launcher": "C:/private-build/PortablePlugin.exe",
+  "plugins": [
+    {
+      "id": "zjfs-product-image-gallery",
+      "source": "C:/sources/cardbush-plugins/plugins/zjfs-product-image-gallery",
+      "kind": "python",
+      "server": "zjfs-product-image-gallery",
+      "args": ["${PLUGIN_ROOT}/server.py"],
+      "python": {
+        "base": "C:/build-tools/Python312",
+        "site": "C:/build-tools/Python312/Lib/site-packages",
+        "requirements": []
+      }
+    }
+  ]
+}

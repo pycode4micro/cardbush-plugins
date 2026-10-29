@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "zjfs-product-image-gallery": {
+      "command": "python",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/server.py"
+      ],
+      "env_vars": [
+        "CARDBUSH_PLUGIN_CONNECTIONS"
+      ],
+      "startup_timeout_sec": 30,
+      "tool_timeout_sec": 45
+    }
+  }
+}

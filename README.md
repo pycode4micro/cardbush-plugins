@@ -1,6 +1,6 @@
 # Cardbush Plugins
 
-通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit / 火山 v5.0 音乐、腾讯云 COS、千川、video_editer 剪辑、视频生成去真人化处理、MiniMax 音乐创作、飞书机器人，抖音视频下载、Agent Chatroom 聊天室、Logic Memory 经验学习与检索、分部位衣服设计，以及企业与个人资料库插件。
+通过 GitHub 分发的 Codex 插件市场，包含 Seedream / Seedance / MediaKit / 火山 v5.0 音乐、腾讯云 COS、千川、video_editer 剪辑、视频生成去真人化处理、MiniMax 音乐创作、飞书机器人，抖音视频下载、Agent Chatroom 聊天室、Logic Memory 经验学习与检索、分部位衣服设计，企业与个人资料库，以及按货号精确查询商品图片的只读图库插件。
 
 目录和市场索引参照 [OpenAI 插件仓库](https://github.com/openai/plugins) 与 [OpenAI 插件打包文档](https://developers.openai.com/plugins/build/plugins)。这是独立维护的插件市场。
 
@@ -35,6 +35,7 @@ codex plugin marketplace add https://github.com/pycode4micro/cardbush-plugins.gi
 | `logic-memory` | 0.1.0 | 独立可选的 learn / consult 经验工具、BM25 检索、幂等反馈与旧数据导入 | [经验插件配置](plugins/logic-memory/README.md) |
 | `garment-designer` | 0.2.0 | 分部位矢量衣服设计、确认后整体生图及对照分析，支持 PDF、PPTX、HTML 设计方案导出；7 个 MCP 工具和交互面板 | [衣服设计使用说明](plugins/garment-designer/README.md) |
 | `knowledge-library` | 0.1.0 | 企业与个人资料导入、按部门／场景检索、原文出处、版本及归档管理；7 个 MCP 工具和交互面板，当前为 demo | [资料库使用说明](plugins/knowledge-library/README.md) |
+| `zjfs-product-image-gallery` | 1.0.0 | 按货号查公司商品主图；独立令牌鉴权，只读查询和取图 | [商品图库配置](plugins/zjfs-product-image-gallery/README.md) |
 
 市场添加成功后，也可按需用 CLI 安装：
 
@@ -51,6 +52,7 @@ codex plugin add agentchatroom@cardbush-plugins
 codex plugin add logic-memory@cardbush-plugins
 codex plugin add garment-designer@cardbush-plugins
 codex plugin add knowledge-library@cardbush-plugins
+codex plugin add zjfs-product-image-gallery@cardbush-plugins
 ```
 
 安装或更新后，新建 Codex 任务以载入新的技能和工具。若已有 `@personal` 下的同名插件，请在插件管理页面选用一个来源，避免重复启用同一插件。
@@ -166,6 +168,16 @@ FFmpeg 需支持 libx264/libass；已声明的 `imageio-ffmpeg` 提供二进制�
 
 数据默认保存在插件运行账户的 `~/.cardbush-knowledge/`，独立于安装目录。支持增量版本、归档恢复、只读连接和可信连接的库范围配置；普通检索不会自动弹出面板。当前为单个可信租户的 demo，不含 OCR、向量检索或企业身份认证。初始化方式、云端数据目录及能力边界见[资料库说明](plugins/knowledge-library/README.md)。
 
+### 商品图库
+
+源码版客户端仅需 Python 3.10 或更新版本，无第三方 Python 依赖；内部 EXE 版自带运行时。
+通过管理员提供的网关地址和独立令牌查询聚水潭商品图库，返回逐货号状态和可显示的图片。
+每次最多查询 20 个货号，一次取一张图片，不提供写入、刷新、任意文件浏览或 SQL 输入。
+
+插件客户端、图库服务端、文件读取保护、回归测试和部署说明均在
+`plugins/zjfs-product-image-gallery`。CardBush 主仓库仅提供通用网关和 EXE 打包器。
+真实地址、访问令牌、数据库和安装器不随源码发布；详见[商品图库说明](plugins/zjfs-product-image-gallery/README.md)。
+
 ## 更新市场
 
 ```shell
@@ -179,6 +191,15 @@ codex plugin marketplace upgrade cardbush-plugins
 ```text
 .agents/plugins/marketplace.json
 plugins/
+  zjfs-product-image-gallery/
+    .codex-plugin/plugin.json
+    .mcp.json
+    server.py
+    lan-tools.json
+    service/
+    tests/
+    docs/
+    packaging.example.json
   volcengine-plugins/
     .codex-plugin/plugin.json
     .mcp.json

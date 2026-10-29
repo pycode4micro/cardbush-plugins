@@ -159,6 +159,18 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Productivity"
+    },
+    {
+      "name": "zjfs-product-image-gallery",
+      "source": {
+        "source": "local",
+        "path": "./plugins/zjfs-product-image-gallery"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
     }
   ]
 }
